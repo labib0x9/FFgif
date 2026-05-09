@@ -14,6 +14,7 @@ type Handler struct {
 	cacheRepo    repo.CacheRepo
 	reseterRepo  repo.ReseterRepo
 	userRepo     repo.UserRepository
+	quotaRepo    repo.QuotaRepository
 	validate     *validator.Validate
 	mailer       *mailer.Mailer
 }
@@ -24,6 +25,7 @@ func NewHandler(
 	cacheRepo repo.CacheRepo,
 	reseterRepo repo.ReseterRepo,
 	userRepo repo.UserRepository,
+	quotaRepo repo.QuotaRepository,
 	middlewares *middleware.Middlewares,
 	validate *validator.Validate,
 	mailer *mailer.Mailer,
@@ -34,6 +36,7 @@ func NewHandler(
 		cacheRepo:    cacheRepo,
 		reseterRepo:  reseterRepo,
 		userRepo:     userRepo,
+		quotaRepo:    quotaRepo,
 		middlewares:  middlewares,
 		validate:     validate,
 		mailer:       mailer,

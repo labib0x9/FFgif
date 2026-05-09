@@ -36,14 +36,15 @@ func Serve() {
 	cacheRepo := repo.NewCacheRepo(redisClient)
 	reseterRepo := repo.NewReseterRepo(dbConn)
 	uploaderRepo := repo.NewUploaderRepository(&minioClient, cnf.MinioConfig)
+	quotaRepo := repo.NewQuotaRepository(dbConn)
 
 	middlewares := middleware.NewMiddlewares(cnf, cacheRepo)
 	validate := validator.New()
 	mailer := mailer.NewMailer(cnf)
 
-	authHandler := auth.NewHandler(authRepo, verifierRepo, cacheRepo, reseterRepo, userRepo, middlewares, validate, mailer)
+	authHandler := auth.NewHandler(authRepo, verifierRepo, cacheRepo, reseterRepo, userRepo, quotaRepo, middlewares, validate, mailer)
 	adminHandler := admin.NewHandler(adminRepo, middlewares)
-	userHandler := user.NewHandler(userRepo, middlewares)
+	userHandler := user.NewHandler(userRepo, quotaRepo, middlewares)
 	uploaderHandler := uploader.NewHandler(uploaderRepo, validate, middlewares)
 	converterHandler := converter.NewHandler(cacheRepo, validate, middlewares)
 

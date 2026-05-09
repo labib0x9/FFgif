@@ -15,6 +15,14 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager
 		),
 	)
 
+	mux.Handle(
+		"GET /users/me/quota",
+		manager.With(
+			http.HandlerFunc(h.GetQuota),
+			h.middlewares.Auth,
+		),
+	)
+
 	// mux.Handle(
 	// 	"GET /users/change-password",
 	// 	manager.With(

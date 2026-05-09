@@ -8,11 +8,13 @@ import (
 type Handler struct {
 	middlewares *middleware.Middlewares
 	userRepo    repo.UserRepository
+	quotaRepo   repo.QuotaRepository
 }
 
-func NewHandler(userRepo repo.UserRepository, middlewares *middleware.Middlewares) *Handler {
+func NewHandler(userRepo repo.UserRepository, quotaRepo repo.QuotaRepository, middlewares *middleware.Middlewares) *Handler {
 	return &Handler{
 		userRepo:    userRepo,
+		quotaRepo:   quotaRepo,
 		middlewares: middlewares,
 	}
 }

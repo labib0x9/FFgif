@@ -6,7 +6,7 @@ import (
 )
 
 type UserRepository interface {
-	GetProfile(id string) (model.Profile, error)
+	GetProfile(id string) (model.ProfileResp, error)
 	SetProfile(profile model.Profile) error
 }
 
@@ -18,21 +18,21 @@ func NewUserRepository(db *sqlx.DB) UserRepository {
 	return &userRepo{dbConn: db}
 }
 
-func (r *userRepo) GetProfile(id string) (model.Profile, error) {
-	// query := `
-	// 	select
-	// 		p.user_id, u.username, p.profile_pic, u.fullname
-	// 	from profiles p
-	// 	left join users u
-	// 	on
-	// 		u.id = p.user_id
-	// 	where
-	// 	 	u.id = $1
-	// `
-	query := `select * from profiles where user_id = $1`
-	var profile model.Profile
+func (r *userRepo) GetProfile(id string) (model.ProfileResp, error) {
+	query := `
+		select
+			u.username, p.profile_pic, u.fullname, u.email, u.is_verified
+		from profiles p
+		left join users u
+		on
+			u.id = p.user_id
+		where
+		 	u.id = $1
+	`
+	// query := `select * from profiles where user_id = $1`
+	var profile model.ProfileResp
 	if err := r.dbConn.Get(&profile, query, id); err != nil {
-		return model.Profile{}, err
+		return model.ProfileResp{}, err
 	}
 	return profile, nil
 }

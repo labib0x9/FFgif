@@ -41,7 +41,7 @@ func NewServer(
 
 func (s *Server) Start(redisClient *redis.Redis, cnf *config.Config) {
 
-	rateLimiter := middleware.NewRateLimiter(redisClient, 2, 1)
+	rateLimiter := middleware.NewRateLimiter(redisClient, 5, 10)
 
 	manager := middleware.NewManager()
 	manager.Use(

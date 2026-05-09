@@ -96,6 +96,16 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	quota := model.Quota{
+		UserID: createdUser.Id,
+	}
+
+	if err := h.quotaRepo.Create(quota); err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		slog.Error("Signup: quota create failed", "error", err, "email", createdUser.Email, "id", createdUser.Id)
+		return
+	}
+
 	// send verification
 	if err := h.mailer.SendVerificationToken(newUser.Email, verifyToken); err != nil {
 		utils.SendJson(w, "user created, request for resend verification", http.StatusCreated)
