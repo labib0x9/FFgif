@@ -23,13 +23,21 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager
 		),
 	)
 
-	// mux.Handle(
-	// 	"GET /users/change-password",
-	// 	manager.With(
-	// 		http.HandlerFunc(),
-	// 		h.middlewares.Auth,
-	// 	),
-	// )
+	mux.Handle(
+		"PATCH /users/profile/me",
+		manager.With(
+			http.HandlerFunc(h.UpdateProfile),
+			h.middlewares.Auth,
+		),
+	)
+
+	mux.Handle(
+		"PATCH /users/change-password",
+		manager.With(
+			http.HandlerFunc(h.ChangePassword),
+			h.middlewares.Auth,
+		),
+	)
 
 	// mux.Handle(
 	// 	"POST /users/profile",
@@ -38,4 +46,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager
 	// 		h.middlewares.Auth,
 	// 	),
 	// )
+
+	mux.Handle(
+		"DELETE /users/me",
+		manager.With(
+			http.HandlerFunc(h.DeleteUser),
+			h.middlewares.Auth,
+		),
+	)
 }

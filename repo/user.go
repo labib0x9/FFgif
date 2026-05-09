@@ -8,6 +8,8 @@ import (
 type UserRepository interface {
 	GetProfile(id string) (model.ProfileResp, error)
 	SetProfile(profile model.Profile) error
+	UpdateProfile(profile model.ProfileResp, userId string) (model.ProfileResp, error)
+	ChangePassword(userId string, hash string) error
 }
 
 type userRepo struct {
@@ -45,4 +47,49 @@ func (r *userRepo) SetProfile(profile model.Profile) error {
 
 	_, err := r.dbConn.NamedExec(query, profile)
 	return err
+}
+
+func (r *userRepo) UpdateProfile(profile model.ProfileResp, userId string) (model.ProfileResp, error) {
+	query1 := `
+	update users 
+	set
+		username = COALESCE($1, username),
+		fullname = COALESCE($2, fullname),
+		updated_at = NOW()
+	where id = $3
+	`
+	query2 := `
+	update profiles
+	set
+		profile_pic = COALESCE($1, profile_pic),
+		updated_at = NOW()
+	where user_id = $2
+	`
+
+	_, err := r.dbConn.Exec(query1, profile.Username, profile.Fullname, userId)
+	if err != nil {
+		return model.ProfileResp{}, err
+	}
+
+	_, err = r.dbConn.Exec(query2, profile.ProfilePic, userId)
+	if err != nil {
+		return model.ProfileResp{}, err
+	}
+
+	return r.GetProfile(userId)
+}
+
+func (r *userRepo) ChangePassword(userId string, hash string) error {
+	query1 := `
+	update users 
+	set
+		password_hash = $1,
+		updated_at = NOW()
+	where id = $2
+	`
+	_, err := r.dbConn.Exec(query1, hash, userId)
+	if err != nil {
+		return err
+	}
+	return nil
 }

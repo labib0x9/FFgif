@@ -44,7 +44,7 @@ func Serve() {
 
 	authHandler := auth.NewHandler(authRepo, verifierRepo, cacheRepo, reseterRepo, userRepo, quotaRepo, middlewares, validate, mailer)
 	adminHandler := admin.NewHandler(adminRepo, middlewares)
-	userHandler := user.NewHandler(userRepo, quotaRepo, middlewares)
+	userHandler := user.NewHandler(userRepo, quotaRepo, middlewares, validate)
 	uploaderHandler := uploader.NewHandler(uploaderRepo, validate, middlewares)
 	converterHandler := converter.NewHandler(cacheRepo, validate, middlewares)
 
