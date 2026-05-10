@@ -80,7 +80,4 @@ func (h *Handler) RegisterRoutes(
 			h.middlewares.Auth,
 		),
 	)
-
-	// POST /auth/demo
-	// POST /auth/demo/upgrade
 }

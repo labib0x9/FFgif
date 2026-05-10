@@ -16,17 +16,31 @@ type Payload struct {
 	jwt.RegisteredClaims
 }
 
-func CreateJWT(jwtSecretKey []byte, data model.User) (string, error) {
-	claims := Payload{
-		Fullname: data.Fullname,
-		Email:    data.Email,
-		Role:     data.Role,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   data.Id.String(),
-			Issuer:    "projectpdf",
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
-		},
+func CreateJWT(jwtSecretKey []byte, data any) (string, error) {
+	var claims Payload
+	if d, ok := data.(model.User); ok {
+		claims = Payload{
+			Fullname: d.Fullname,
+			Email:    d.Email,
+			Role:     d.Role,
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   d.Id.String(),
+				Issuer:    "projectpdf",
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			},
+		}
+	} else if d, ok := data.(model.AnonUser); ok {
+		claims = Payload{
+			Fullname: d.Fullname,
+			Role:     d.Role,
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   d.Id.String(),
+				Issuer:    "projectpdf",
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			},
+		}
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
