@@ -41,6 +41,8 @@ ProjectPDF is a API service that accepts images and converts them into a combine
 
 - mailtrap is used to check account verification.
 - minio is used for Object Storage
+- RabbitMq is userd for message queue
+- Redis is used for rate limiting.
 
 ---
 

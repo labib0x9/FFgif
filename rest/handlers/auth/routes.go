@@ -81,6 +81,6 @@ func (h *Handler) RegisterRoutes(
 		),
 	)
 
-	POST /auth/demo
-	POST /auth/demo/upgrade
+	// POST /auth/demo
+	// POST /auth/demo/upgrade
 }

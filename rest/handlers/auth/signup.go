@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/labib0x9/ProjectUnsafe/infra/queue/rabbitmq"
 	"github.com/labib0x9/ProjectUnsafe/model"
 	"github.com/labib0x9/ProjectUnsafe/utils"
 )
@@ -107,10 +108,22 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// send verification
-	if err := h.mailer.SendVerificationToken(newUser.Email, verifyToken); err != nil {
-		utils.SendJson(w, "user created, request for resend verification", http.StatusCreated)
+	// if err := h.mailer.SendVerificationToken(newUser.Email, verifyToken); err != nil {
+	// 	utils.SendJson(w, "user created, request for resend verification", http.StatusCreated)
+	// 	slog.Error("Signup: send verification token failed", "error", err, "email", createdUser.Email, "id", createdUser.Id)
+	// 	return
+	// }
+
+	mqMsg := rabbitmq.EmailMessage{
+		To:    newUser.Email,
+		Name:  "signup",
+		Token: verifyToken,
+	}
+
+	if err := h.rabbitMq.PublishEmail(r.Context(), mqMsg); err != nil {
+		// utils.SendJson(w, "user created, request for resend verification", http.StatusCreated)
 		slog.Error("Signup: send verification token failed", "error", err, "email", createdUser.Email, "id", createdUser.Id)
-		return
+		// return
 	}
 
 	utils.SendJson(w, "user created", http.StatusCreated)

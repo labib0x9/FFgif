@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/labib0x9/ProjectUnsafe/infra/queue/rabbitmq"
 	"github.com/labib0x9/ProjectUnsafe/model"
 	"github.com/labib0x9/ProjectUnsafe/utils"
 )
@@ -66,7 +67,19 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := h.mailer.SendResetPassword(user.Email, reseter.Token); err != nil {
+	// if err := h.mailer.SendResetPassword(user.Email, reseter.Token); err != nil {
+	// 	utils.SendJson(w, "internal server error", http.StatusInternalServerError)
+	// 	slog.Error("ForgotPassword: send reset password token failed", "error", err, "email", user.Email, "id", user.Id)
+	// 	return
+	// }
+
+	mqMsg := rabbitmq.EmailMessage{
+		To:    user.Email,
+		Name:  "forgot-password",
+		Token: reseter.Token,
+	}
+
+	if err := h.rabbitMq.PublishEmail(r.Context(), mqMsg); err != nil {
 		utils.SendJson(w, "internal server error", http.StatusInternalServerError)
 		slog.Error("ForgotPassword: send reset password token failed", "error", err, "email", user.Email, "id", user.Id)
 		return

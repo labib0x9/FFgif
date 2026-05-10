@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/labib0x9/ProjectUnsafe/infra/queue/rabbitmq"
 	"github.com/labib0x9/ProjectUnsafe/utils"
 )
 
@@ -79,7 +80,18 @@ func (h *Handler) ResetPasswordPost(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("ResetPasswordPost: struct validation failed", "error", err)
 	}
 
-	if err := h.mailer.SendResetNotification(user.Email); err != nil {
+	// if err := h.mailer.SendResetNotification(user.Email); err != nil {
+	// 	utils.SendJson(w, "user created, request for resend verification", http.StatusCreated)
+	// 	slog.Error("ResetPasswordPost: send verification token failed", "error", err, "email", user.Email, "id", user.Id)
+	// 	return
+	// }
+
+	mqMsg := rabbitmq.EmailMessage{
+		To:   user.Email,
+		Name: "reset-password",
+	}
+
+	if err := h.rabbitMq.PublishEmail(r.Context(), mqMsg); err != nil {
 		utils.SendJson(w, "user created, request for resend verification", http.StatusCreated)
 		slog.Error("ResetPasswordPost: send verification token failed", "error", err, "email", user.Email, "id", user.Id)
 		return

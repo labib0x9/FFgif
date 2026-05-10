@@ -10,6 +10,7 @@ run:
 	@echo "► Starting services..."
 	@brew services start postgresql
 	@brew services start redis
+	@brew services start rabbitmq
 	@echo "► Starting MinIO..."
 	@minio server ~/minio-data --console-address ":9001" &
 	@echo "► Waiting for MinIO to be ready..."
@@ -21,4 +22,5 @@ stop:
 	@echo "► Stopping services..."
 	@brew services stop postgresql
 	@brew services stop redis
+	@brew services stop rabbitmq
 	@pkill minio || true

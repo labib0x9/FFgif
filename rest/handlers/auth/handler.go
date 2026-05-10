@@ -2,9 +2,9 @@ package auth
 
 import (
 	"github.com/go-playground/validator/v10"
+	"github.com/labib0x9/ProjectUnsafe/infra/queue/rabbitmq"
 	"github.com/labib0x9/ProjectUnsafe/repo"
 	middleware "github.com/labib0x9/ProjectUnsafe/rest/middleware"
-	"github.com/labib0x9/ProjectUnsafe/utils/mailer"
 )
 
 type Handler struct {
@@ -16,7 +16,7 @@ type Handler struct {
 	userRepo     repo.UserRepository
 	quotaRepo    repo.QuotaRepository
 	validate     *validator.Validate
-	mailer       *mailer.Mailer
+	rabbitMq     *rabbitmq.RabbitMQ
 }
 
 func NewHandler(
@@ -28,7 +28,7 @@ func NewHandler(
 	quotaRepo repo.QuotaRepository,
 	middlewares *middleware.Middlewares,
 	validate *validator.Validate,
-	mailer *mailer.Mailer,
+	rabbitMq *rabbitmq.RabbitMQ,
 ) *Handler {
 	return &Handler{
 		authRepo:     authRepo,
@@ -39,6 +39,6 @@ func NewHandler(
 		quotaRepo:    quotaRepo,
 		middlewares:  middlewares,
 		validate:     validate,
-		mailer:       mailer,
+		rabbitMq:     rabbitMq,
 	}
 }

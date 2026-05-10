@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/labib0x9/ProjectUnsafe/infra/queue/rabbitmq"
 	"github.com/labib0x9/ProjectUnsafe/model"
 	"github.com/labib0x9/ProjectUnsafe/utils"
 )
@@ -69,7 +70,19 @@ func (h *Handler) ResendVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.mailer.SendVerificationToken(user.Email, verifyToken); err != nil {
+	// if err := h.mailer.SendVerificationToken(user.Email, verifyToken); err != nil {
+	// 	http.Error(w, "request after some time", http.StatusInternalServerError)
+	// 	slog.Error("ResendVerify: send verification token failed", "error", err, "email", user.Email, "id", user.Id)
+	// 	return
+	// }
+
+	mqMsg := rabbitmq.EmailMessage{
+		To:    user.Email,
+		Name:  "resend-verify",
+		Token: verifyToken,
+	}
+
+	if err := h.rabbitMq.PublishEmail(r.Context(), mqMsg); err != nil {
 		http.Error(w, "request after some time", http.StatusInternalServerError)
 		slog.Error("ResendVerify: send verification token failed", "error", err, "email", user.Email, "id", user.Id)
 		return
