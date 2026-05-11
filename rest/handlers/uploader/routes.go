@@ -30,4 +30,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager
 			h.middlewares.Auth,
 		),
 	)
+
+	mux.Handle(
+		"GET /uploads/last",
+		manager.With(
+			http.HandlerFunc(h.LastVideo),
+			h.middlewares.Auth,
+		),
+	)
 }

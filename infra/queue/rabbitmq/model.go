@@ -13,3 +13,9 @@ type VideoMessage struct {
 	OutputPath string   `json:"output_path"`
 	Formats    []string `json:"formats"`
 }
+
+type SaveVideoMessage struct {
+	Key      string `json:"key"`
+	UserID   string `json:"user_id"`
+	Filename string `json:"filename"`
+}

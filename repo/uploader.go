@@ -13,6 +13,7 @@ import (
 type Info struct {
 	Size        int64
 	ContentType string
+	UploadedAt  time.Time
 }
 
 type Object struct {
@@ -68,12 +69,15 @@ func (u *uploaderRepo) StatObject(ctx context.Context, key string) (Info, error)
 	return Info{
 		Size:        info.Size,
 		ContentType: info.ContentType,
+		UploadedAt:  info.LastModified,
 	}, err
 }
 
 func (u *uploaderRepo) GetObject(ctx context.Context, start, end int64, key string) (Object, error) {
 	opts := minio_go.GetObjectOptions{}
-	opts.SetRange(start, end)
+	if start != -1 || end != -1 {
+		opts.SetRange(start, end)
+	}
 
 	obj, err := u.client.GetObject(ctx, u.cnf.BucketName, key, opts)
 	return Object{obj}, err

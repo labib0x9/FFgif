@@ -175,8 +175,10 @@ import (
 )
 
 const (
-	EmailQueue   = "email.queue"
-	ProcessQueue = "process.queue"
+	EmailQueue     = "email.queue"
+	ProcessQueue   = "process.queue"
+	SaveQueue      = "video.save.queue"
+	SaveRetryQueue = "save.retry.queue"
 )
 
 type RabbitMQ struct {
@@ -239,6 +241,18 @@ func (r *RabbitMQ) setup() error {
 		return fmt.Errorf("declare process dlq: %w", err)
 	}
 
+	_, err = ch.QueueDeclare(
+		"save.queue.dead",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		return fmt.Errorf("declare save dlq: %w", err)
+	}
+
 	// main queues
 
 	_, err = ch.QueueDeclare(
@@ -269,6 +283,37 @@ func (r *RabbitMQ) setup() error {
 	)
 	if err != nil {
 		return fmt.Errorf("declare process queue: %w", err)
+	}
+
+	_, err = ch.QueueDeclare(
+		SaveQueue,
+		true,
+		false,
+		false,
+		false,
+		amqp.Table{
+			"x-dead-letter-exchange":    "",
+			"x-dead-letter-routing-key": "save.queue.dead",
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("declare save queue: %w", err)
+	}
+
+	_, err = ch.QueueDeclare(
+		SaveRetryQueue,
+		true,
+		false,
+		false,
+		false,
+		amqp.Table{
+			"x-message-ttl":             int32(1000),
+			"x-dead-letter-exchange":    "",
+			"x-dead-letter-routing-key": SaveQueue,
+		},
+	)
+	if err != nil {
+		return err
 	}
 
 	return nil

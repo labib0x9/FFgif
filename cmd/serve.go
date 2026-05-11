@@ -46,6 +46,7 @@ func Serve() {
 	reseterRepo := repo.NewReseterRepo(dbConn)
 	uploaderRepo := repo.NewUploaderRepository(&minioClient, cnf.MinioConfig)
 	quotaRepo := repo.NewQuotaRepository(dbConn)
+	lastUploadRepo := repo.NewLastVideoRepository(dbConn)
 
 	middlewares := middleware.NewMiddlewares(cnf, cacheRepo)
 	validate := validator.New()
@@ -54,17 +55,19 @@ func Serve() {
 
 	emailWorker := worker.NewEmailWorker(rabbitMq, mailer)
 	convertWorker := worker.NewVideoWorker(rabbitMq, fmeg)
+	saveMetadataWorker := worker.NewSaveVideoWorker(rabbitMq, lastUploadRepo, uploaderRepo)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	go emailWorker.Run(ctx, 10)
 	go convertWorker.Run(ctx, 2)
+	go saveMetadataWorker.Run(ctx, 5)
 
 	authHandler := auth.NewHandler(authRepo, verifierRepo, cacheRepo, reseterRepo, userRepo, quotaRepo, middlewares, validate, rabbitMq)
 	adminHandler := admin.NewHandler(adminRepo, middlewares)
 	userHandler := user.NewHandler(userRepo, quotaRepo, authRepo, middlewares, validate)
-	uploaderHandler := uploader.NewHandler(uploaderRepo, validate, middlewares)
+	uploaderHandler := uploader.NewHandler(uploaderRepo, lastUploadRepo, validate, middlewares, rabbitMq)
 	converterHandler := converter.NewHandler(cacheRepo, validate, middlewares, rabbitMq)
 
 	server := rest.NewServer(

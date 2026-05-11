@@ -51,25 +51,19 @@ import (
 // 	return err
 // }
 
-func (r *RabbitMQ) PublishEmail(
-	ctx context.Context,
-	msg EmailMessage,
-) error {
+func (r *RabbitMQ) PublishEmail(ctx context.Context, msg EmailMessage) error {
 	return r.publish(ctx, EmailQueue, msg)
 }
 
-func (r *RabbitMQ) PublishVideo(
-	ctx context.Context,
-	msg VideoMessage,
-) error {
+func (r *RabbitMQ) PublishVideo(ctx context.Context, msg VideoMessage) error {
 	return r.publish(ctx, ProcessQueue, msg)
 }
 
-func (r *RabbitMQ) publish(
-	ctx context.Context,
-	queue string,
-	payload any,
-) error {
+func (r *RabbitMQ) PublishSaveVideo(ctx context.Context, msg SaveVideoMessage) error {
+	return r.publish(ctx, SaveQueue, msg)
+}
+
+func (r *RabbitMQ) publish(ctx context.Context, queue string, payload any) error {
 
 	// create fresh channel per publish
 	// safer than shared channel
@@ -112,4 +106,12 @@ func (r *RabbitMQ) publish(
 	)
 
 	return nil
+}
+
+func (r *RabbitMQ) PublishRetrySaveVideo(ctx context.Context, msg SaveVideoMessage) error {
+	return r.publish(
+		ctx,
+		SaveRetryQueue,
+		msg,
+	)
 }

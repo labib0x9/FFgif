@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/labib0x9/ProjectUnsafe/infra/queue/rabbitmq"
 	"github.com/labib0x9/ProjectUnsafe/rest/middleware"
 	"github.com/labib0x9/ProjectUnsafe/utils"
 )
@@ -54,6 +55,19 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		slog.Warn("Upload: presigned url create error", "error", err)
+		return
+	}
+
+	if err := h.rabbitMq.PublishSaveVideo(
+		r.Context(),
+		rabbitmq.SaveVideoMessage{
+			Key:      key,
+			UserID:   userId,
+			Filename: req.Filename,
+		},
+	); err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		slog.Warn("Upload: queue publish failed", "error", err)
 		return
 	}
 
