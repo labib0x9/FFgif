@@ -22,4 +22,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager
 			h.middlewares.Auth,
 		),
 	)
+
+	mux.Handle(
+		"GET /uploads/{key}/stream",
+		manager.With(
+			http.HandlerFunc(h.Stream),
+			h.middlewares.Auth,
+		),
+	)
 }

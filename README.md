@@ -1,6 +1,6 @@
 # ProjectPDF
 
-ProjectPDF is a API service that accepts images and converts them into a combined pdf.
+FFGif is a API service that accepts images and converts them into a combined pdf.
 
 ---
 

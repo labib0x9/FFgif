@@ -23,5 +23,12 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if ok {
+		utils.SendJson(w, map[string]string{
+			"status": "ready",
+		}, http.StatusOK)
+		return
+	}
+
 	utils.SendJson(w, ok, http.StatusOK)
 }

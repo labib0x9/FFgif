@@ -10,10 +10,25 @@ import (
 	minio_go "github.com/minio/minio-go/v7"
 )
 
+type Info struct {
+	Size        int64
+	ContentType string
+}
+
+type Object struct {
+	*minio_go.Object
+}
+
+// func (o *Object) Close() {
+// 	o.Close()
+// }
+
 type UploaderRepository interface {
 	Create(ctx context.Context, key string, expirey time.Duration) (*url.URL, error)
 	Status(ctx context.Context, key string) (bool, error)
 	Delete() error
+	StatObject(ctx context.Context, key string) (Info, error)
+	GetObject(ctx context.Context, start, end int64, key string) (Object, error)
 }
 
 type uploaderRepo struct {
@@ -45,4 +60,21 @@ func (u *uploaderRepo) Status(ctx context.Context, key string) (bool, error) {
 
 func (u *uploaderRepo) Delete() error {
 	return nil
+}
+
+func (u *uploaderRepo) StatObject(ctx context.Context, key string) (Info, error) {
+	info, err := u.client.StatObject(ctx, u.cnf.BucketName, key, minio_go.StatObjectOptions{})
+
+	return Info{
+		Size:        info.Size,
+		ContentType: info.ContentType,
+	}, err
+}
+
+func (u *uploaderRepo) GetObject(ctx context.Context, start, end int64, key string) (Object, error) {
+	opts := minio_go.GetObjectOptions{}
+	opts.SetRange(start, end)
+
+	obj, err := u.client.GetObject(ctx, u.cnf.BucketName, key, opts)
+	return Object{obj}, err
 }
