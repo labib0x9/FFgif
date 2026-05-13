@@ -3,9 +3,18 @@ package converter
 import (
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/labib0x9/ProjectUnsafe/utils"
 )
+
+type StatusResp struct {
+	JobId     string    `json:"job_id"`
+	Status    string    `json:"status"`
+	GifId     string    `json:"gif_id"`
+	Progress  int       `json:"progress"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
 
 func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 	jobId := r.PathValue("jobId")
@@ -23,5 +32,10 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	utils.SendJson(w, val, http.StatusOK)
+	resp := StatusResp{
+		JobId:  jobId,
+		Status: val,
+	}
+
+	utils.SendJson(w, resp, http.StatusOK)
 }

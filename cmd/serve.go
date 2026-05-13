@@ -47,14 +47,15 @@ func Serve() {
 	uploaderRepo := repo.NewUploaderRepository(&minioClient, cnf.MinioConfig)
 	quotaRepo := repo.NewQuotaRepository(dbConn)
 	lastUploadRepo := repo.NewLastVideoRepository(dbConn)
+	gifRepo := repo.NewGifRepository(dbConn)
 
 	middlewares := middleware.NewMiddlewares(cnf, cacheRepo)
 	validate := validator.New()
 	mailer := mailer.NewMailer(cnf)
-	fmeg := ffmpeg.NewFmeg()
+	fmeg := ffmpeg.NewFmeg(uploaderRepo)
 
 	emailWorker := worker.NewEmailWorker(rabbitMq, mailer)
-	convertWorker := worker.NewVideoWorker(rabbitMq, fmeg)
+	convertWorker := worker.NewVideoWorker(rabbitMq, fmeg, cacheRepo, gifRepo)
 	saveMetadataWorker := worker.NewSaveVideoWorker(rabbitMq, lastUploadRepo, uploaderRepo)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

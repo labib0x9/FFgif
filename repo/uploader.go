@@ -30,6 +30,8 @@ type UploaderRepository interface {
 	Delete() error
 	StatObject(ctx context.Context, key string) (Info, error)
 	GetObject(ctx context.Context, start, end int64, key string) (Object, error)
+	Download(ctx context.Context, key, destPath string) error
+	Upload(ctx context.Context, key, filePath, contentType string) error
 }
 
 type uploaderRepo struct {
@@ -81,4 +83,17 @@ func (u *uploaderRepo) GetObject(ctx context.Context, start, end int64, key stri
 
 	obj, err := u.client.GetObject(ctx, u.cnf.BucketName, key, opts)
 	return Object{obj}, err
+}
+
+func (u *uploaderRepo) Download(ctx context.Context, key, destPath string) error {
+	return u.client.FGetObject(ctx, u.cnf.BucketName, key, destPath, minio_go.GetObjectOptions{})
+}
+
+func (u *uploaderRepo) Upload(ctx context.Context, key, filePath, contentType string) error {
+	_, err := u.client.FPutObject(ctx, u.cnf.BucketName, key, filePath,
+		minio_go.PutObjectOptions{
+			ContentType: contentType,
+		},
+	)
+	return err
 }

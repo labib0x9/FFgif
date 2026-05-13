@@ -61,3 +61,12 @@ func GetAuthorizationHeader(r *http.Request) (string, bool) {
 	token, ok := r.Context().Value(jwtKey).(string)
 	return token, ok
 }
+
+func GetUserId(r *http.Request) string {
+	claims, ok := GetClaims(r)
+	if !ok {
+		return ""
+	}
+
+	return claims.RegisteredClaims.Subject
+}

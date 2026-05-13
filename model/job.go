@@ -1,7 +1,7 @@
 package model
 
-type Job struct {
-	Files  []string
-	Id     string
-	Status string
-}
+// type Job struct {
+// 	Key    string
+// 	Id     string
+// 	Status string
+// }

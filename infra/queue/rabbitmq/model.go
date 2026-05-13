@@ -7,11 +7,14 @@ type EmailMessage struct {
 }
 
 type VideoMessage struct {
-	VideoID    string   `json:"video_id"`
-	UserID     string   `json:"user_id"`
-	InputPath  string   `json:"input_path"`
-	OutputPath string   `json:"output_path"`
-	Formats    []string `json:"formats"`
+	UserID string `json:"user_id"`
+	JobId  string `json:"job_id"`
+	Key    string `json:"upload_key"`
+	Start  int    `json:"start_time"`
+	End    int    `json:"end_time"`
+	Width  int    `json:"width"`
+	FPS    int    `json:"fps"`
+	Loop   bool   `json:"loop"`
 }
 
 type SaveVideoMessage struct {

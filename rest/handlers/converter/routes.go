@@ -16,7 +16,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager
 	)
 
 	mux.Handle(
-		"GET /convert/status/{jobId}",
+		"GET /convert/{jobId}/status",
 		manager.With(
 			http.HandlerFunc(h.Status),
 			h.middlewares.Auth,
