@@ -24,3 +24,6 @@ stop:
 	@brew services stop redis
 	@brew services stop rabbitmq
 	@pkill minio || true
+
+mc:
+	@mc anonymous set-json cors.json myminio/storage

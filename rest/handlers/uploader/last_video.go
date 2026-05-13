@@ -22,6 +22,7 @@ func (h *Handler) LastVideo(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "Not found", http.StatusNotFound)
 			slog.Warn("LastVideo: video metadata found", "err", err)
+			return
 		}
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		slog.Error("LastVideo: video metadata found", "err", err)

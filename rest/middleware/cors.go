@@ -8,8 +8,10 @@ func Cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 		allowedOrigins := map[string]bool{
-			"http://localhost:5173": true,
-			"http://127.0.0.1:5173": true,
+			"http://localhost:5173":  true,
+			"http://127.0.0.1:5173":  true,
+			"http://localhost:5173/": true,
+			"http://127.0.0.1:5173/": true,
 		}
 		if allowedOrigins[origin] {
 			w.Header().Set("Access-Control-Allow-Origin", origin)

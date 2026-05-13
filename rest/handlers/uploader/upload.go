@@ -1,13 +1,13 @@
 package uploader
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"path/filepath"
 	"time"
 
-	"github.com/labib0x9/ProjectUnsafe/infra/queue/rabbitmq"
 	"github.com/labib0x9/ProjectUnsafe/rest/middleware"
 	"github.com/labib0x9/ProjectUnsafe/utils"
 )
@@ -51,31 +51,32 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	key := userId + utils.GenerateRandomID().String() + ext
 	expirey := 5 * time.Minute
 
-	url, err := h.uploaderRepo.Create(r.Context(), key, expirey)
+	url, err := h.uploaderRepo.Create(context.Background(), key, expirey)
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		slog.Warn("Upload: presigned url create error", "error", err)
 		return
 	}
 
-	if err := h.rabbitMq.PublishSaveVideo(
-		r.Context(),
-		rabbitmq.SaveVideoMessage{
-			Key:      key,
-			UserID:   userId,
-			Filename: req.Filename,
-		},
-	); err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		slog.Warn("Upload: queue publish failed", "error", err)
-		return
-	}
+	// if err := h.rabbitMq.PublishSaveVideo(
+	// 	r.Context(),
+	// 	rabbitmq.SaveVideoMessage{
+	// 		Key:      key,
+	// 		UserID:   userId,
+	// 		Filename: req.Filename,
+	// 		Retries:  3,
+	// 	},
+	// ); err != nil {
+	// 	http.Error(w, "internal server error", http.StatusInternalServerError)
+	// 	slog.Warn("Upload: queue publish failed", "error", err)
+	// 	return
+	// }
 
 	resp := uploadResponse{
 		Url:      url.String(),
 		Key:      key,
 		ExpireIn: int64(expirey.Seconds()),
 	}
-
+	// slog.Info("Upload()", "key", key, "Url", url)
 	utils.SendJson(w, resp, http.StatusCreated)
 }

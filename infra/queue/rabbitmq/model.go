@@ -21,4 +21,5 @@ type SaveVideoMessage struct {
 	Key      string `json:"key"`
 	UserID   string `json:"user_id"`
 	Filename string `json:"filename"`
+	Retries  int    `json:"retries"`
 }
