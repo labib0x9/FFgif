@@ -12,12 +12,12 @@ import (
 )
 
 type convertRequ struct {
-	Key   string `json:"upload_key"`
-	Start int    `json:"start_time"`
-	End   int    `json:"end_time"`
-	Width int    `json:"width"`
-	FPS   int    `json:"fps"`
-	Loop  bool   `json:"loop"`
+	Key   string  `json:"upload_key"`
+	Start float32 `json:"start_time"`
+	End   float32 `json:"end_time"`
+	Width int     `json:"width"`
+	FPS   int     `json:"fps"`
+	Loop  bool    `json:"loop"`
 }
 
 func (h *Handler) Convert(w http.ResponseWriter, r *http.Request) {
@@ -46,14 +46,15 @@ func (h *Handler) Convert(w http.ResponseWriter, r *http.Request) {
 	status := "queued"
 
 	msg := rabbitmq.VideoMessage{
-		UserID: userId,
-		JobId:  Id,
-		Key:    req.Key,
-		Start:  req.Start,
-		End:    req.End,
-		Width:  req.Width,
-		FPS:    req.FPS,
-		Loop:   req.Loop,
+		UserID:  userId,
+		JobId:   Id,
+		Key:     req.Key,
+		Start:   req.Start,
+		End:     req.End,
+		Width:   req.Width,
+		FPS:     req.FPS,
+		Loop:    req.Loop,
+		Retries: 0,
 	}
 
 	key := "messaage_queue:job_id:" + Id

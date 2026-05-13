@@ -42,7 +42,7 @@ func (h *Handler) Confirm(w http.ResponseWriter, r *http.Request) {
 			Key:      req.Key,
 			UserID:   claims.Subject,
 			Filename: req.Filename,
-			Retries:  3,
+			Retries:  0,
 		},
 	); err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)

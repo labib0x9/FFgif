@@ -1,4 +1,4 @@
-.PHONY: backend frontend run stop
+.PHONY: backend frontend run stop services
 
 backend:
 	go run main.go
@@ -6,7 +6,7 @@ backend:
 frontend:
 	cd ../auth-frontend && npm run dev
 
-run:
+services:
 	@echo "► Starting services..."
 	@brew services start postgresql
 	@brew services start redis
@@ -15,6 +15,8 @@ run:
 	@minio server ~/minio-data --console-address ":9001" &
 	@echo "► Waiting for MinIO to be ready..."
 	@sleep 2
+
+run:
 	@echo "► Starting app..."
 	@trap 'kill 0' SIGINT; make backend & make frontend; wait
 

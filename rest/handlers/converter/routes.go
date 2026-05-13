@@ -8,17 +8,17 @@ import (
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager) {
 	mux.Handle(
-		"POST /convert",
+		"GET /convert/{jobId}/status",
 		manager.With(
-			http.HandlerFunc(h.Convert),
+			http.HandlerFunc(h.Status),
 			h.middlewares.Auth,
 		),
 	)
 
 	mux.Handle(
-		"GET /convert/{jobId}/status",
+		"POST /convert",
 		manager.With(
-			http.HandlerFunc(h.Status),
+			http.HandlerFunc(h.Convert),
 			h.middlewares.Auth,
 		),
 	)

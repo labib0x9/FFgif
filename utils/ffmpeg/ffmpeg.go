@@ -22,16 +22,16 @@ func NewFmeg(minioRepo repo.UploaderRepository) *Fmeg {
 }
 
 type PaletteFilter struct {
-	Start     int
-	Duration  int
+	Start     float32
+	Duration  float32
 	InputPath string
 	Filter    string
 	Path      string
 }
 
 type GifFilter struct {
-	Start       int
-	Duration    int
+	Start       float32
+	Duration    float32
 	InputPath   string
 	PalettePath string
 	Loop        string
@@ -43,8 +43,8 @@ func newFork(ctx context.Context, filter any) *exec.Cmd {
 	var cmd *exec.Cmd
 	if f, ok := filter.(PaletteFilter); ok {
 		cmd = exec.CommandContext(ctx, "ffmpeg",
-			"-ss", fmt.Sprintf("%d", f.Start),
-			"-t", fmt.Sprintf("%d", f.Duration),
+			"-ss", fmt.Sprintf("%2f", f.Start),
+			"-t", fmt.Sprintf("%2f", f.Duration),
 			"-i", f.InputPath,
 			"-vf", f.Filter,
 			"-y",
@@ -53,8 +53,8 @@ func newFork(ctx context.Context, filter any) *exec.Cmd {
 	}
 	if f, ok := filter.(GifFilter); ok {
 		cmd = exec.CommandContext(ctx, "ffmpeg",
-			"-ss", fmt.Sprintf("%d", f.Start),
-			"-t", fmt.Sprintf("%d", f.Duration),
+			"-ss", fmt.Sprintf("%2f", f.Start),
+			"-t", fmt.Sprintf("%2f", f.Duration),
 			"-i", f.InputPath,
 			"-i", f.PalettePath,
 			"-filter_complex", f.Filter,
@@ -67,7 +67,7 @@ func newFork(ctx context.Context, filter any) *exec.Cmd {
 	return cmd
 }
 
-func (f *Fmeg) Process(ctx context.Context, JobId string, Key string, Start int, End int, Width int, FPS int, Loop bool) (string, error) {
+func (f *Fmeg) Process(ctx context.Context, JobId string, Key string, Start float32, End float32, Width int, FPS int, Loop bool) (string, error) {
 	inputPath := filepath.Join(os.TempDir(), Key+"_input."+f.getContentType(ctx, Key))
 	outputPath := filepath.Join(os.TempDir(), Key+"_output.gif")
 	palettePath := filepath.Join(os.TempDir(), Key+"_palette.png")

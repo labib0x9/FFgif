@@ -14,7 +14,7 @@ import (
 )
 
 type VideoProcessor interface {
-	Process(ctx context.Context, JobId string, Key string, Start int, End int, Width int, FPS int, Loop bool) (string, error)
+	Process(ctx context.Context, JobId string, Key string, Start float32, End float32, Width int, FPS int, Loop bool) (string, error)
 }
 
 type VideoWorker struct {
@@ -87,6 +87,7 @@ func (w *VideoWorker) Run(ctx context.Context, concurrency int) error {
 }
 
 func (w *VideoWorker) handle(ctx context.Context, d amqp.Delivery) {
+	slog.Info("Inside Worker Msg Queue")
 	var msg rabbitmq.VideoMessage
 	err := json.Unmarshal(d.Body, &msg)
 	if err != nil {
@@ -97,7 +98,6 @@ func (w *VideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 
 	slog.Info("processing video", "key", msg.Key, "userID", msg.UserID, "JobId", msg.JobId)
 	key := "messaage_queue:job_id:" + msg.JobId
-
 	if err := w.cacheRepo.Set(key, "processing", 5*time.Minute); err != nil {
 		//
 		return
@@ -105,11 +105,12 @@ func (w *VideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 
 	gifId, err := w.processor.Process(ctx, msg.JobId, msg.Key, msg.Start, msg.End, msg.Width, msg.FPS, msg.Loop)
 	if err != nil {
-		retries := retryCount(d)
-		slog.Error("video processing failed", "error", err, "retries", retries, "JobId", msg.JobId)
+		// retries := retryCount(d)
+		slog.Error("video processing failed", "error", err, "retries", msg.Retries, "JobId", msg.JobId)
 
 		// retry
-		if retries < w.maxRetries {
+		if msg.Retries < w.maxRetries {
+			msg.Retries++
 			err := d.Nack(false, true)
 			if err != nil {
 				slog.Error("nack retry failed", "error", err)
@@ -145,7 +146,7 @@ func (w *VideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 		return
 	}
 
-	slog.Info("video processed successfully", "JobId", msg.JobId)
+	slog.Info("video processed successfully", "JobId", msg.JobId, "gifId", gifId)
 }
 
 func retryCount(d amqp.Delivery) int {

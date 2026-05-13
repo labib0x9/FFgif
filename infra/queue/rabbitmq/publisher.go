@@ -100,18 +100,10 @@ func (r *RabbitMQ) publish(ctx context.Context, queue string, payload any) error
 		return fmt.Errorf("publish message: %w", err)
 	}
 
-	slog.Info(
-		"message published",
-		"queue", queue,
-	)
-
+	slog.Info("publish() = message published", "queue", queue)
 	return nil
 }
 
 func (r *RabbitMQ) PublishRetrySaveVideo(ctx context.Context, msg SaveVideoMessage) error {
-	return r.publish(
-		ctx,
-		SaveRetryQueue,
-		msg,
-	)
+	return r.publish(ctx, SaveRetryQueue, msg)
 }
