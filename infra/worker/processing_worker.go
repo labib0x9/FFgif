@@ -104,6 +104,15 @@ func (w *VideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 	}
 
 	gifId, err := w.processor.Process(ctx, msg.JobId, msg.Key, msg.Start, msg.End, msg.Width, msg.FPS, msg.Loop)
+	gifKey := "messaage_queue_gif:job_id:" + msg.JobId
+	if err := w.cacheRepo.Set(gifKey, gifKey, 5*time.Minute); err != nil {
+		//
+		return
+	}
+	if err := w.cacheRepo.Set(key, "processing", 5*time.Minute); err != nil {
+		//
+		return
+	}
 	if err != nil {
 		// retries := retryCount(d)
 		slog.Error("video processing failed", "error", err, "retries", msg.Retries, "JobId", msg.JobId)
@@ -131,6 +140,7 @@ func (w *VideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 		gif := model.Gif{
 			Key:    gifId,
 			UserId: msg.UserID,
+			Url:    w.gifRepo.GetUrl(gifId),
 		}
 
 		if err := w.gifRepo.Create(gif); err != nil {

@@ -32,8 +32,12 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	gifKey := "messaage_queue_gif:job_id:" + jobId
+	gif, _ := h.cacheRepo.Get(gifKey)
+
 	resp := StatusResp{
 		JobId:  jobId,
+		GifId:  gif,
 		Status: val,
 	}
 
