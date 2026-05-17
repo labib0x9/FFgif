@@ -11,6 +11,7 @@ import (
 	"github.com/labib0x9/ProjectUnsafe/rest/handlers/auth"
 	"github.com/labib0x9/ProjectUnsafe/rest/handlers/converter"
 	"github.com/labib0x9/ProjectUnsafe/rest/handlers/gif"
+	"github.com/labib0x9/ProjectUnsafe/rest/handlers/share"
 	"github.com/labib0x9/ProjectUnsafe/rest/handlers/uploader"
 	"github.com/labib0x9/ProjectUnsafe/rest/handlers/user"
 	middleware "github.com/labib0x9/ProjectUnsafe/rest/middleware"
@@ -23,6 +24,7 @@ type Server struct {
 	UploaderHandler  *uploader.Handler
 	ConverterHandler *converter.Handler
 	gifHandler       *gif.Handler
+	shareHandler     *share.Handler
 }
 
 func NewServer(
@@ -32,6 +34,7 @@ func NewServer(
 	uploaderHandler *uploader.Handler,
 	ConverterHandler *converter.Handler,
 	gifHandler *gif.Handler,
+	shareHandler *share.Handler,
 ) *Server {
 	return &Server{
 		AuthHandler:      AuthHandler,
@@ -40,6 +43,7 @@ func NewServer(
 		UploaderHandler:  uploaderHandler,
 		ConverterHandler: ConverterHandler,
 		gifHandler:       gifHandler,
+		shareHandler:     shareHandler,
 	}
 }
 
@@ -64,6 +68,7 @@ func (s *Server) Start(redisClient *redis.Redis, cnf *config.Config) {
 	s.UploaderHandler.RegisterRoutes(mux, manager)
 	s.ConverterHandler.RegisterRoutes(mux, manager)
 	s.gifHandler.RegisterRoutes(mux, manager)
+	s.shareHandler.RegisterRoutes(mux, manager)
 
 	fmt.Printf("Starting Server at http://127.0.0.1:%d/\n", cnf.Port)
 	log.Fatal(http.ListenAndServe(":8080", wrappedMux))

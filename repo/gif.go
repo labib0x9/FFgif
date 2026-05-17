@@ -13,6 +13,10 @@ type GifRepository interface {
 	Get(user_id string, status string) ([]model.GifResp, error)
 	GetByKey(key string) (model.GifResp, error)
 	GetUrl(key string) string
+	GetRecents(user_id string) ([]model.GifResp, error)
+	Delete(key string) error
+	Update(key string, gif model.GifResp) error
+	SaveRecent(key string) error
 }
 
 type gifRepo struct {
@@ -47,7 +51,7 @@ func (r *gifRepo) Get(user_id string, status string) ([]model.GifResp, error) {
 
 	var val []model.GifResp
 	if status != "all" {
-		query += `and status = $2`
+		query += ` and status = $2`
 		if err := r.db.Select(&val, query, user_id, status); err != nil {
 			return []model.GifResp{}, err
 		}
@@ -75,4 +79,35 @@ func (r *gifRepo) GetByKey(key string) (model.GifResp, error) {
 		return model.GifResp{}, err
 	}
 	return val, nil
+}
+
+func (r *gifRepo) GetRecents(user_id string) ([]model.GifResp, error) {
+	query := `
+		select
+			key, status, persist, download, created_at
+		from
+			gifs
+		where user_id = $1
+		order by created_at desc
+        limit 20`
+
+	var val []model.GifResp
+	if err := r.db.Select(&val, query, user_id); err != nil {
+		return []model.GifResp{}, err
+	}
+	return val, nil
+}
+
+func (r *gifRepo) Delete(key string) error {
+	query := `delete from gifs where key = $1`
+	_, err := r.db.Exec(query, key)
+	return err
+}
+
+func (r *gifRepo) Update(key string, gif model.GifResp) error {
+	return nil
+}
+
+func (r *gifRepo) SaveRecent(key string) error {
+	return nil
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/labib0x9/ProjectUnsafe/rest/handlers/auth"
 	"github.com/labib0x9/ProjectUnsafe/rest/handlers/converter"
 	"github.com/labib0x9/ProjectUnsafe/rest/handlers/gif"
+	"github.com/labib0x9/ProjectUnsafe/rest/handlers/share"
 	"github.com/labib0x9/ProjectUnsafe/rest/handlers/uploader"
 	"github.com/labib0x9/ProjectUnsafe/rest/handlers/user"
 	"github.com/labib0x9/ProjectUnsafe/rest/middleware"
@@ -49,6 +50,7 @@ func Serve() {
 	quotaRepo := repo.NewQuotaRepository(dbConn)
 	lastUploadRepo := repo.NewLastVideoRepository(dbConn)
 	gifRepo := repo.NewGifRepository(dbConn, cnf.MinioConfig)
+	shareRepo := repo.NewShareRepository(dbConn)
 
 	middlewares := middleware.NewMiddlewares(cnf, cacheRepo)
 	validate := validator.New()
@@ -72,6 +74,7 @@ func Serve() {
 	uploaderHandler := uploader.NewHandler(uploaderRepo, lastUploadRepo, validate, middlewares, rabbitMq)
 	converterHandler := converter.NewHandler(cacheRepo, validate, middlewares, rabbitMq)
 	gifHandler := gif.NewHandler(userRepo, quotaRepo, authRepo, gifRepo, middlewares, validate)
+	shareHandler := share.NewHandler(userRepo, quotaRepo, authRepo, gifRepo, shareRepo, middlewares, validate)
 
 	server := rest.NewServer(
 		authHandler,
@@ -80,6 +83,7 @@ func Serve() {
 		uploaderHandler,
 		converterHandler,
 		gifHandler,
+		shareHandler,
 	)
 
 	server.Start(redisClient, cnf)

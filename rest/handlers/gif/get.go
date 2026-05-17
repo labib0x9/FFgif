@@ -29,8 +29,6 @@ func (h *Handler) GetGifs(w http.ResponseWriter, r *http.Request) {
 		filter = f
 	}
 
-	slog.Info("FIlter", "F", filter)
-
 	gifs, err := h.gifRepo.Get(id, filter)
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
