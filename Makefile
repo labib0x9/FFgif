@@ -1,7 +1,7 @@
 .PHONY: backend frontend_arc frontend_ffgif run stop services
 
 backend:
-	go run main.go
+	go run ./cmd/ffgif/main.go
 
 frontend_arc:
 	cd ../arc-frontend && npm run dev

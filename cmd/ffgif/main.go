@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"context"
@@ -26,7 +26,7 @@ import (
 	"github.com/labib0x9/ProjectUnsafe/utils/mailer"
 )
 
-func Serve() {
+func main() {
 	cnf := config.GetConfig()
 
 	postgresConn := postgres.New()
