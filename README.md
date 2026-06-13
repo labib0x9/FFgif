@@ -3,15 +3,9 @@
 A video-to-GIF conversion SaaS API. Users upload videos, configure conversion parameters (start/end time, FPS, width, loop), and receive a GIF which can be downloaded and shared. Built to explore async job processing, object storage, and production-grade backend patterns in Go.
 
 > **Status**: Core backend functional. Frontend not yet ready. Active refactor toward Domain-Driven Design (DDD) in progress.
-# FFGif
-
-A video-to-GIF conversion SaaS API. Users upload videos, configure conversion parameters (start/end time, FPS, width, loop), and receive a GIF which can be downloaded and shared. Built to explore async job processing, object storage, and production-grade backend patterns in Go.
-
-> **Status**: Core backend functional. Frontend not yet ready. Active refactor toward Domain-Driven Design (DDD) in progress.
 
 ---
 
-## Features
 ## Features
 
 - JWT-based authentication with email verification, forgot/reset password flow, and token blocklisting on logout
