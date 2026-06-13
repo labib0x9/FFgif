@@ -7,23 +7,27 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/labib0x9/ProjectUnsafe/config"
-	"github.com/labib0x9/ProjectUnsafe/infra/cache/redis"
-	"github.com/labib0x9/ProjectUnsafe/infra/db/postgres"
-	"github.com/labib0x9/ProjectUnsafe/infra/minio"
-	"github.com/labib0x9/ProjectUnsafe/infra/queue/rabbitmq"
-	"github.com/labib0x9/ProjectUnsafe/infra/worker"
-	"github.com/labib0x9/ProjectUnsafe/repo"
-	"github.com/labib0x9/ProjectUnsafe/rest"
-	"github.com/labib0x9/ProjectUnsafe/rest/handlers/admin"
-	"github.com/labib0x9/ProjectUnsafe/rest/handlers/auth"
-	"github.com/labib0x9/ProjectUnsafe/rest/handlers/converter"
-	"github.com/labib0x9/ProjectUnsafe/rest/handlers/gif"
-	"github.com/labib0x9/ProjectUnsafe/rest/handlers/share"
-	"github.com/labib0x9/ProjectUnsafe/rest/handlers/uploader"
-	"github.com/labib0x9/ProjectUnsafe/rest/handlers/user"
-	"github.com/labib0x9/ProjectUnsafe/rest/middleware"
-	"github.com/labib0x9/ProjectUnsafe/utils/ffmpeg"
-	"github.com/labib0x9/ProjectUnsafe/utils/mailer"
+	authapp "github.com/labib0x9/ProjectUnsafe/internal/app/auth"
+	jobapp "github.com/labib0x9/ProjectUnsafe/internal/app/job"
+	mediaapp "github.com/labib0x9/ProjectUnsafe/internal/app/media"
+	shareapp "github.com/labib0x9/ProjectUnsafe/internal/app/share"
+	userapp "github.com/labib0x9/ProjectUnsafe/internal/app/user"
+	"github.com/labib0x9/ProjectUnsafe/internal/infra/gifprocessor"
+	"github.com/labib0x9/ProjectUnsafe/internal/infra/minio"
+	"github.com/labib0x9/ProjectUnsafe/internal/infra/postgres"
+	"github.com/labib0x9/ProjectUnsafe/internal/infra/rabbitmq"
+	"github.com/labib0x9/ProjectUnsafe/internal/infra/redis"
+	rest "github.com/labib0x9/ProjectUnsafe/internal/transport/http"
+	authhandler "github.com/labib0x9/ProjectUnsafe/internal/transport/http/handlers/auth"
+	jobhandler "github.com/labib0x9/ProjectUnsafe/internal/transport/http/handlers/job"
+	mediahandler "github.com/labib0x9/ProjectUnsafe/internal/transport/http/handlers/media"
+	sharehandler "github.com/labib0x9/ProjectUnsafe/internal/transport/http/handlers/share"
+	userhandler "github.com/labib0x9/ProjectUnsafe/internal/transport/http/handlers/user"
+	"github.com/labib0x9/ProjectUnsafe/internal/transport/http/middleware"
+	"github.com/labib0x9/ProjectUnsafe/internal/worker"
+	"github.com/labib0x9/ProjectUnsafe/pkg/jwt"
+	"github.com/labib0x9/ProjectUnsafe/pkg/mailer"
+	"github.com/labib0x9/ProjectUnsafe/pkg/password"
 )
 
 func main() {
@@ -40,25 +44,30 @@ func main() {
 	rabbitMq := rabbitmq.NewRabbitMQ()
 	defer rabbitMq.Close()
 
-	authRepo := repo.NewAuthRepository(dbConn)
-	adminRepo := repo.NewAdminRepository(dbConn)
-	userRepo := repo.NewUserRepository(dbConn)
-	verifierRepo := repo.NewVerifierRepo(dbConn)
-	cacheRepo := repo.NewCacheRepo(redisClient)
-	reseterRepo := repo.NewReseterRepo(dbConn)
-	uploaderRepo := repo.NewUploaderRepository(&minioClient, cnf.MinioConfig)
-	quotaRepo := repo.NewQuotaRepository(dbConn)
-	lastUploadRepo := repo.NewLastVideoRepository(dbConn)
-	gifRepo := repo.NewGifRepository(dbConn, cnf.MinioConfig)
-	shareRepo := repo.NewShareRepository(dbConn)
+	authRepo := postgres.NewAuthRepository(dbConn)
+	cacheRepo := redis.NewCacheRepo(redisClient)
+	uploaderRepo := minio.NewUploaderRepository(&minioClient, cnf.MinioConfig)
+	_ = uploaderRepo
 
-	middlewares := middleware.NewMiddlewares(cnf, cacheRepo)
+	// adminRepo := repo.NewAdminRepository(dbConn)
+	userRepo := postgres.NewUserRepository(dbConn)
+	verifierRepo := postgres.NewVerifierRepo(dbConn)
+	reseterRepo := postgres.NewReseterRepo(dbConn)
+	quotaRepo := postgres.NewQuotaRepository(dbConn)
+
+	lastUploadRepo := postgres.NewLastVideoRepository(dbConn)
+	gifRepo := postgres.NewGifRepository(dbConn, cnf.MinioConfig) // ?? db + bucket
+	// shareRepo := postgres.NewShareRepository(dbConn)
+
+	jwtProvider := jwt.NewJwt(cnf.JwtSecret)
+	hasher := password.NewHasher(cnf.HashPepper, cnf.BcryptCost)
+	middlewares := middleware.NewMiddlewares(cnf, cacheRepo, *jwtProvider)
 	validate := validator.New()
 	mailer := mailer.NewMailer(cnf)
-	fmeg := ffmpeg.NewFmeg(uploaderRepo)
+	ffmpeg := gifprocessor.NewFmeg(uploaderRepo)
 
 	emailWorker := worker.NewEmailWorker(rabbitMq, mailer)
-	convertWorker := worker.NewVideoWorker(rabbitMq, fmeg, cacheRepo, gifRepo)
+	convertWorker := worker.NewVideoWorker(rabbitMq, ffmpeg, cacheRepo, gifRepo)
 	saveMetadataWorker := worker.NewSaveVideoWorker(rabbitMq, lastUploadRepo, uploaderRepo)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -68,22 +77,24 @@ func main() {
 	go convertWorker.Run(ctx, 2)
 	go saveMetadataWorker.Run(ctx, 5)
 
-	authHandler := auth.NewHandler(authRepo, verifierRepo, cacheRepo, reseterRepo, userRepo, quotaRepo, middlewares, validate, rabbitMq)
-	adminHandler := admin.NewHandler(adminRepo, middlewares)
-	userHandler := user.NewHandler(userRepo, quotaRepo, authRepo, middlewares, validate)
-	uploaderHandler := uploader.NewHandler(uploaderRepo, lastUploadRepo, validate, middlewares, rabbitMq)
-	converterHandler := converter.NewHandler(cacheRepo, validate, middlewares, rabbitMq)
-	gifHandler := gif.NewHandler(userRepo, quotaRepo, authRepo, gifRepo, middlewares, validate)
-	shareHandler := share.NewHandler(userRepo, quotaRepo, authRepo, gifRepo, shareRepo, middlewares, validate)
+	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rabbitMq, *jwtProvider, *hasher)
+	jobService := jobapp.NewService(cacheRepo, rabbitMq)
+	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, uploaderRepo, rabbitMq)
+	shareService := shareapp.NewService()
+	userService := userapp.NewService(userRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
+
+	authHandler := authhandler.NewHandler(authService, middlewares, validate)
+	jobHandler := jobhandler.NewHandler(jobService, middlewares, validate)
+	mediaHandler := mediahandler.NewHandler(mediaService, middlewares, validate)
+	shareHandler := sharehandler.NewHandler(shareService, middlewares, validate)
+	userHandler := userhandler.NewHandler(userService, middlewares, validate)
 
 	server := rest.NewServer(
 		authHandler,
-		adminHandler,
-		userHandler,
-		uploaderHandler,
-		converterHandler,
-		gifHandler,
+		jobHandler,
+		mediaHandler,
 		shareHandler,
+		userHandler,
 	)
 
 	server.Start(redisClient, cnf)

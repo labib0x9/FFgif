@@ -1,5 +1,8 @@
 .env
 /scripts/rollback.sh
+/scripts/rename.sh
+/scripts/fix_dirty_migrations.sh
 /test
 cors.json
 api.md
+/pkg/ffmpeg/testdata/*
