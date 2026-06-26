@@ -1,4 +1,4 @@
-module github.com/labib0x9/ProjectUnsafe
+module github.com/labib0x9/ffgif
 
 go 1.25.0
 
