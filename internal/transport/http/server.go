@@ -1,8 +1,10 @@
 package http
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/labib0x9/ProjectUnsafe/config"
@@ -16,6 +18,7 @@ import (
 )
 
 type Server struct {
+	server       http.Server
 	AuthHandler  *auth.Handler
 	JobHandler   *job.Handler
 	MediaHandler *media.Handler
@@ -60,6 +63,19 @@ func (s *Server) Start(redisClient *redis.Redis, cnf *config.Config) {
 	s.ShareHandler.RegisterRoutes(mux, manager)
 	s.UserHandler.RegisterRoutes(mux, manager)
 
-	fmt.Printf("Starting Server at http://127.0.0.1:%d/\n", cnf.Port)
-	log.Fatal(http.ListenAndServe(":8080", wrappedMux))
+	addr := fmt.Sprintf("http://%s:%d", cnf.Addr, cnf.Port)
+	s.server = http.Server{
+		Addr:    fmt.Sprintf(":%d", cnf.Port),
+		Handler: wrappedMux,
+	}
+
+	fmt.Printf("Starting Server at %s\n", addr)
+	err := s.server.ListenAndServe()
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		slog.Error("Server ListenAndServe():", "error", err)
+	}
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.server.Shutdown(ctx)
 }

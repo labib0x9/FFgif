@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/labib0x9/ProjectUnsafe/config"
@@ -101,5 +102,14 @@ func main() {
 		userHandler,
 	)
 
-	server.Start(redisClient, cnf)
+	go func() {
+		server.Start(redisClient, cnf)
+	}()
+
+	<-ctx.Done()
+
+	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	server.Shutdown(shutdown)
 }

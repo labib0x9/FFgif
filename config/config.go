@@ -36,6 +36,7 @@ type MinioConfig struct {
 
 type Config struct {
 	Version    string
+	Addr       string
 	Port       int
 	Service    string
 	JwtSecret  []byte
@@ -60,6 +61,11 @@ func loadConfig() {
 	version := os.Getenv("VERSION")
 	if version == "" {
 		log.Panic("VERSION")
+	}
+
+	addr := os.Getenv("ADDR")
+	if addr == "" {
+		log.Panic("ADDR")
 	}
 
 	portS := os.Getenv("PORT")
