@@ -3,7 +3,7 @@ package auth
 import (
 	"net/http"
 
-	"github.com/labib0x9/ProjectUnsafe/pkg/jsonio"
+	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {

@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/labib0x9/ProjectUnsafe/pkg/jwt"
-	"github.com/labib0x9/ProjectUnsafe/pkg/random"
+	"github.com/labib0x9/ffgif/pkg/jwt"
+	"github.com/labib0x9/ffgif/pkg/random"
 )
 
 type UploadResult struct {

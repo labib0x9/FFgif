@@ -2,8 +2,6 @@ package share
 
 import (
 	"time"
-
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/media"
 )
 
 type Share struct {
@@ -17,6 +15,6 @@ type Share struct {
 }
 
 type SharedGifResp struct {
-	media.GifResp
+	// media.GifResp
 	ShareAccess string `json:"share_access" db:"access"`
 }

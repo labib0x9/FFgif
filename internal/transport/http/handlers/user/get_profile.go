@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/transport/http/middleware"
-	"github.com/labib0x9/ProjectUnsafe/pkg/jsonio"
+	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
+	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {

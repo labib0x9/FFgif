@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/job"
+	"github.com/labib0x9/ffgif/internal/domain/job"
 )
 
 type StatusResult struct {

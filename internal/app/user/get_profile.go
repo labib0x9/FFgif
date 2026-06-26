@@ -1,7 +1,7 @@
 package user
 
 import (
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/user"
+	"github.com/labib0x9/ffgif/internal/domain/user"
 )
 
 func (s *service) GetProfile(id string) (user.ProfileResp, error) {

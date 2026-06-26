@@ -2,7 +2,7 @@ package postgres
 
 import (
 	"github.com/jmoiron/sqlx"
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/user"
+	"github.com/labib0x9/ffgif/internal/domain/user"
 )
 
 type userRepo struct {

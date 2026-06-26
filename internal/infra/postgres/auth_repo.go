@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/auth"
+	"github.com/labib0x9/ffgif/internal/domain/auth"
 )
 
 var ctx = context.Background()

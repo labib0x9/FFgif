@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/labib0x9/ProjectUnsafe/pkg/jwt"
+	"github.com/labib0x9/ffgif/pkg/jwt"
 )
 
 func (s *service) Logout(ctx context.Context, jwt string, claims jwt.Payload) error {

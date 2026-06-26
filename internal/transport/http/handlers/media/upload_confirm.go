@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/transport/http/middleware"
+	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
 type confirmRequest struct {

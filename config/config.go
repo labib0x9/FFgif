@@ -34,8 +34,15 @@ type MinioConfig struct {
 	BucketName      string
 }
 
+type RabbitMq struct {
+	Addr string
+	User string
+	Pass string
+}
+
 type Config struct {
 	Version    string
+	Addr       string
 	Port       int
 	Service    string
 	JwtSecret  []byte
@@ -48,6 +55,7 @@ type Config struct {
 	MailtrapPass string
 	Email        string
 	MinioConfig  *MinioConfig
+	RabbitMq     *RabbitMq
 }
 
 var configuration *Config
@@ -60,6 +68,11 @@ func loadConfig() {
 	version := os.Getenv("VERSION")
 	if version == "" {
 		log.Panic("VERSION")
+	}
+
+	addr := os.Getenv("ADDR")
+	if addr == "" {
+		log.Panic("ADDR")
 	}
 
 	portS := os.Getenv("PORT")
@@ -187,6 +200,21 @@ func loadConfig() {
 		log.Panic("BUCKET_NAME")
 	}
 
+	rmqAddr := os.Getenv("RMQ_ADDR")
+	if rmqAddr == "" {
+		log.Panic("RMQ_ADDR")
+	}
+
+	rmqUser := os.Getenv("RMQ_USER")
+	if rmqUser == "" {
+		log.Panic("RMQ_USER")
+	}
+
+	rmqPass := os.Getenv("RMQ_PASS")
+	if rmqPass == "" {
+		log.Panic("RMQ_PASS")
+	}
+
 	configuration = &Config{
 		Version:    version,
 		Port:       port,
@@ -217,6 +245,11 @@ func loadConfig() {
 			AccessKeyID:     accessKeyId,
 			SecretAccessKey: secretAccessKey,
 			BucketName:      bucketName,
+		},
+		RabbitMq: &RabbitMq{
+			Addr: rmqAddr,
+			User: rmqUser,
+			Pass: rmqPass,
 		},
 	}
 }

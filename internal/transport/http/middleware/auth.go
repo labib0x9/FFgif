@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
-	jwtpkg "github.com/labib0x9/ProjectUnsafe/pkg/jwt"
+	jwtpkg "github.com/labib0x9/ffgif/pkg/jwt"
 )
 
 type contextKey struct{}

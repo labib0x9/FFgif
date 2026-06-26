@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/smtp"
 
-	"github.com/labib0x9/ProjectUnsafe/config"
+	"github.com/labib0x9/ffgif/config"
 )
 
 type Mailer struct {

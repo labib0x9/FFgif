@@ -1,4 +1,4 @@
-module github.com/labib0x9/ProjectUnsafe
+module github.com/labib0x9/ffgif
 
 go 1.25.0
 
@@ -13,6 +13,8 @@ require (
 require (
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/minio/minio-go/v7 v7.1.0
+	github.com/rabbitmq/amqp091-go v1.11.0
 	github.com/redis/go-redis/v9 v9.18.0
 	golang.org/x/crypto v0.49.0
 )
@@ -31,9 +33,7 @@ require (
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
-	github.com/minio/minio-go/v7 v7.1.0 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
-	github.com/rabbitmq/amqp091-go v1.11.0 // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/tinylib/msgp v1.6.1 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect

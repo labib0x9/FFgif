@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/media"
+	"github.com/labib0x9/ffgif/internal/domain/media"
 )
 
 func (s *service) LastVideo(userId string) (media.LastUploadResp, error) {

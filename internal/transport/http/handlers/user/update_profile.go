@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/user"
-	"github.com/labib0x9/ProjectUnsafe/pkg/jsonio"
+	"github.com/labib0x9/ffgif/internal/domain/user"
+	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {

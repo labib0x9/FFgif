@@ -1,10 +1,10 @@
 package user
 
 import (
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/auth"
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/user"
-	"github.com/labib0x9/ProjectUnsafe/pkg/jwt"
-	"github.com/labib0x9/ProjectUnsafe/pkg/password"
+	"github.com/labib0x9/ffgif/internal/domain/auth"
+	"github.com/labib0x9/ffgif/internal/domain/user"
+	"github.com/labib0x9/ffgif/pkg/jwt"
+	"github.com/labib0x9/ffgif/pkg/password"
 )
 
 type Service interface {

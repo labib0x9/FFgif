@@ -1,6 +1,6 @@
 package user
 
-import "github.com/labib0x9/ProjectUnsafe/internal/domain/user"
+import "github.com/labib0x9/ffgif/internal/domain/user"
 
 func (s *service) GetQuota(id string) (*user.Quota, error) {
 

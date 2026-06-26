@@ -2,8 +2,8 @@ package user
 
 import (
 	"github.com/google/uuid"
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/auth"
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/user"
+	"github.com/labib0x9/ffgif/internal/domain/auth"
+	"github.com/labib0x9/ffgif/internal/domain/user"
 )
 
 func (s *service) DeleteUser(id string, pass string) error {

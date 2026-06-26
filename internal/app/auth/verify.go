@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/auth"
-	tokenpkg "github.com/labib0x9/ProjectUnsafe/pkg/token"
+	"github.com/labib0x9/ffgif/internal/domain/auth"
+	tokenpkg "github.com/labib0x9/ffgif/pkg/token"
 )
 
 func (s *service) Verify(token string) error {

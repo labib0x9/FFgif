@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/labib0x9/ProjectUnsafe/pkg/jwt"
+	"github.com/labib0x9/ffgif/pkg/jwt"
 )
 
 func (m *Middlewares) Admin(next http.Handler) http.Handler {

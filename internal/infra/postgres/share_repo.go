@@ -2,7 +2,7 @@ package postgres
 
 import (
 	"github.com/jmoiron/sqlx"
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/share"
+	"github.com/labib0x9/ffgif/internal/domain/share"
 )
 
 type shareRepo struct {

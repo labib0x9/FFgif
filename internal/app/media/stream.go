@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/media"
+	"github.com/labib0x9/ffgif/internal/domain/media"
 )
 
 type StreamResult struct {

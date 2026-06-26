@@ -6,27 +6,18 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/queue"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/rabbitmq"
+	"github.com/labib0x9/ffgif/internal/domain/mailer"
+	"github.com/labib0x9/ffgif/internal/domain/queue"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type EmailSender interface {
-	SendVerificationToken(email string, token string) error
-	SendResetPassword(email string, token string) error
-	SendResetNotification(email string) error
-}
-
 type EmailWorker struct {
-	client     *rabbitmq.RabbitMQ
-	mailer     EmailSender
+	client     queue.Queue
+	mailer     mailer.EmailSender
 	maxRetries int
 }
 
-func NewEmailWorker(
-	client *rabbitmq.RabbitMQ,
-	mailer EmailSender,
-) *EmailWorker {
+func NewEmailWorker(client queue.Queue, mailer mailer.EmailSender) *EmailWorker {
 	return &EmailWorker{
 		client:     client,
 		mailer:     mailer,
@@ -34,45 +25,15 @@ func NewEmailWorker(
 	}
 }
 
-func (w *EmailWorker) Run(
-	ctx context.Context,
-	concurrency int,
-) error {
-
-	// dedicated consumer channel
-	ch, err := w.client.Channel()
+func (w *EmailWorker) Run(ctx context.Context, name string, concurrency int) error {
+	msgs, err := w.client.ConsumeEmail(ctx, name, concurrency)
 	if err != nil {
-		return fmt.Errorf("open channel: %w", err)
+		return err
 	}
-	defer ch.Close()
-
-	// important:
-	// prevent one worker from taking too many jobs
-	err = ch.Qos(concurrency, 0, false)
-	if err != nil {
-		return fmt.Errorf("qos: %w", err)
-	}
-
-	msgs, err := ch.Consume(
-		rabbitmq.EmailQueue,
-		"email-worker",
-		false, // auto ack
-		false, // exclusive
-		false, // no local
-		false, // no wait
-		nil,
-	)
-	if err != nil {
-		return fmt.Errorf("consume: %w", err)
-	}
-
-	slog.Info(
-		"email worker started",
-		"concurrency", concurrency,
-	)
+	defer w.client.CloseConsumerChannel(name)
+	slog.Info("Email worker started", "concurrency", concurrency)
 
 	sem := make(chan struct{}, concurrency)
-
 	for {
 		select {
 
