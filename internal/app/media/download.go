@@ -1,20 +1,24 @@
 package media
 
-import "github.com/labib0x9/ffgif/internal/domain/media"
+import (
+	"context"
+	"time"
+
+	"github.com/labib0x9/ffgif/internal/domain/media"
+)
 
 func (s *service) Download(key string) (string, error) {
-
-	gif, err := s.gifRepo.GetByKey(key)
+	_, err := s.gifRepo.GetByKey(key)
 	if err != nil {
-		// http.Error(w, "not found", http.StatusNotFound)
-		// slog.Error("DownloadGif: GetByKey() failed", "error", err, "key", key)
 		return "", media.ErrGifNotFound
 	}
 
-	if gif.Status == "private" {
-		//
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
 
-	url := s.gifRepo.GetUrl(key)
-	return url, nil
+	url, err := s.storage.Download(ctx, key, 5*time.Minute)
+	if err != nil {
+		return "", err
+	}
+	return url.String(), nil
 }

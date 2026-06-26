@@ -17,7 +17,7 @@ type StreamResult struct {
 }
 
 func (s *service) Stream(ctx context.Context, key string, Range string) (*StreamResult, error) {
-	info, err := s.uploaderRepo.Status(ctx, key)
+	info, err := s.storage.Status(ctx, key)
 	if err != nil {
 		// slog.Info("Stream: info missed")
 		// http.Error(w, "not found", http.StatusNotFound)
@@ -31,7 +31,7 @@ func (s *service) Stream(ctx context.Context, key string, Range string) (*Stream
 		return nil, media.ErrRangeParserFailed
 	}
 
-	obj, err := s.uploaderRepo.GetObject(ctx, start, end, key)
+	obj, err := s.storage.GetObject(ctx, start, end, key)
 	if err != nil {
 		// http.Error(w, "stream failed", http.StatusInternalServerError)
 		return nil, media.ErrObjectFetchFailed

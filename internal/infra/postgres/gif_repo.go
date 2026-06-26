@@ -53,10 +53,6 @@ func (r *gifRepo) Get(user_id string, status string) ([]media.GifResp, error) {
 	return val, nil
 }
 
-func (r *gifRepo) GetUrl(key string) string {
-	return fmt.Sprintf("http://localhost:9000/%s/%s", r.cnf.BucketName, key)
-}
-
 func (r *gifRepo) GetByKey(key string) (media.GifResp, error) {
 	query := `
 		select
