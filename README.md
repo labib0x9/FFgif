@@ -1,19 +1,16 @@
 # FFGif
 
-A video-to-GIF conversion SaaS API. Users upload videos, configure conversion parameters (start/end time, FPS, width, loop), and receive a GIF which can be downloaded and shared. Built to explore async job processing, object storage, and production-grade backend patterns in Go.
-
-> **Status**: Core backend functional. Frontend not yet ready. Active refactor toward Domain-Driven Design (DDD) in progress.
+A video-to-GIF conversion platform, also provides APIs. Users upload videos, configure conversion parameters (start/end time, FPS, width, loop), and receive a GIF which can be downloaded and shared. Built to explore async job processing, object storage, and production-grade backend patterns in Go.
 
 ---
 
 ## Features
 
-- JWT-based authentication with email verification, forgot/reset password flow, and token blocklisting on logout
-- Presigned URL upload and download flow — client uploads directly to MinIO, backend is never in the video data path
-- Async GIF conversion via RabbitMQ worker pool — FFmpeg processes video locally, result uploaded back to MinIO
-- Per-user quota tracking (storage bytes, GIF count)
-- GIF management: list, get, delete, visibility status (public/private), download URL
-- Redis token bucket rate limiter implemented via a Lua script for atomic server-side enforcement
+- **JWT-based Authentication:** Signup with email verification, login, forgot/reset password flow, and token blocklisting on logout
+- **Presigned URL upload and download flow:** Client uploads and downloads directly from MinIO, backend never touches the bytes
+- **Async GIF conversion via RabbitMQ worker pool:** FFmpeg processes video locally, result uploaded back to MinIO
+- **GIF management:** list, get, delete, visibility status (public/private), download URL
+- **Rate Limiter:** Redis token bucket rate limiter implemented via a Lua script for atomic server-side enforcement
 
 ---
 
@@ -186,24 +183,65 @@ flowchart TD
 
 ```
 .
-├── cmd/                  # Entry point, dependency wiring
-├── config/               # Env-based config loading
-├── infra/
-│   ├── cache/redis/      # Redis client + rate limit Lua script
-│   ├── db/postgres/      # Connection, setup, migrations
-│   ├── queue/rabbitmq/   # Connection, queue declarations, publishers
-│   ├── minio/            # MinIO client setup
-│   └── worker/           # Email, video, save-metadata workers
-├── model/                # Structs (flat, pre-DDD)
-├── repo/                 # Repository interfaces + implementations
-├── rest/
-│   ├── handlers/         # HTTP handlers (auth, user, gif, uploader, converter, share, admin)
-│   └── middleware/       # Auth, CORS, rate limiter, logger, max body
-├── utils/                # JWT, hashing, token generation, FFmpeg wrapper, mailer
-├── migrations/           # SQL up/down files
-├── Makefile
-└── .env.example
+├── cmd/                            # Entry point, dependency wiring
+│   ├── ffgif/                      #
+│   └── migration/                  #
+├── config/                         # Env-based config loading
+├── internal/                       #
+│   ├── app/                        # Application Layer
+│   │   ├── auth/                   #
+│   │   ├── job/                    #
+│   │   ├── media/                  #
+│   │   ├── share/                  #
+│   │   └── user/                   #
+│   ├── domain/                     # Domain Layer
+│   │   ├── auth/                   #
+│   │   ├── cache/                  #
+│   │   ├── db/                     #
+│   │   ├── job/                    #
+│   │   ├── mailer/                 #
+│   │   ├── media/                  #
+│   │   ├── processor/              #
+│   │   ├── queue/                  #
+│   │   ├── share/                  #
+│   │   └── user/                   #
+│   ├── infra/                      # Infra Layer
+│   │   ├── gifprocessor/           #
+│   │   ├── minio/                  #
+│   │   ├── postgres/               #
+│   │   ├── rabbitmq/               #
+│   │   └── redis/                  #
+│   │       ├── cache/              #
+│   │       ├── rate_limiter/       #
+│   ├── transport/                  # Transport Layer
+│   │   └── http/                   #
+│   │       ├── handlers/           #
+│   │       │   ├── admin/          #
+│   │       │   ├── auth/           #
+│   │       │   ├── job/            #
+│   │       │   ├── media/          #
+│   │       │   ├── share/          #
+│   │       │   ├── static/         #
+│   │       │   └── user/           #
+│   │       ├── middleware/         #
+│   │       └── server.go           #
+│   └── worker/                     # RabbitMq worker
+├── migrations/                     # SQL migrations up/down files
+├── pkg/                            # Packages
+│   ├── ffmpeg/                     #
+│   ├── jsonio/                     #
+│   ├── jwt/                        #
+│   ├── mailer/                     #
+│   ├── password/                   #
+│   ├── random/                     #
+│   └── token/                      #
+├── static/                         # Frontend codes (Claude generated)
+├── scripts/                        # Script files
+├── .env.example                    # Environment variables
+├── Makefile                        #
+└── README.md                       #
 ```
+
 
 ---
 
@@ -212,6 +250,7 @@ flowchart TD
 ```
 VERSION=1.0.0                 # Project version
 SERVICE_NAME=ffgif            # Project name
+ADDR=127.0.0.1                # Address 
 PORT=8080                     # port to live
 
 JWT_SECRET=                   # 
@@ -240,6 +279,10 @@ ENDPOINT=                     # MinIO address
 ACCESS_KEY_ID=                # 
 SECRET_ACCESS_KEY=            #
 BUCKET_NAME=                  #
+
+RMQ_ADDR=localhost:5672       # RabbitMq 
+RMQ_USER=guest                #
+RMQ_PASS=guest                #
 ```
 
 ---
@@ -257,7 +300,20 @@ make services   # starts Postgres, Redis, RabbitMQ, MinIO (macOS/Homebrew)
 make backend    # go run main.go
 ```
 
-Migrations run automatically on startup.
+## Migration
+
+- Migrations are managed with `golang-migrate` and need to run manually via migrate cli.
+
+```bash
+# connects to super user and create user, database
+go run ./cmd/migration/main.go -setup
+
+# run the migration
+go run ./cmd/migration/main.go -up
+
+# rollback migration level-1
+go run ./cmd/migration/main.go -down
+```
 ---
 
 ## API Reference
@@ -323,7 +379,7 @@ GET    /s/{token}/download       public download (no auth)
 
 ## Known Limitations
 
-- **No frontend**: The frontend is not yet built. All endpoints are currently tested manually (postman).
+- **No frontend**: minimal frontend is build to test using claude.
 - **Share handlers are stubs**: Routes are registered and the schema is migrated, but handler logic is commented out pending design decisions.
 - **Anonymous user flow is incomplete**: The demo/guest account path exists in the schema and some repo code but is commented out at the handler layer.
 - **No input validation on convert parameters**: Start/end time, FPS, and width are passed to FFmpeg without range validation — a malformed request can produce an unhelpful FFmpeg error rather than a clean 400.
@@ -332,13 +388,13 @@ GET    /s/{token}/download       public download (no auth)
 - **No HTTPS / TLS**: Local dev only, no TLS configuration.
 - **No integration or unit tests**: Test coverage is zero.
 - **Job status stored only in Redis with 5-minute TTL**: If a client polls after expiry, the status is gone. There is no persistent job record in Postgres.
-- **Flat architecture**: Currently `model/`, `repo/`, `rest/` are flat packages. Active migration to DDD is underway (see Current Work).
 - **No transaction**: Currently databases has no transactions, so it doesn't follow any ACID principle.
 
 ---
 
 ## Planned / Future Work
 
+- Per-user quota tracking (storage bytes, GIF count)
 - Implement frontend (React + Vite)
 - Implement Transaction on database query at application level
 - Implement `OneTimePerEmail` and `BlockIP` middleware
