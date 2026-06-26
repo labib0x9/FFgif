@@ -13,17 +13,19 @@ import (
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/job"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/media"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/share"
+	"github.com/labib0x9/ffgif/internal/transport/http/handlers/static"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/user"
 	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
 type Server struct {
-	server       http.Server
-	AuthHandler  *auth.Handler
-	JobHandler   *job.Handler
-	MediaHandler *media.Handler
-	ShareHandler *share.Handler
-	UserHandler  *user.Handler
+	server        http.Server
+	AuthHandler   *auth.Handler
+	JobHandler    *job.Handler
+	MediaHandler  *media.Handler
+	ShareHandler  *share.Handler
+	UserHandler   *user.Handler
+	staticHandler *static.Handler
 }
 
 func NewServer(
@@ -32,13 +34,15 @@ func NewServer(
 	MediaHandler *media.Handler,
 	ShareHandler *share.Handler,
 	UserHandler *user.Handler,
+	staticHandler *static.Handler,
 ) *Server {
 	return &Server{
-		AuthHandler:  AuthHandler,
-		JobHandler:   JobHandler,
-		MediaHandler: MediaHandler,
-		ShareHandler: ShareHandler,
-		UserHandler:  UserHandler,
+		AuthHandler:   AuthHandler,
+		JobHandler:    JobHandler,
+		MediaHandler:  MediaHandler,
+		ShareHandler:  ShareHandler,
+		UserHandler:   UserHandler,
+		staticHandler: staticHandler,
 	}
 }
 
@@ -62,6 +66,7 @@ func (s *Server) Start(rate cache.RateLimiter, cnf *config.Config) {
 	s.MediaHandler.RegisterRoutes(mux, manager)
 	s.ShareHandler.RegisterRoutes(mux, manager)
 	s.UserHandler.RegisterRoutes(mux, manager)
+	s.staticHandler.RegisterRoutes(mux, manager)
 
 	addr := fmt.Sprintf("http://%s:%d", cnf.Addr, cnf.Port)
 	s.server = http.Server{
