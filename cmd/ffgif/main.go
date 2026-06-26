@@ -25,6 +25,7 @@ import (
 	jobhandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/job"
 	mediahandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/media"
 	sharehandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/share"
+	"github.com/labib0x9/ffgif/internal/transport/http/handlers/static"
 	userhandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/user"
 	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 	"github.com/labib0x9/ffgif/internal/worker"
@@ -91,6 +92,7 @@ func main() {
 	mediaHandler := mediahandler.NewHandler(mediaService, middlewares, validate)
 	shareHandler := sharehandler.NewHandler(shareService, middlewares, validate)
 	userHandler := userhandler.NewHandler(userService, middlewares, validate)
+	staticHandler := static.NewHandler()
 
 	server := rest.NewServer(
 		authHandler,
@@ -98,6 +100,7 @@ func main() {
 		mediaHandler,
 		shareHandler,
 		userHandler,
+		staticHandler,
 	)
 
 	go func() {
