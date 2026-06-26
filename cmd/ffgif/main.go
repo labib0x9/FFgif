@@ -36,8 +36,7 @@ import (
 func main() {
 	cnf := config.GetConfig()
 
-	postgresConn := postgres.New()
-	dbConn := postgresConn.SetupAndConnection(cnf.DBConfig)
+	dbConn := postgres.NewPostgresConn(cnf.PostgreSQL)
 	defer dbConn.Close()
 
 	redisClient := redis.Setup(cnf.RedisConfig)
@@ -49,9 +48,7 @@ func main() {
 
 	cacheRepo := cache.NewCache(redisClient)
 	limiterRepo := ratelimitter.NewRateLimiter(redisClient)
-
 	uploaderRepo := minio.NewUploaderRepository(&minioClient, cnf.MinioConfig)
-	_ = uploaderRepo
 
 	authRepo := postgres.NewAuthRepository(dbConn)
 	// adminRepo := repo.NewAdminRepository(dbConn)
