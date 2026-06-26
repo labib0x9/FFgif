@@ -6,13 +6,13 @@ import (
 	"time"
 )
 
-type UploaderRepository interface {
+type StorageRepository interface {
 	Create(ctx context.Context, key string, expirey time.Duration) (*url.URL, error)
-	Status(ctx context.Context, key string) (bool, error)
-	Delete() error
-	StatObject(ctx context.Context, key string) (Info, error)
+	Download(ctx context.Context, key string, expirey time.Duration) (*url.URL, error)
+	IsExists(ctx context.Context, key string) (bool, error)
+	Status(ctx context.Context, key string) (Info, error)
 	GetObject(ctx context.Context, start, end int64, key string) (Object, error)
-	Download(ctx context.Context, key, destPath string) error
+	DownloadLocal(ctx context.Context, key, destPath string) error
 	Upload(ctx context.Context, key, filePath, contentType string) error
 }
 

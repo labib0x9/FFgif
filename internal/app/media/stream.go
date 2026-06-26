@@ -17,7 +17,7 @@ type StreamResult struct {
 }
 
 func (s *service) Stream(ctx context.Context, key string, Range string) (*StreamResult, error) {
-	info, err := s.uploaderRepo.StatObject(ctx, key)
+	info, err := s.uploaderRepo.Status(ctx, key)
 	if err != nil {
 		// slog.Info("Stream: info missed")
 		// http.Error(w, "not found", http.StatusNotFound)
