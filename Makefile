@@ -1,13 +1,7 @@
-.PHONY: backend frontend_arc frontend_ffgif run stop services
+.PHONY: backend run stop services
 
 backend:
 	go run ./cmd/ffgif/main.go
-
-frontend_arc:
-	cd ../arc-frontend && npm run dev
-
-frontend_ffgif:
-	cd ../auth-frontend && npm run dev
 
 services:
 	@echo "► Starting services..."
@@ -19,13 +13,9 @@ services:
 	@echo "► Waiting for MinIO to be ready..."
 	@sleep 2
 
-run_a:
+run:
 	@echo "► Starting app..."
-	@trap 'kill 0' SIGINT; make backend & make frontend_arc; wait
-
-run_b:
-	@echo "► Starting app..."
-	@trap 'kill 0' SIGINT; make backend & make frontend_ffgif; wait
+	make backend
 
 stop:
 	@echo "► Stopping services..."
