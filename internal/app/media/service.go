@@ -5,8 +5,8 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/domain/media"
+	"github.com/labib0x9/ffgif/internal/domain/queue"
 	"github.com/labib0x9/ffgif/internal/domain/user"
-	"github.com/labib0x9/ffgif/internal/infra/queue"
 	"github.com/labib0x9/ffgif/pkg/jwt"
 )
 

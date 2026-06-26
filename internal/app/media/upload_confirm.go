@@ -3,7 +3,7 @@ package media
 import (
 	"context"
 
-	"github.com/labib0x9/ffgif/internal/infra/queue"
+	"github.com/labib0x9/ffgif/internal/domain/queue"
 	"github.com/labib0x9/ffgif/pkg/jwt"
 )
 
