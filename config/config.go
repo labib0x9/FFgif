@@ -217,6 +217,7 @@ func loadConfig() {
 
 	configuration = &Config{
 		Version:    version,
+		Addr:       addr,
 		Port:       port,
 		Service:    serviceName,
 		JwtSecret:  jwtSecret,
