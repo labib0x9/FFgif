@@ -36,8 +36,7 @@ import (
 func main() {
 	cnf := config.GetConfig()
 
-	postgresConn := postgres.New()
-	dbConn := postgresConn.SetupAndConnection(cnf.DBConfig)
+	dbConn := postgres.NewPostgresConn(cnf.PostgreSQL)
 	defer dbConn.Close()
 
 	redisClient := redis.Setup(cnf.RedisConfig)

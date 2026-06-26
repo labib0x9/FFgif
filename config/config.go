@@ -9,16 +9,16 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type DbConfig struct {
-	DBUser    string
-	DBPass    string
-	DBPort    string
-	DBAddr    string
-	DBName    string
-	DBSslMode string
+type PostgreSQL struct {
+	User         string
+	Pass         string
+	Port         string
+	Addr         string
+	DatabaseName string
+	SslMode      string
 
-	DBSuperUser string
-	DBSuperDB   string
+	SuperUser     string
+	SuperDatabase string
 }
 
 type RedisConfig struct {
@@ -49,7 +49,7 @@ type Config struct {
 	BcryptCost int
 	HashPepper string
 
-	DBConfig     *DbConfig
+	PostgreSQL   *PostgreSQL
 	RedisConfig  *RedisConfig
 	MailtrapUser string
 	MailtrapPass string
@@ -222,16 +222,17 @@ func loadConfig() {
 		JwtSecret:  jwtSecret,
 		BcryptCost: bcryptCost,
 		HashPepper: pepper,
-		DBConfig: &DbConfig{
-			DBUser:      dbUser,
-			DBPass:      dbPass,
-			DBAddr:      dbAddr,
-			DBPort:      dbPort,
-			DBName:      dbName,
-			DBSslMode:   dbSSlmode,
-			DBSuperUser: dbSuperUser,
-			DBSuperDB:   dbSuperDb,
+		PostgreSQL: &PostgreSQL{
+			User:          dbUser,
+			Pass:          dbPass,
+			Addr:          dbAddr,
+			Port:          dbPort,
+			DatabaseName:  dbName,
+			SslMode:       dbSSlmode,
+			SuperUser:     dbSuperUser,
+			SuperDatabase: dbSuperDb,
 		},
+
 		RedisConfig: &RedisConfig{
 			Addr: redisAddr,
 			// User: redisUser,
