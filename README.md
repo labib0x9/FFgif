@@ -9,11 +9,10 @@ A video-to-GIF conversion SaaS API. Users upload videos, configure conversion pa
 ## Features
 
 - JWT-based authentication with email verification, forgot/reset password flow, and token blocklisting on logout
-- Presigned URL upload flow — client uploads directly to MinIO, backend is never in the video data path
+- Presigned URL upload and download flow — client uploads directly to MinIO, backend is never in the video data path
 - Async GIF conversion via RabbitMQ worker pool — FFmpeg processes video locally, result uploaded back to MinIO
 - Per-user quota tracking (storage bytes, GIF count)
 - GIF management: list, get, delete, visibility status (public/private), download URL
-- Share links with access control (view vs download) and optional expiry
 - Redis token bucket rate limiter implemented via a Lua script for atomic server-side enforcement
 
 ---
@@ -340,7 +339,6 @@ GET    /s/{token}/download       public download (no auth)
 
 ## Planned / Future Work
 
-- Complete DDD migration across all domains (user, gif, converter, share)
 - Implement frontend (React + Vite)
 - Implement Transaction on database query at application level
 - Implement `OneTimePerEmail` and `BlockIP` middleware
@@ -355,4 +353,3 @@ GET    /s/{token}/download       public download (no auth)
 - Admin endpoints
 - Graceful shutdown with signal handling
 - Docker Compose for full local stack
-
