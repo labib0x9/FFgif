@@ -9,18 +9,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/labib0x9/ffgif/internal/domain/media"
 	"github.com/labib0x9/ffgif/internal/domain/queue"
-	"github.com/labib0x9/ffgif/internal/infra/rabbitmq"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type SaveVideoWorker struct {
-	client     *rabbitmq.RabbitMQ
+	client     queue.Queue
 	repo       media.LastVideoRepository
 	minioRepo  media.UploaderRepository
 	maxRetries int
 }
 
-func NewSaveVideoWorker(client *rabbitmq.RabbitMQ, repo media.LastVideoRepository, minioRepo media.UploaderRepository) *SaveVideoWorker {
+func NewSaveVideoWorker(client queue.Queue, repo media.LastVideoRepository, minioRepo media.UploaderRepository) *SaveVideoWorker {
 	return &SaveVideoWorker{
 		client:     client,
 		repo:       repo,
@@ -29,32 +28,14 @@ func NewSaveVideoWorker(client *rabbitmq.RabbitMQ, repo media.LastVideoRepositor
 	}
 }
 
-func (w *SaveVideoWorker) Run(ctx context.Context, concurrency int) error {
-	ch, err := w.client.Channel()
+func (w *SaveVideoWorker) Run(ctx context.Context, name string, concurrency int) error {
+	msgs, err := w.client.ConsumeSave(ctx, name, concurrency)
 	if err != nil {
 		return err
 	}
-	defer ch.Close()
+	defer w.client.CloseConsumerChannel(name)
 
-	err = ch.Qos(concurrency, 0, false)
-	if err != nil {
-		return err
-	}
-
-	msgs, err := ch.Consume(
-		rabbitmq.SaveQueue,
-		"save-video-worker",
-		false,
-		false,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		return err
-	}
-
-	slog.Info("save video worker started")
+	slog.Info("Video saver worker started")
 
 	sem := make(chan struct{}, concurrency)
 	for {

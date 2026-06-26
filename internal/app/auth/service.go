@@ -29,7 +29,7 @@ type service struct {
 	reseterRepo  auth.ReseterRepo
 	quotaRepo    user.QuotaRepository
 	cache        cache.Cache
-	queue        queue.EmailQueue
+	queue        queue.Queue
 	jwt          jwt.Jwt
 	hasher       password.Hasher
 }
@@ -41,7 +41,7 @@ func NewService(
 	reseterRepo auth.ReseterRepo,
 	quotaRepo user.QuotaRepository,
 	cache cache.Cache,
-	queue queue.EmailQueue,
+	queue queue.Queue,
 	jwt jwt.Jwt,
 	hasher password.Hasher,
 ) Service {

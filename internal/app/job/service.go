@@ -14,25 +14,15 @@ type Service interface {
 
 type service struct {
 	cache cache.Cache
-	queue queue.ConvertQueue
+	queue queue.Queue
 }
 
 func NewService(
 	cache cache.Cache,
-	queue queue.ConvertQueue,
+	queue queue.Queue,
 ) Service {
 	return &service{
 		cache: cache,
 		queue: queue,
 	}
 }
-
-// type Jwt interface {
-// 	Create(fullname string, id string, email string, role string) (string, error)
-// 	Verify(tokenStr string) (jwt.Payload, error)
-// }
-
-// type Hasher interface {
-// 	GenerateHash(pass string) (string, error)
-// 	CompareHashAndPassword(hashedPass string, pass string) bool
-// }

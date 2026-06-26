@@ -11,7 +11,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-func (r *RabbitMQ) publish(ctx context.Context, queue string, payload any) error {
+func (r *rabbitMQ) publish(ctx context.Context, queue string, payload any) error {
 
 	// create fresh channel per publish
 	// safer than shared channel
@@ -52,18 +52,18 @@ func (r *RabbitMQ) publish(ctx context.Context, queue string, payload any) error
 	return nil
 }
 
-func (r *RabbitMQ) PublishEmail(ctx context.Context, msg queue.EmailMessage) error {
+func (r *rabbitMQ) PublishEmail(ctx context.Context, msg queue.EmailMessage) error {
 	return r.publish(ctx, EmailQueue, msg)
 }
 
-func (r *RabbitMQ) PublishVideo(ctx context.Context, msg queue.VideoMessage) error {
+func (r *rabbitMQ) PublishVideo(ctx context.Context, msg queue.VideoMessage) error {
 	return r.publish(ctx, ProcessQueue, msg)
 }
 
-func (r *RabbitMQ) PublishSaveVideo(ctx context.Context, msg queue.SaveVideoMessage) error {
+func (r *rabbitMQ) PublishSaveVideo(ctx context.Context, msg queue.SaveVideoMessage) error {
 	return r.publish(ctx, SaveQueue, msg)
 }
 
-func (r *RabbitMQ) PublishRetrySaveVideo(ctx context.Context, msg queue.SaveVideoMessage) error {
+func (r *rabbitMQ) PublishRetrySaveVideo(ctx context.Context, msg queue.SaveVideoMessage) error {
 	return r.publish(ctx, SaveRetryQueue, msg)
 }

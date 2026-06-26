@@ -32,7 +32,7 @@ type service struct {
 	gifRepo       media.GifRepository
 	lastVideoRepo media.LastVideoRepository
 	uploaderRepo  media.UploaderRepository
-	queue         queue.SaveQueue
+	queue         queue.Queue
 }
 
 func NewService(
@@ -42,7 +42,7 @@ func NewService(
 	gifRepo media.GifRepository,
 	lastVideoRepo media.LastVideoRepository,
 	uploaderRepo media.UploaderRepository,
-	queue queue.SaveQueue,
+	queue queue.Queue,
 ) Service {
 	return &service{
 		authRepo:      authRepo,
@@ -54,13 +54,3 @@ func NewService(
 		queue:         queue,
 	}
 }
-
-// type Jwt interface {
-// 	Create(fullname string, id string, email string, role string) (string, error)
-// 	Verify(tokenStr string) (jwt.Payload, error)
-// }
-
-// type Hasher interface {
-// 	GenerateHash(pass string) (string, error)
-// 	CompareHashAndPassword(hashedPass string, pass string) bool
-// }

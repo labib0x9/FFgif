@@ -44,7 +44,7 @@ func main() {
 	defer redisClient.Close()
 
 	minioClient := minio.Setup(cnf.MinioConfig)
-	rabbitMq := rabbitmq.NewRabbitMQ()
+	rabbitMq := rabbitmq.NewRabbitMQ(cnf.RabbitMq)
 	defer rabbitMq.Close()
 
 	cacheRepo := cache.NewCache(redisClient)
@@ -78,9 +78,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	go emailWorker.Run(ctx, 10)
-	go convertWorker.Run(ctx, 2)
-	go saveMetadataWorker.Run(ctx, 5)
+	go emailWorker.Run(ctx, "email-worker", 10)
+	go convertWorker.Run(ctx, "convert-worker", 2)
+	go saveMetadataWorker.Run(ctx, "save-worker", 5)
 
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rabbitMq, *jwtProvider, *hasher)
 	jobService := jobapp.NewService(cacheRepo, rabbitMq)

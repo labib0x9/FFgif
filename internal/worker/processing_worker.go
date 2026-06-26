@@ -9,25 +9,21 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/cache"
 	"github.com/labib0x9/ffgif/internal/domain/media"
+	"github.com/labib0x9/ffgif/internal/domain/processor"
 	"github.com/labib0x9/ffgif/internal/domain/queue"
-	"github.com/labib0x9/ffgif/internal/infra/rabbitmq"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type VideoProcessor interface {
-	Process(ctx context.Context, JobId string, Key string, Start float32, End float32, Width int, FPS int, Loop bool) (string, error)
-}
-
 type VideoWorker struct {
-	client    *rabbitmq.RabbitMQ
-	processor VideoProcessor
+	client    queue.Queue
+	processor processor.VideoProcessor
 	cache     cache.Cache
 	gifRepo   media.GifRepository
 	// uploaderRepo media.UploaderRepository
 	maxRetries int
 }
 
-func NewVideoWorker(client *rabbitmq.RabbitMQ, processor VideoProcessor, cacheRepo cache.Cache, gifRepo media.GifRepository) *VideoWorker {
+func NewVideoWorker(client queue.Queue, processor processor.VideoProcessor, cacheRepo cache.Cache, gifRepo media.GifRepository) *VideoWorker {
 	return &VideoWorker{
 		client:     client,
 		processor:  processor,
@@ -37,33 +33,12 @@ func NewVideoWorker(client *rabbitmq.RabbitMQ, processor VideoProcessor, cacheRe
 	}
 }
 
-func (w *VideoWorker) Run(ctx context.Context, concurrency int) error {
-
-	// dedicated consumer channel
-	ch, err := w.client.Channel()
+func (w *VideoWorker) Run(ctx context.Context, name string, concurrency int) error {
+	msgs, err := w.client.ConsumeVideo(ctx, name, concurrency)
 	if err != nil {
-		return fmt.Errorf("open channel: %w", err)
+		return err
 	}
-	defer ch.Close()
-
-	// limit unacked messages
-	err = ch.Qos(concurrency, 0, false)
-	if err != nil {
-		return fmt.Errorf("qos: %w", err)
-	}
-
-	msgs, err := ch.Consume(
-		rabbitmq.ProcessQueue,
-		"video-worker",
-		false, // auto ack
-		false, // exclusive
-		false, // no local
-		false, // no wait
-		nil,
-	)
-	if err != nil {
-		return fmt.Errorf("consume: %w", err)
-	}
+	defer w.client.CloseConsumerChannel(name)
 
 	slog.Info("video worker started", "concurrency", concurrency)
 
