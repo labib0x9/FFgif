@@ -31,7 +31,7 @@ type service struct {
 	quotaRepo     user.QuotaRepository
 	gifRepo       media.GifRepository
 	lastVideoRepo media.LastVideoRepository
-	uploaderRepo  media.UploaderRepository
+	uploaderRepo  media.StorageRepository
 	queue         queue.Queue
 }
 
@@ -41,7 +41,7 @@ func NewService(
 	quotaRepo user.QuotaRepository,
 	gifRepo media.GifRepository,
 	lastVideoRepo media.LastVideoRepository,
-	uploaderRepo media.UploaderRepository,
+	uploaderRepo media.StorageRepository,
 	queue queue.Queue,
 ) Service {
 	return &service{

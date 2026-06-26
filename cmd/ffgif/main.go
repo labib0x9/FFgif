@@ -48,7 +48,8 @@ func main() {
 
 	cacheRepo := cache.NewCache(redisClient)
 	limiterRepo := ratelimitter.NewRateLimiter(redisClient)
-	uploaderRepo := minio.NewUploaderRepository(&minioClient, cnf.MinioConfig)
+
+	storageRepo := minio.NewStorageRepository(minioClient, cnf.MinioConfig)
 
 	authRepo := postgres.NewAuthRepository(dbConn)
 	// adminRepo := repo.NewAdminRepository(dbConn)
@@ -66,11 +67,11 @@ func main() {
 	middlewares := middleware.NewMiddlewares(cnf, cacheRepo, *jwtProvider)
 	validate := validator.New()
 	mailer := mailer.NewMailer(cnf)
-	ffmpeg := gifprocessor.NewFmeg(uploaderRepo)
+	ffmpeg := gifprocessor.NewFmeg(storageRepo)
 
 	emailWorker := worker.NewEmailWorker(rabbitMq, mailer)
 	convertWorker := worker.NewVideoWorker(rabbitMq, ffmpeg, cacheRepo, gifRepo)
-	saveMetadataWorker := worker.NewSaveVideoWorker(rabbitMq, lastUploadRepo, uploaderRepo)
+	saveMetadataWorker := worker.NewSaveVideoWorker(rabbitMq, lastUploadRepo, storageRepo)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -81,7 +82,7 @@ func main() {
 
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rabbitMq, *jwtProvider, *hasher)
 	jobService := jobapp.NewService(cacheRepo, rabbitMq)
-	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, lastUploadRepo, uploaderRepo, rabbitMq)
+	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, lastUploadRepo, storageRepo, rabbitMq)
 	shareService := shareapp.NewService()
 	userService := userapp.NewService(userRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
 

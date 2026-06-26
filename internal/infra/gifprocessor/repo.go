@@ -12,10 +12,10 @@ import (
 )
 
 type Fmeg struct {
-	minio media.UploaderRepository
+	minio media.StorageRepository
 }
 
-func NewFmeg(minioRepo media.UploaderRepository) *Fmeg {
+func NewFmeg(minioRepo media.StorageRepository) *Fmeg {
 	return &Fmeg{
 		minio: minioRepo,
 	}
@@ -30,7 +30,7 @@ func (f *Fmeg) Process(ctx context.Context, JobId string, Key string, Start floa
 	defer os.Remove(outputPath)
 	defer os.Remove(palettePath)
 
-	if err := f.minio.Download(ctx, Key, inputPath); err != nil {
+	if err := f.minio.DownloadLocal(ctx, Key, inputPath); err != nil {
 		return "", fmt.Errorf("download failed: %w", err)
 	}
 
@@ -62,7 +62,7 @@ func (f *Fmeg) Process(ctx context.Context, JobId string, Key string, Start floa
 }
 
 func (f *Fmeg) getContentType(ctx context.Context, key string) string {
-	info, err := f.minio.StatObject(ctx, key)
+	info, err := f.minio.Status(ctx, key)
 	if err != nil {
 		return ""
 	}

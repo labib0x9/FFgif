@@ -2,17 +2,14 @@ package minio
 
 import (
 	"context"
+	"time"
 
 	"github.com/labib0x9/ffgif/config"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
-type Storage struct {
-	*minio.Client
-}
-
-func NewStorage(cnf *config.MinioConfig) Storage {
+func NewMinio(cnf *config.MinioConfig) *minio.Client {
 	client, err := minio.New(
 		cnf.Endpoint,
 		&minio.Options{
@@ -27,21 +24,22 @@ func NewStorage(cnf *config.MinioConfig) Storage {
 	if err != nil {
 		panic(err)
 	}
-	return Storage{
-		client,
-	}
+	return client
 }
 
-func Setup(cnf *config.MinioConfig) Storage {
-	client := NewStorage(cnf)
+func Setup(cnf *config.MinioConfig) *minio.Client {
+	client := NewMinio(cnf)
 
-	exist, err := client.BucketExists(context.Background(), cnf.BucketName)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	exist, err := client.BucketExists(ctx, cnf.BucketName)
 	if err != nil {
 		panic(err)
 	}
 
 	if !exist {
-		if err := client.MakeBucket(context.Background(), cnf.BucketName, minio.MakeBucketOptions{}); err != nil {
+		if err := client.MakeBucket(ctx, cnf.BucketName, minio.MakeBucketOptions{}); err != nil {
 			panic(err)
 		}
 	}

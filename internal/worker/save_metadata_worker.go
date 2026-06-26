@@ -15,11 +15,11 @@ import (
 type SaveVideoWorker struct {
 	client     queue.Queue
 	repo       media.LastVideoRepository
-	minioRepo  media.UploaderRepository
+	minioRepo  media.StorageRepository
 	maxRetries int
 }
 
-func NewSaveVideoWorker(client queue.Queue, repo media.LastVideoRepository, minioRepo media.UploaderRepository) *SaveVideoWorker {
+func NewSaveVideoWorker(client queue.Queue, repo media.LastVideoRepository, minioRepo media.StorageRepository) *SaveVideoWorker {
 	return &SaveVideoWorker{
 		client:     client,
 		repo:       repo,
@@ -74,7 +74,7 @@ func (w *SaveVideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 		return
 	}
 
-	info, err := w.minioRepo.StatObject(ctx, msg.Key)
+	info, err := w.minioRepo.Status(ctx, msg.Key)
 	if err != nil {
 		// retries := retryCount(d)
 		// slog.Warn(
