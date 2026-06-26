@@ -40,16 +40,18 @@ func NewService(
 	profileRepo user.UserRepository,
 	quotaRepo user.QuotaRepository,
 	gifRepo media.GifRepository,
+	lastVideoRepo media.LastVideoRepository,
 	uploaderRepo media.UploaderRepository,
 	queue queue.SaveQueue,
 ) Service {
 	return &service{
-		authRepo:     authRepo,
-		profileRepo:  profileRepo,
-		quotaRepo:    quotaRepo,
-		gifRepo:      gifRepo,
-		uploaderRepo: uploaderRepo,
-		queue:        queue,
+		authRepo:      authRepo,
+		profileRepo:   profileRepo,
+		quotaRepo:     quotaRepo,
+		gifRepo:       gifRepo,
+		lastVideoRepo: lastVideoRepo,
+		uploaderRepo:  uploaderRepo,
+		queue:         queue,
 	}
 }
 

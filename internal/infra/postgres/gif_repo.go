@@ -110,39 +110,6 @@ func NewLastVideoRepository(db *sqlx.DB) media.LastVideoRepository {
 	return &lastVideoRepo{db: db}
 }
 
-// func (l *lastVideoRepo) Create(ctx context.Context, upload media.LastUpload) error {
-// 	// query := `
-// 	// INSERT INTO last_uploaded (
-// 	// 	user_id,
-// 	// 	file_key,
-// 	// 	filename
-// 	// )
-// 	// VALUES ($1, $2, $3)
-// 	// `
-
-// 	// _, err := r.db.ExecContext(
-// 	// 	ctx,
-// 	// 	query,
-// 	// 	upload.UserID,
-// 	// 	upload.FileKey,
-// 	// 	upload.Filename,
-// 	// )
-
-// 	// return err
-
-// 	query := `
-//         INSERT INTO last_upload
-//             (user_id, file_key, file_name, content_type, size_bytes, uploaded_at)
-//         VALUES
-//             (:user_id, :file_key, :file_name, :content_type, :size_bytes, :uploaded_at)
-//     `
-// 	_, err := l.db.NamedExecContext(ctx, query, upload)
-// 	if err != nil {
-// 		return fmt.Errorf("SaveMetadata: %w", err)
-// 	}
-// 	return nil
-// }
-
 func (l *lastVideoRepo) Create(ctx context.Context, upload media.LastUpload) error {
 	query := `
         INSERT INTO last_upload

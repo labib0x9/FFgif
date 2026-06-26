@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os/signal"
 	"syscall"
 
@@ -56,6 +57,9 @@ func main() {
 	quotaRepo := postgres.NewQuotaRepository(dbConn)
 
 	lastUploadRepo := postgres.NewLastVideoRepository(dbConn)
+	if lastUploadRepo == nil {
+		slog.Error("LAST UPLOAD NIL")
+	}
 	gifRepo := postgres.NewGifRepository(dbConn, cnf.MinioConfig) // ?? db + bucket
 	// shareRepo := postgres.NewShareRepository(dbConn)
 
@@ -79,7 +83,7 @@ func main() {
 
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rabbitMq, *jwtProvider, *hasher)
 	jobService := jobapp.NewService(cacheRepo, rabbitMq)
-	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, uploaderRepo, rabbitMq)
+	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, lastUploadRepo, uploaderRepo, rabbitMq)
 	shareService := shareapp.NewService()
 	userService := userapp.NewService(userRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
 
