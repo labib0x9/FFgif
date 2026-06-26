@@ -1,8 +1,8 @@
 package admin
 
 // import (
-// 	"github.com/labib0x9/ProjectUnsafe/repo"
-// 	"github.com/labib0x9/ProjectUnsafe/rest/middleware"
+// 	"github.com/labib0x9/ffgif/repo"
+// 	"github.com/labib0x9/ffgif/rest/middleware"
 // )
 
 // type Handler struct {

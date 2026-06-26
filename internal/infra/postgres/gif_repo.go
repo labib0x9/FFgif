@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/labib0x9/ProjectUnsafe/config"
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/media"
+	"github.com/labib0x9/ffgif/config"
+	"github.com/labib0x9/ffgif/internal/domain/media"
 )
 
 type gifRepo struct {

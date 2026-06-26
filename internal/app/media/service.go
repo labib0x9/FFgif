@@ -3,11 +3,11 @@ package media
 import (
 	"context"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/auth"
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/media"
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/user"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/queue"
-	"github.com/labib0x9/ProjectUnsafe/pkg/jwt"
+	"github.com/labib0x9/ffgif/internal/domain/auth"
+	"github.com/labib0x9/ffgif/internal/domain/media"
+	"github.com/labib0x9/ffgif/internal/domain/user"
+	"github.com/labib0x9/ffgif/internal/infra/queue"
+	"github.com/labib0x9/ffgif/pkg/jwt"
 )
 
 type Service interface {

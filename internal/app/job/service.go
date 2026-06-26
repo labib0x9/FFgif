@@ -3,8 +3,8 @@ package job
 import (
 	"context"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/cache"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/queue"
+	"github.com/labib0x9/ffgif/internal/domain/cache"
+	"github.com/labib0x9/ffgif/internal/domain/queue"
 )
 
 type Service interface {
@@ -13,12 +13,12 @@ type Service interface {
 }
 
 type service struct {
-	cache cache.CacheRepo
+	cache cache.Cache
 	queue queue.ConvertQueue
 }
 
 func NewService(
-	cache cache.CacheRepo,
+	cache cache.Cache,
 	queue queue.ConvertQueue,
 ) Service {
 	return &service{

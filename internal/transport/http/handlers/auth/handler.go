@@ -2,8 +2,8 @@ package auth
 
 import (
 	"github.com/go-playground/validator/v10"
-	"github.com/labib0x9/ProjectUnsafe/internal/app/auth"
-	"github.com/labib0x9/ProjectUnsafe/internal/transport/http/middleware"
+	"github.com/labib0x9/ffgif/internal/app/auth"
+	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
 type Handler struct {

@@ -3,8 +3,8 @@ package auth
 import (
 	"context"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/auth"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/queue"
+	"github.com/labib0x9/ffgif/internal/domain/auth"
+	"github.com/labib0x9/ffgif/internal/domain/queue"
 )
 
 func (s *service) ResetPasswordGet(token string) (string, error) {

@@ -1,6 +1,6 @@
 package media
 
-import "github.com/labib0x9/ProjectUnsafe/internal/domain/media"
+import "github.com/labib0x9/ffgif/internal/domain/media"
 
 func (s *service) Download(key string) (string, error) {
 

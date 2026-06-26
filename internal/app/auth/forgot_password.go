@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/auth"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/queue"
-	"github.com/labib0x9/ProjectUnsafe/pkg/token"
+	"github.com/labib0x9/ffgif/internal/domain/auth"
+	"github.com/labib0x9/ffgif/internal/domain/queue"
+	"github.com/labib0x9/ffgif/pkg/token"
 )
 
 type reqForgot struct {

@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/media"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/cache"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/queue"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/rabbitmq"
+	"github.com/labib0x9/ffgif/internal/domain/cache"
+	"github.com/labib0x9/ffgif/internal/domain/media"
+	"github.com/labib0x9/ffgif/internal/domain/queue"
+	"github.com/labib0x9/ffgif/internal/infra/rabbitmq"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -21,13 +21,13 @@ type VideoProcessor interface {
 type VideoWorker struct {
 	client    *rabbitmq.RabbitMQ
 	processor VideoProcessor
-	cache     cache.CacheRepo
+	cache     cache.Cache
 	gifRepo   media.GifRepository
 	// uploaderRepo media.UploaderRepository
 	maxRetries int
 }
 
-func NewVideoWorker(client *rabbitmq.RabbitMQ, processor VideoProcessor, cacheRepo cache.CacheRepo, gifRepo media.GifRepository) *VideoWorker {
+func NewVideoWorker(client *rabbitmq.RabbitMQ, processor VideoProcessor, cacheRepo cache.Cache, gifRepo media.GifRepository) *VideoWorker {
 	return &VideoWorker{
 		client:     client,
 		processor:  processor,

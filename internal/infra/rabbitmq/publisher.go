@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/queue"
+	"github.com/labib0x9/ffgif/internal/domain/queue"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 

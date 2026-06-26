@@ -3,7 +3,7 @@ package job
 import (
 	"net/http"
 
-	"github.com/labib0x9/ProjectUnsafe/pkg/jsonio"
+	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {

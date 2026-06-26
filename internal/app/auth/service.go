@@ -3,12 +3,12 @@ package auth
 import (
 	"context"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/auth"
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/user"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/cache"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/queue"
-	"github.com/labib0x9/ProjectUnsafe/pkg/jwt"
-	"github.com/labib0x9/ProjectUnsafe/pkg/password"
+	"github.com/labib0x9/ffgif/internal/domain/auth"
+	"github.com/labib0x9/ffgif/internal/domain/cache"
+	"github.com/labib0x9/ffgif/internal/domain/queue"
+	"github.com/labib0x9/ffgif/internal/domain/user"
+	"github.com/labib0x9/ffgif/pkg/jwt"
+	"github.com/labib0x9/ffgif/pkg/password"
 )
 
 type Service interface {
@@ -28,7 +28,7 @@ type service struct {
 	profileRepo  user.UserRepository
 	reseterRepo  auth.ReseterRepo
 	quotaRepo    user.QuotaRepository
-	cache        cache.CacheRepo
+	cache        cache.Cache
 	queue        queue.EmailQueue
 	jwt          jwt.Jwt
 	hasher       password.Hasher
@@ -40,7 +40,7 @@ func NewService(
 	profileRepo user.UserRepository,
 	reseterRepo auth.ReseterRepo,
 	quotaRepo user.QuotaRepository,
-	cache cache.CacheRepo,
+	cache cache.Cache,
 	queue queue.EmailQueue,
 	jwt jwt.Jwt,
 	hasher password.Hasher,

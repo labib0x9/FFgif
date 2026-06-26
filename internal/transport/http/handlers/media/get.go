@@ -4,9 +4,9 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/media"
-	"github.com/labib0x9/ProjectUnsafe/internal/transport/http/middleware"
-	"github.com/labib0x9/ProjectUnsafe/pkg/jsonio"
+	"github.com/labib0x9/ffgif/internal/domain/media"
+	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
+	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 type gifResp struct {

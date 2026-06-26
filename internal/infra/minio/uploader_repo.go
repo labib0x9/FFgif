@@ -5,8 +5,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/labib0x9/ProjectUnsafe/config"
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/media"
+	"github.com/labib0x9/ffgif/config"
+	"github.com/labib0x9/ffgif/internal/domain/media"
 	minio_go "github.com/minio/minio-go/v7"
 )
 

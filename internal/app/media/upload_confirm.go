@@ -3,8 +3,8 @@ package media
 import (
 	"context"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/queue"
-	"github.com/labib0x9/ProjectUnsafe/pkg/jwt"
+	"github.com/labib0x9/ffgif/internal/infra/queue"
+	"github.com/labib0x9/ffgif/pkg/jwt"
 )
 
 func (s *service) Confirm(key string, filename string, claims jwt.Payload) error {

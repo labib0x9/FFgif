@@ -1,18 +1,18 @@
 package middleware
 
 import (
-	"github.com/labib0x9/ProjectUnsafe/config"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/cache"
-	"github.com/labib0x9/ProjectUnsafe/pkg/jwt"
+	"github.com/labib0x9/ffgif/config"
+	"github.com/labib0x9/ffgif/internal/domain/cache"
+	"github.com/labib0x9/ffgif/pkg/jwt"
 )
 
 type Middlewares struct {
 	Cnf   *config.Config
-	cache cache.CacheRepo
+	cache cache.Cache
 	jwt   jwt.Jwt
 }
 
-func NewMiddlewares(cnf *config.Config, cache cache.CacheRepo, jwt jwt.Jwt) *Middlewares {
+func NewMiddlewares(cnf *config.Config, cache cache.Cache, jwt jwt.Jwt) *Middlewares {
 	return &Middlewares{
 		Cnf:   cnf,
 		cache: cache,

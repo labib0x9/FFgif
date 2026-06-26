@@ -7,14 +7,14 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/labib0x9/ProjectUnsafe/config"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/redis"
-	"github.com/labib0x9/ProjectUnsafe/internal/transport/http/handlers/auth"
-	"github.com/labib0x9/ProjectUnsafe/internal/transport/http/handlers/job"
-	"github.com/labib0x9/ProjectUnsafe/internal/transport/http/handlers/media"
-	"github.com/labib0x9/ProjectUnsafe/internal/transport/http/handlers/share"
-	"github.com/labib0x9/ProjectUnsafe/internal/transport/http/handlers/user"
-	"github.com/labib0x9/ProjectUnsafe/internal/transport/http/middleware"
+	"github.com/labib0x9/ffgif/config"
+	"github.com/labib0x9/ffgif/internal/domain/cache"
+	"github.com/labib0x9/ffgif/internal/transport/http/handlers/auth"
+	"github.com/labib0x9/ffgif/internal/transport/http/handlers/job"
+	"github.com/labib0x9/ffgif/internal/transport/http/handlers/media"
+	"github.com/labib0x9/ffgif/internal/transport/http/handlers/share"
+	"github.com/labib0x9/ffgif/internal/transport/http/handlers/user"
+	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
 type Server struct {
@@ -42,9 +42,9 @@ func NewServer(
 	}
 }
 
-func (s *Server) Start(redisClient *redis.Redis, cnf *config.Config) {
+func (s *Server) Start(rate cache.RateLimiter, cnf *config.Config) {
 
-	rateLimiter := middleware.NewRateLimiter(redisClient, 5, 10)
+	rateLimiter := middleware.NewRateLimiter(rate, 5, 10)
 
 	manager := middleware.NewManager()
 	manager.Use(

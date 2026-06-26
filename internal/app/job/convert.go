@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/job"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/queue"
-	"github.com/labib0x9/ProjectUnsafe/pkg/random"
+	"github.com/labib0x9/ffgif/internal/domain/job"
+	"github.com/labib0x9/ffgif/internal/domain/queue"
+	"github.com/labib0x9/ffgif/pkg/random"
 )
 
 type ConvertResult struct {

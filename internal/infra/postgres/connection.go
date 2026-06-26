@@ -8,7 +8,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jmoiron/sqlx"
-	"github.com/labib0x9/ProjectUnsafe/config"
+	"github.com/labib0x9/ffgif/config"
 	_ "github.com/lib/pq"
 )
 

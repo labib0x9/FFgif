@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/media"
-	"github.com/labib0x9/ProjectUnsafe/pkg/ffmpeg"
-	"github.com/labib0x9/ProjectUnsafe/pkg/random"
+	"github.com/labib0x9/ffgif/internal/domain/media"
+	"github.com/labib0x9/ffgif/pkg/ffmpeg"
+	"github.com/labib0x9/ffgif/pkg/random"
 )
 
 type Fmeg struct {

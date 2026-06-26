@@ -2,34 +2,35 @@ package main
 
 import (
 	"context"
-	"log/slog"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/labib0x9/ProjectUnsafe/config"
-	authapp "github.com/labib0x9/ProjectUnsafe/internal/app/auth"
-	jobapp "github.com/labib0x9/ProjectUnsafe/internal/app/job"
-	mediaapp "github.com/labib0x9/ProjectUnsafe/internal/app/media"
-	shareapp "github.com/labib0x9/ProjectUnsafe/internal/app/share"
-	userapp "github.com/labib0x9/ProjectUnsafe/internal/app/user"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/gifprocessor"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/minio"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/postgres"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/rabbitmq"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/redis"
-	rest "github.com/labib0x9/ProjectUnsafe/internal/transport/http"
-	authhandler "github.com/labib0x9/ProjectUnsafe/internal/transport/http/handlers/auth"
-	jobhandler "github.com/labib0x9/ProjectUnsafe/internal/transport/http/handlers/job"
-	mediahandler "github.com/labib0x9/ProjectUnsafe/internal/transport/http/handlers/media"
-	sharehandler "github.com/labib0x9/ProjectUnsafe/internal/transport/http/handlers/share"
-	userhandler "github.com/labib0x9/ProjectUnsafe/internal/transport/http/handlers/user"
-	"github.com/labib0x9/ProjectUnsafe/internal/transport/http/middleware"
-	"github.com/labib0x9/ProjectUnsafe/internal/worker"
-	"github.com/labib0x9/ProjectUnsafe/pkg/jwt"
-	"github.com/labib0x9/ProjectUnsafe/pkg/mailer"
-	"github.com/labib0x9/ProjectUnsafe/pkg/password"
+	"github.com/labib0x9/ffgif/config"
+	authapp "github.com/labib0x9/ffgif/internal/app/auth"
+	jobapp "github.com/labib0x9/ffgif/internal/app/job"
+	mediaapp "github.com/labib0x9/ffgif/internal/app/media"
+	shareapp "github.com/labib0x9/ffgif/internal/app/share"
+	userapp "github.com/labib0x9/ffgif/internal/app/user"
+	"github.com/labib0x9/ffgif/internal/infra/gifprocessor"
+	"github.com/labib0x9/ffgif/internal/infra/minio"
+	"github.com/labib0x9/ffgif/internal/infra/postgres"
+	"github.com/labib0x9/ffgif/internal/infra/rabbitmq"
+	"github.com/labib0x9/ffgif/internal/infra/redis"
+	"github.com/labib0x9/ffgif/internal/infra/redis/cache"
+	ratelimitter "github.com/labib0x9/ffgif/internal/infra/redis/rate_limiter"
+	rest "github.com/labib0x9/ffgif/internal/transport/http"
+	authhandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/auth"
+	jobhandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/job"
+	mediahandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/media"
+	sharehandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/share"
+	userhandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/user"
+	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
+	"github.com/labib0x9/ffgif/internal/worker"
+	"github.com/labib0x9/ffgif/pkg/jwt"
+	"github.com/labib0x9/ffgif/pkg/mailer"
+	"github.com/labib0x9/ffgif/pkg/password"
 )
 
 func main() {
@@ -46,11 +47,13 @@ func main() {
 	rabbitMq := rabbitmq.NewRabbitMQ()
 	defer rabbitMq.Close()
 
-	authRepo := postgres.NewAuthRepository(dbConn)
-	cacheRepo := redis.NewCacheRepo(redisClient)
+	cacheRepo := cache.NewCache(redisClient)
+	limiterRepo := ratelimitter.NewRateLimiter(redisClient)
+
 	uploaderRepo := minio.NewUploaderRepository(&minioClient, cnf.MinioConfig)
 	_ = uploaderRepo
 
+	authRepo := postgres.NewAuthRepository(dbConn)
 	// adminRepo := repo.NewAdminRepository(dbConn)
 	userRepo := postgres.NewUserRepository(dbConn)
 	verifierRepo := postgres.NewVerifierRepo(dbConn)
@@ -58,9 +61,6 @@ func main() {
 	quotaRepo := postgres.NewQuotaRepository(dbConn)
 
 	lastUploadRepo := postgres.NewLastVideoRepository(dbConn)
-	if lastUploadRepo == nil {
-		slog.Error("LAST UPLOAD NIL")
-	}
 	gifRepo := postgres.NewGifRepository(dbConn, cnf.MinioConfig) // ?? db + bucket
 	// shareRepo := postgres.NewShareRepository(dbConn)
 
@@ -103,7 +103,7 @@ func main() {
 	)
 
 	go func() {
-		server.Start(redisClient, cnf)
+		server.Start(limiterRepo, cnf)
 	}()
 
 	<-ctx.Done()

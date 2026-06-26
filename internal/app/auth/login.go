@@ -2,7 +2,7 @@ package auth
 
 import (
 	"github.com/google/uuid"
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/auth"
+	"github.com/labib0x9/ffgif/internal/domain/auth"
 )
 
 type Result struct {

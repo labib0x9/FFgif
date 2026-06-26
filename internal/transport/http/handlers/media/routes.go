@@ -3,7 +3,7 @@ package media
 import (
 	"net/http"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/transport/http/middleware"
+	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager) {

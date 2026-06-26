@@ -7,9 +7,9 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
-	"github.com/labib0x9/ProjectUnsafe/internal/domain/media"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/queue"
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/rabbitmq"
+	"github.com/labib0x9/ffgif/internal/domain/media"
+	"github.com/labib0x9/ffgif/internal/domain/queue"
+	"github.com/labib0x9/ffgif/internal/infra/rabbitmq"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 

@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/labib0x9/ProjectUnsafe/internal/infra/redis"
+	"github.com/labib0x9/ffgif/internal/domain/cache"
 )
 
 type RateLimiter struct {
-	Client   *redis.Redis
+	Client   cache.RateLimiter
 	Rate     int
 	Capacity int
 }
@@ -24,12 +24,12 @@ type Result struct {
 }
 
 func NewRateLimiter(
-	redisClient *redis.Redis,
+	client cache.RateLimiter,
 	rate int,
 	capacity int,
 ) *RateLimiter {
 	return &RateLimiter{
-		Client:   redisClient,
+		Client:   client,
 		Rate:     rate,
 		Capacity: capacity,
 	}
@@ -63,15 +63,8 @@ func (rl *RateLimiter) Limit() Middleware {
 
 func (rl *RateLimiter) setLimit(ctx context.Context, key string) (Result, error) {
 	now := time.Now().UnixMilli()
-	res, err := rl.Client.Script.Run(
-		ctx,
-		rl.Client.Client,
-		[]string{key},
-		rl.Capacity,
-		rl.Rate,
-		now,
-	).Result()
 
+	res, err := rl.Client.RunScript(ctx, key, rl.Capacity, rl.Rate, now)
 	if err != nil {
 		return Result{}, err
 	}
