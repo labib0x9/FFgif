@@ -1,3 +1,4 @@
+.DS_Store
 .env
 /scripts/rollback.sh
 /scripts/rename.sh
