@@ -114,10 +114,11 @@ func (w *VideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 		if err := w.cache.Set(ctx, key, "completed", 5*time.Minute); err != nil {
 			//
 		}
+
 		gif := media.Gif{
 			Key:    gifId,
 			UserId: msg.UserID,
-			Url:    w.gifRepo.GetUrl(gifId),
+			// Url:    w.gifRepo.GetUrl(gifId),
 		}
 
 		if err := w.gifRepo.Create(gif); err != nil {

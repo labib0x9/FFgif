@@ -3,5 +3,5 @@ package media
 import "context"
 
 func (s *service) Status(ctx context.Context, key string) (bool, error) {
-	return s.uploaderRepo.IsExists(ctx, key)
+	return s.storage.IsExists(ctx, key)
 }

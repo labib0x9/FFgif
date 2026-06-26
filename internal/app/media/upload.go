@@ -18,15 +18,12 @@ type UploadResult struct {
 func (s *service) Upload(filename string, claims jwt.Payload) (*UploadResult, error) {
 
 	userId := claims.Subject
-
 	ext := filepath.Ext(filename)
 	key := userId + random.GenerateRandomID().String() + ext
 	expirey := 5 * time.Minute
 
-	url, err := s.uploaderRepo.Create(context.Background(), key, expirey)
+	url, err := s.storage.Create(context.Background(), key, expirey)
 	if err != nil {
-		// http.Error(w, "internal server error", http.StatusInternalServerError)
-		// slog.Warn("Upload: presigned url create error", "error", err)
 		return nil, err
 	}
 

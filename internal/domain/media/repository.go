@@ -20,7 +20,6 @@ type GifRepository interface {
 	Create(gif Gif) error
 	Get(user_id string, status string) ([]GifResp, error)
 	GetByKey(key string) (GifResp, error)
-	GetUrl(key string) string
 	GetRecents(user_id string) ([]GifResp, error)
 	Delete(key string) error
 	Update(key string, gif GifResp) error
