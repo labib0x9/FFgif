@@ -26,7 +26,7 @@ func (r *rabbitMQ) consume(
 		return nil, fmt.Errorf("%w: %w", queuedomain.ErrOpeningChannel, err)
 	}
 
-	r.consumerCh[name] = ch
+	r.consumerCh.Store(name, ch)
 
 	err = ch.Qos(concurrency, 0, false)
 	if err != nil {
