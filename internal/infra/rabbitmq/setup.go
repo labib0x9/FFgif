@@ -3,6 +3,7 @@ package rabbitmq
 import (
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"github.com/labib0x9/ffgif/config"
 	"github.com/labib0x9/ffgif/internal/domain/queue"
@@ -15,13 +16,11 @@ var (
 	SaveQueue               = "video.save.queue"
 	SaveRetryQueue          = "save.retry.queue"
 	UploadNotificationQueue = "notify.upload.queue"
-
-	total = 5 // total queue
 )
 
 type rabbitMQ struct {
 	conn       *amqp.Connection
-	consumerCh map[string]*amqp.Channel // for each consumer a dedicated channel
+	consumerCh sync.Map // for each consumer a dedicated channel
 }
 
 func NewRabbitMQ(cnf *config.RabbitMq) queue.Queue {
@@ -32,13 +31,8 @@ func NewRabbitMQ(cnf *config.RabbitMq) queue.Queue {
 	}
 
 	r := rabbitMQ{
-		conn:       conn,
-		consumerCh: make(map[string]*amqp.Channel),
+		conn: conn,
 	}
-
-	// for i := 0; i < total; i++ {
-	// 	r.consumerCh[i] = make(map[string]*amqp.Channel)
-	// }
 
 	if err := r.setup(); err != nil {
 		conn.Close()
@@ -242,21 +236,27 @@ func (r *rabbitMQ) channel() (*amqp.Channel, error) {
 }
 
 func (r *rabbitMQ) CloseConsumerChannel(name string) error {
-	err := r.consumerCh[name].Close()
-	if err != nil {
+	val, ok := r.consumerCh.Load(name)
+	if !ok {
+		return fmt.Errorf("error on fetching consumer")
+	}
+	ch := val.(*amqp.Channel)
+
+	if err := ch.Close(); err != nil {
 		return err
 	}
-	delete(r.consumerCh, name)
+	r.consumerCh.Delete(name)
 	return nil
 }
 
 func (r *rabbitMQ) Close() error {
-
-	for _, ch := range r.consumerCh {
+	r.consumerCh.Range(func(key, value any) bool {
+		ch := value.(*amqp.Channel)
 		if ch != nil {
 			ch.Close()
 		}
-	}
+		return true // continue
+	})
 
 	if r.conn != nil && !r.conn.IsClosed() {
 		return r.conn.Close()
