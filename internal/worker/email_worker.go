@@ -38,7 +38,7 @@ func (w *EmailWorker) Run(ctx context.Context, name string, concurrency int) err
 		select {
 
 		case <-ctx.Done():
-			slog.Info("email worker shutting down")
+			slog.Info("Email worker shutting down")
 			return nil
 
 		case d, ok := <-msgs:
@@ -47,14 +47,12 @@ func (w *EmailWorker) Run(ctx context.Context, name string, concurrency int) err
 			}
 
 			sem <- struct{}{}
-
 			go func(d amqp.Delivery) {
 				defer func() {
 					<-sem
 				}()
 
 				w.handle(d)
-
 			}(d)
 		}
 	}
@@ -63,28 +61,16 @@ func (w *EmailWorker) Run(ctx context.Context, name string, concurrency int) err
 func (w *EmailWorker) handle(d amqp.Delivery) {
 
 	var msg queue.EmailMessage
-
 	if err := json.Unmarshal(d.Body, &msg); err != nil {
-
-		slog.Error(
-			"invalid email message",
-			"error", err,
-		)
-
+		slog.Error("invalid email message", "error", err)
 		d.Nack(false, false)
 		return
 	}
 
-	slog.Info(
-		"processing email",
-		"type", msg.Name,
-		"email", msg.To,
-	)
+	slog.Info("processing email", "type", msg.Name, "email", msg.To)
 
 	var err error
-
 	switch msg.Name {
-
 	case "signup":
 		err = w.mailer.SendVerificationToken(
 			msg.To,
@@ -109,47 +95,26 @@ func (w *EmailWorker) handle(d amqp.Delivery) {
 		)
 
 	default:
-
-		slog.Error(
-			"unknown email job type",
-			"type", msg.Name,
-		)
-
+		slog.Error("unknown email job type", "type", msg.Name)
 		d.Nack(false, false)
 		return
 	}
 
 	if err != nil {
-
 		retries := retryCount(d)
+		slog.Error("email job failed", "error", err, "retries", retries)
 
-		slog.Error(
-			"email job failed",
-			"error", err,
-			"retries", retries,
-		)
-
-		// retry
 		if retries < w.maxRetries {
-
 			err := d.Nack(false, true)
 			if err != nil {
-				slog.Error(
-					"nack retry failed",
-					"error", err,
-				)
+				slog.Error("nack retry failed", "error", err)
 			}
-
 			return
 		}
 
-		// dead letter
 		err := d.Nack(false, false)
 		if err != nil {
-			slog.Error(
-				"nack dead-letter failed",
-				"error", err,
-			)
+			slog.Error("nack dead-letter failed", "error", err)
 		}
 
 		return
@@ -157,17 +122,9 @@ func (w *EmailWorker) handle(d amqp.Delivery) {
 
 	err = d.Ack(false)
 	if err != nil {
-
-		slog.Error(
-			"ack failed",
-			"error", err,
-		)
-
+		slog.Error("ack failed", "error", err)
 		return
 	}
 
-	slog.Info(
-		"email processed successfully",
-		"email", msg.To,
-	)
+	slog.Info("email processed successfully", "email", msg.To)
 }
