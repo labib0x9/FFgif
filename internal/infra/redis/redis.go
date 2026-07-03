@@ -15,7 +15,7 @@ func ping(client *redis.Client) error {
 	return client.Ping(ctx).Err()
 }
 
-func Setup(cnf *config.RedisConfig) *redis.Client {
+func Client(cnf *config.Redis) *redis.Client {
 	client := redis.NewClient(
 		&redis.Options{
 			Addr: cnf.Addr,

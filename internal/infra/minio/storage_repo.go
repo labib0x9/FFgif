@@ -13,10 +13,10 @@ import (
 
 type storageRepo struct {
 	client *minio.Client
-	cnf    *config.MinioConfig
+	cnf    *config.Minio
 }
 
-func NewStorageRepository(client *minio.Client, cnf *config.MinioConfig) media.StorageRepository {
+func NewStorageRepository(client *minio.Client, cnf *config.Minio) media.StorageRepository {
 	return &storageRepo{
 		client: client,
 		cnf:    cnf,
@@ -25,17 +25,17 @@ func NewStorageRepository(client *minio.Client, cnf *config.MinioConfig) media.S
 
 // create url, directly upload
 func (u *storageRepo) Create(ctx context.Context, key string, expirey time.Duration) (*url.URL, error) {
-	return u.client.PresignedPutObject(ctx, u.cnf.BucketName, key, expirey)
+	return u.client.PresignedPutObject(ctx, u.cnf.StorageBucket, key, expirey)
 }
 
 func (u *storageRepo) Download(ctx context.Context, key string, expirey time.Duration) (*url.URL, error) {
 	values := url.Values{}
 	values.Add("response-content-disposition", "attachment; filename="+key)
-	return u.client.PresignedGetObject(ctx, u.cnf.BucketName, key, expirey, values)
+	return u.client.PresignedGetObject(ctx, u.cnf.StorageBucket, key, expirey, values)
 }
 
 func (u *storageRepo) IsExists(ctx context.Context, key string) (bool, error) {
-	info, err := u.client.StatObject(ctx, u.cnf.BucketName, key, minio_go.StatObjectOptions{})
+	info, err := u.client.StatObject(ctx, u.cnf.StorageBucket, key, minio_go.StatObjectOptions{})
 	if err != nil {
 		return false, err
 	}
@@ -50,7 +50,7 @@ func (u *storageRepo) Delete() error {
 }
 
 func (u *storageRepo) Status(ctx context.Context, key string) (media.Info, error) {
-	info, err := u.client.StatObject(ctx, u.cnf.BucketName, key, minio_go.StatObjectOptions{})
+	info, err := u.client.StatObject(ctx, u.cnf.StorageBucket, key, minio_go.StatObjectOptions{})
 
 	return media.Info{
 		Size:        info.Size,
@@ -65,16 +65,16 @@ func (u *storageRepo) GetObject(ctx context.Context, start, end int64, key strin
 		opts.SetRange(start, end)
 	}
 
-	obj, err := u.client.GetObject(ctx, u.cnf.BucketName, key, opts)
+	obj, err := u.client.GetObject(ctx, u.cnf.StorageBucket, key, opts)
 	return media.Object{obj}, err
 }
 
 func (u *storageRepo) DownloadLocal(ctx context.Context, key, destPath string) error {
-	return u.client.FGetObject(ctx, u.cnf.BucketName, key, destPath, minio_go.GetObjectOptions{})
+	return u.client.FGetObject(ctx, u.cnf.StorageBucket, key, destPath, minio_go.GetObjectOptions{})
 }
 
 func (u *storageRepo) Upload(ctx context.Context, key, filePath, contentType string) error {
-	_, err := u.client.FPutObject(ctx, u.cnf.BucketName, key, filePath,
+	_, err := u.client.FPutObject(ctx, u.cnf.StorageBucket, key, filePath,
 		minio_go.PutObjectOptions{
 			ContentType: contentType,
 		},

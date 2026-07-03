@@ -16,8 +16,8 @@ type Mailer struct {
 func NewMailer(cnf *config.Config) *Mailer {
 	return &Mailer{
 		email:        cnf.Email,
-		mailtrapUser: cnf.MailtrapUser,
-		mailtrapPass: cnf.MailtrapPass,
+		mailtrapUser: cnf.Mailtrap.User,
+		mailtrapPass: cnf.Mailtrap.Pass,
 	}
 }
 
