@@ -7,6 +7,7 @@ import (
 	"github.com/labib0x9/ffgif/config"
 	"github.com/minio/madmin-go/v3"
 	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/cors"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/minio/minio-go/v7/pkg/lifecycle"
 	"github.com/minio/minio-go/v7/pkg/notification"
@@ -68,6 +69,14 @@ func Setup(client *minio.Client, cnf *config.Minio) error {
 		return err
 	}
 
+	if err := setBucketCORS(ctx, client, cnf.TempBucket, cnf.Allowed); err != nil {
+		return err
+	}
+
+	if err := setBucketCORS(ctx, client, cnf.StorageBucket, cnf.Allowed); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -114,4 +123,18 @@ func setTTLonTempBucket(ctx context.Context, client *minio.Client, bucket string
 		},
 	}
 	return client.SetBucketLifecycle(ctx, bucket, cfg)
+}
+
+func setBucketCORS(ctx context.Context, client *minio.Client, bucket string, origins []string) error {
+	CORSRules := []cors.Rule{
+		{
+			AllowedOrigin: origins,
+			AllowedMethod: []string{"GET", "PUT", "HEAD"},
+			AllowedHeader: []string{"*"},
+			ExposeHeader:  []string{"ETag"},
+			MaxAgeSeconds: 3600,
+		},
+	}
+	corsConfig := cors.NewConfig(CORSRules)
+	return client.SetBucketCors(ctx, bucket, corsConfig)
 }
