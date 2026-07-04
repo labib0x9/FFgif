@@ -93,7 +93,7 @@ func loadConfig() {
 		log.Panic(err)
 	}
 
-	minioTTL, err := strconv.Atoi(fn("MINIO_TEMP_BUCKET_TTL_HOURS"))
+	minioTTL, err := strconv.Atoi(fn("MINIO_TEMP_BUCKET_TTL_DAYS"))
 	if err != nil {
 		log.Panic(err)
 	}
