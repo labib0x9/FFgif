@@ -7,6 +7,10 @@ import (
 	minio_go "github.com/minio/minio-go/v7"
 )
 
+var (
+	ContentLength = 512
+)
+
 type Gif struct {
 	Key          string    `json:"key" db:"key"`
 	Name         string    `json:"name" db:"name"`
@@ -72,4 +76,10 @@ type Info struct {
 
 type Object struct {
 	*minio_go.Object
+}
+
+type UploadResult struct {
+	Url      string `json:"upload_url"`
+	Key      string `json:"key"`
+	ExpireIn int64  `json:"expires_in"`
 }

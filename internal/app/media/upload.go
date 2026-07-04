@@ -5,29 +5,30 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/labib0x9/ffgif/internal/domain/media"
 	"github.com/labib0x9/ffgif/pkg/jwt"
 	"github.com/labib0x9/ffgif/pkg/random"
 )
 
-type UploadResult struct {
-	Url      string `json:"upload_url"`
-	Key      string `json:"key"`
-	ExpireIn int64  `json:"expires_in"`
-}
-
-func (s *service) Upload(filename string, claims jwt.Payload) (*UploadResult, error) {
+func (s *service) Upload(filename string, contentType string, claims jwt.Payload) (*media.UploadResult, error) {
 
 	userId := claims.Subject
+	_ = userId
+	_ = contentType
+
 	ext := filepath.Ext(filename)
-	key := userId + random.GenerateRandomID().String() + ext
+	key := random.GenerateRandomID().String() + ext
 	expirey := 5 * time.Minute
 
-	url, err := s.storage.Create(context.Background(), key, expirey)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	url, err := s.storage.Create(ctx, key, expirey)
 	if err != nil {
 		return nil, err
 	}
 
-	return &UploadResult{
+	return &media.UploadResult{
 		Url:      url.String(),
 		Key:      key,
 		ExpireIn: int64(expirey.Seconds()),

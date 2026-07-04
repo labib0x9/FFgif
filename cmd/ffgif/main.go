@@ -44,13 +44,14 @@ func main() {
 	defer redisClient.Close()
 
 	minioClient := minio.NewMinio(cnf.Minio)
+	minioPresignedClient := minio.NewPublicMinio(cnf.Minio)
 	rabbitMq := rabbitmq.NewRabbitMQ(cnf.RabbitMq)
 	defer rabbitMq.Close()
 
 	cacheRepo := cache.NewCache(redisClient)
 	limiterRepo := ratelimitter.NewRateLimiter(redisClient)
 
-	storageRepo := minio.NewStorageRepository(minioClient, cnf.Minio)
+	storageRepo := minio.NewStorageRepository(minioClient, minioPresignedClient, cnf.Minio)
 
 	authRepo := postgres.NewAuthRepository(dbConn)
 	// adminRepo := repo.NewAdminRepository(dbConn)
@@ -72,13 +73,14 @@ func main() {
 
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rabbitMq, *jwtProvider, *hasher)
 	jobService := jobapp.NewService(ffmpeg, gifRepo, lastUploadRepo, storageRepo, cacheRepo, rabbitMq)
-	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, lastUploadRepo, storageRepo, rabbitMq)
+	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, lastUploadRepo, storageRepo, rabbitMq, cnf)
 	shareService := shareapp.NewService()
 	userService := userapp.NewService(userRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
 
 	emailWorker := worker.NewEmailWorker(rabbitMq, mailer)
 	convertWorker := worker.NewVideoWorker(jobService, rabbitMq)
 	saveMetadataWorker := worker.NewSaveVideoWorker(rabbitMq, jobService)
+	processingWorker := worker.NewProcessingWorker(jobService, rabbitMq)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -86,6 +88,7 @@ func main() {
 	go emailWorker.Run(ctx, "email-worker", 10)
 	go convertWorker.Run(ctx, "convert-worker", 2)
 	go saveMetadataWorker.Run(ctx, "save-worker", 5)
+	go processingWorker.Run(ctx, "processing-worker", 3)
 
 	authHandler := authhandler.NewHandler(authService, middlewares, validate)
 	jobHandler := jobhandler.NewHandler(jobService, middlewares, validate)

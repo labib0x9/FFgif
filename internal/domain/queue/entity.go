@@ -24,3 +24,7 @@ type SaveVideoMessage struct {
 	Filename string `json:"filename"`
 	Retries  int    `json:"retries"`
 }
+
+type NotificationMessage struct {
+	
+}

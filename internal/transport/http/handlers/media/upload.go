@@ -18,29 +18,30 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	var req uploadRequest
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&req); err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
+		jsonio.SendError(w, "Bad request", http.StatusBadRequest)
 		slog.Warn("Upload: bad json body", "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		jsonio.SendError(w, "invalid credentials", http.StatusUnauthorized)
 		slog.Warn("Upload: struct validation failed", "error", err)
 		return
 	}
 
 	claims, ok := middleware.GetClaims(r)
 	if !ok {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		jsonio.SendError(w, "internal server error", http.StatusInternalServerError)
 		slog.Warn("Upload: failed to get claims", "Addr", r.RemoteAddr)
 		return
 	}
 
-	result, err := h.srv.Upload(req.Filename, claims)
+	result, err := h.srv.Upload(req.Filename, req.ContentType, claims)
 	if err != nil {
 		switch err {
 
 		}
+		slog.Warn("srv.Upload()", "error", err)
 		return
 	}
 
