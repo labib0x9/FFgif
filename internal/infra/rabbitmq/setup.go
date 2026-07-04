@@ -11,11 +11,11 @@ import (
 )
 
 var (
-	EmailQueue              = "email.queue"
-	ProcessQueue            = "process.queue"
-	SaveQueue               = "video.save.queue"
-	SaveRetryQueue          = "save.retry.queue"
-	UploadNotificationQueue = "notify.upload.queue"
+	EmailQueue         = "email.queue"
+	ProcessQueue       = "process.queue"
+	SaveQueue          = "video.save.queue"
+	SaveRetryQueue     = "save.retry.queue"
+	UploadProcessQueue = "process.upload.queue"
 )
 
 type rabbitMQ struct {
@@ -38,7 +38,7 @@ func NewRabbitMQ(cnf *config.RabbitMq) queue.Queue {
 	return &r
 }
 
-func Setup(q queue.Queue) error {
+func Setup(q queue.Queue, cnf *config.Minio) error {
 	r, ok := q.(*rabbitMQ)
 	if !ok {
 		return fmt.Errorf("type not matched")
@@ -81,11 +81,11 @@ func Setup(q queue.Queue) error {
 		return err
 	}
 
-	if err := r.declareUploadNotificationQueueDead(ch); err != nil {
+	if err := r.declareUploadProcessQueueDead(ch); err != nil {
 		return err
 	}
 
-	if err := r.declareUploadNotificationQueue(ch); err != nil {
+	if err := r.declareUploadProcessQueue(ch, cnf); err != nil {
 		return err
 	}
 
@@ -202,24 +202,38 @@ func (r *rabbitMQ) declareSaveRetryQueueDead(ch *amqp.Channel) error {
 	return err
 }
 
-func (r *rabbitMQ) declareUploadNotificationQueue(ch *amqp.Channel) error {
-	_, err := ch.QueueDeclare(
-		UploadNotificationQueue,
+func (r *rabbitMQ) declareUploadProcessQueue(ch *amqp.Channel, cnf *config.Minio) error {
+	if err := ch.ExchangeDeclare(
+		cnf.ExchangeQueue,
+		"fanout",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	); err != nil {
+		return err
+	}
+	q, err := ch.QueueDeclare(
+		UploadProcessQueue,
 		true,
 		false,
 		false,
 		false,
 		amqp.Table{
 			"x-dead-letter-exchange":    "",
-			"x-dead-letter-routing-key": getDeadQueue(UploadNotificationQueue),
+			"x-dead-letter-routing-key": getDeadQueue(UploadProcessQueue),
 		},
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return ch.QueueBind(q.Name, "", cnf.ExchangeQueue, false, nil)
 }
 
-func (r *rabbitMQ) declareUploadNotificationQueueDead(ch *amqp.Channel) error {
+func (r *rabbitMQ) declareUploadProcessQueueDead(ch *amqp.Channel) error {
 	_, err := ch.QueueDeclare(
-		getDeadQueue(UploadNotificationQueue),
+		getDeadQueue(UploadProcessQueue),
 		true,
 		false,
 		false,
