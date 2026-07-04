@@ -72,7 +72,9 @@ var (
 
 func loadConfig() {
 	if err := godotenv.Load(".env"); err != nil {
-		log.Panic(err)
+		if !os.IsNotExist(err) {
+			log.Panic(err)
+		}
 	}
 
 	fn := func(name string) string {
@@ -131,7 +133,7 @@ func loadConfig() {
 			Pass: fn("MAILTRAP_PASSWORD"),
 		},
 		Minio: &Minio{
-			Endpoint:      fn("ENDPOINT"),
+			Endpoint:      fn("MINIO_ADDR"),
 			RootUser:      fn("MINIO_ROOT_USER"),
 			RootPass:      fn("MINIO_ROOT_PASSWORD"),
 			StorageBucket: fn("MINIO_PERSIST_BUCKET"),
