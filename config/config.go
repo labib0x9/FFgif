@@ -28,14 +28,15 @@ type Redis struct {
 }
 
 type Minio struct {
-	Endpoint      string
-	RootUser      string
-	RootPass      string
-	TempBucket    string
-	StorageBucket string
-	TTL           int
-	ExchangeQueue string
-	Allowed       []string
+	Endpoint       string
+	PublicEndpoint string
+	RootUser       string
+	RootPass       string
+	TempBucket     string
+	StorageBucket  string
+	TTL            int
+	ExchangeQueue  string
+	Allowed        []string
 }
 
 type RabbitMq struct {
@@ -133,14 +134,15 @@ func loadConfig() {
 			Pass: fn("MAILTRAP_PASSWORD"),
 		},
 		Minio: &Minio{
-			Endpoint:      fn("MINIO_ADDR"),
-			RootUser:      fn("MINIO_ROOT_USER"),
-			RootPass:      fn("MINIO_ROOT_PASSWORD"),
-			StorageBucket: fn("MINIO_PERSIST_BUCKET"),
-			TempBucket:    fn("MINIO_TEMP_BUCKET"),
-			TTL:           minioTTL,
-			ExchangeQueue: fn("MINIO_NOTIFY_EXCHANGE"),
-			Allowed:       origins,
+			Endpoint:       fn("MINIO_ADDR"),
+			PublicEndpoint: fn("MINIO_PUBLIC_ENDPOINT"),
+			RootUser:       fn("MINIO_ROOT_USER"),
+			RootPass:       fn("MINIO_ROOT_PASSWORD"),
+			StorageBucket:  fn("MINIO_PERSIST_BUCKET"),
+			TempBucket:     fn("MINIO_TEMP_BUCKET"),
+			TTL:            minioTTL,
+			ExchangeQueue:  fn("MINIO_NOTIFY_EXCHANGE"),
+			Allowed:        origins,
 		},
 		RabbitMq: &RabbitMq{
 			Addr: fn("RMQ_ADDR"),
