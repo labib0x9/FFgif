@@ -40,17 +40,17 @@ func main() {
 	dbConn := postgres.NewPostgresConn(cnf.PostgreSQL)
 	defer dbConn.Close()
 
-	redisClient := redis.Setup(cnf.RedisConfig)
+	redisClient := redis.Client(cnf.Redis)
 	defer redisClient.Close()
 
-	minioClient := minio.Setup(cnf.MinioConfig)
+	minioClient := minio.NewMinio(cnf.Minio)
 	rabbitMq := rabbitmq.NewRabbitMQ(cnf.RabbitMq)
 	defer rabbitMq.Close()
 
 	cacheRepo := cache.NewCache(redisClient)
 	limiterRepo := ratelimitter.NewRateLimiter(redisClient)
 
-	storageRepo := minio.NewStorageRepository(minioClient, cnf.MinioConfig)
+	storageRepo := minio.NewStorageRepository(minioClient, cnf.Minio)
 
 	authRepo := postgres.NewAuthRepository(dbConn)
 	// adminRepo := repo.NewAdminRepository(dbConn)
@@ -60,7 +60,7 @@ func main() {
 	quotaRepo := postgres.NewQuotaRepository(dbConn)
 
 	lastUploadRepo := postgres.NewLastVideoRepository(dbConn)
-	gifRepo := postgres.NewGifRepository(dbConn, cnf.MinioConfig) // ?? db + bucket
+	gifRepo := postgres.NewGifRepository(dbConn, cnf.Minio) // ?? db + bucket
 	// shareRepo := postgres.NewShareRepository(dbConn)
 
 	jwtProvider := jwt.NewJwt(cnf.JwtSecret)

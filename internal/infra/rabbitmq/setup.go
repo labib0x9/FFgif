@@ -34,17 +34,15 @@ func NewRabbitMQ(cnf *config.RabbitMq) queue.Queue {
 		conn: conn,
 	}
 
-	if err := r.setup(); err != nil {
-		conn.Close()
-		panic(err)
-	}
-
 	slog.Info("rabbitMq connection complete")
-
 	return &r
 }
 
-func (r *rabbitMQ) setup() error {
+func Setup(q queue.Queue) error {
+	r, ok := q.(*rabbitMQ)
+	if !ok {
+		return fmt.Errorf("type not matched")
+	}
 	ch, err := r.conn.Channel()
 	if err != nil {
 		return fmt.Errorf("setup channel: %w", err)
