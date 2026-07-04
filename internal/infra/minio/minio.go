@@ -6,9 +6,7 @@ import (
 	"time"
 
 	"github.com/labib0x9/ffgif/config"
-	"github.com/minio/madmin-go/v3"
 	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/cors"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/minio/minio-go/v7/pkg/lifecycle"
 	"github.com/minio/minio-go/v7/pkg/notification"
@@ -32,24 +30,6 @@ func NewMinio(cnf *config.Minio) *minio.Client {
 	return client
 }
 
-func NewMinioAdmin(cnf *config.Minio) *madmin.AdminClient {
-	admin, err := madmin.NewWithOptions(
-		cnf.Endpoint,
-		&madmin.Options{
-			Creds: credentials.NewStaticV4(
-				cnf.RootUser,
-				cnf.RootPass,
-				"",
-			),
-			Secure: false,
-		},
-	)
-	if err != nil {
-		panic(err)
-	}
-	return admin
-}
-
 func Setup(client *minio.Client, cnf *config.Minio) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -57,26 +37,20 @@ func Setup(client *minio.Client, cnf *config.Minio) error {
 	if err := bucketSetup(ctx, client, cnf.TempBucket); err != nil {
 		return err
 	}
-
 	if err := bucketSetup(ctx, client, cnf.StorageBucket); err != nil {
 		return err
 	}
+	slog.Info("buckets created")
 
 	if err := bindBucket(ctx, client, cnf.TempBucket); err != nil {
 		return err
 	}
+	slog.Info("notification bound")
 
 	if err := setTTLonTempBucket(ctx, client, cnf.TempBucket, cnf.TTL); err != nil {
 		return err
 	}
-
-	if err := setBucketCORS(ctx, client, cnf.TempBucket, cnf.Allowed); err != nil {
-		return err
-	}
-
-	if err := setBucketCORS(ctx, client, cnf.StorageBucket, cnf.Allowed); err != nil {
-		return err
-	}
+	slog.Info("lifecycle set")
 
 	getNotification, err := client.GetBucketNotification(ctx, cnf.TempBucket)
 	if err == nil {
@@ -145,18 +119,4 @@ func setTTLonTempBucket(ctx context.Context, client *minio.Client, bucket string
 		},
 	}
 	return client.SetBucketLifecycle(ctx, bucket, cfg)
-}
-
-func setBucketCORS(ctx context.Context, client *minio.Client, bucket string, origins []string) error {
-	CORSRules := []cors.Rule{
-		{
-			AllowedOrigin: origins,
-			AllowedMethod: []string{"GET", "PUT", "HEAD"},
-			AllowedHeader: []string{"*"},
-			ExposeHeader:  []string{"ETag"},
-			MaxAgeSeconds: 3600,
-		},
-	}
-	corsConfig := cors.NewConfig(CORSRules)
-	return client.SetBucketCors(ctx, bucket, corsConfig)
 }
