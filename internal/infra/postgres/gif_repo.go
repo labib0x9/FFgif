@@ -10,14 +10,14 @@ import (
 )
 
 type gifRepo struct {
-	db  *sqlx.DB
-	cnf *config.Minio
+	db *sqlx.DB
+	// cnf *config.Minio
 }
 
 func NewGifRepository(db *sqlx.DB, cnf *config.Minio) media.GifRepository {
 	return &gifRepo{
-		db:  db,
-		cnf: cnf,
+		db: db,
+		// cnf: cnf,
 	}
 }
 
