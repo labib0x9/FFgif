@@ -100,7 +100,7 @@ func loadConfig() {
 		log.Panic(err)
 	}
 
-	origins := strings.Split(fn("CORS_ALLOWED_ORIGINS"), ",")
+	origins := strings.Split(fn("MINIO_API_CORS_ALLOW_ORIGIN"), ",")
 
 	for i := range origins {
 		origins[i] = strings.TrimSpace(origins[i])
