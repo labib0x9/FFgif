@@ -12,26 +12,28 @@ import (
 )
 
 type storageRepo struct {
-	client *minio.Client
-	cnf    *config.Minio
+	client          *minio.Client
+	presignedClient *minio.Client
+	cnf             *config.Minio
 }
 
-func NewStorageRepository(client *minio.Client, cnf *config.Minio) media.StorageRepository {
+func NewStorageRepository(client *minio.Client, presignedClient *minio.Client, cnf *config.Minio) media.StorageRepository {
 	return &storageRepo{
-		client: client,
-		cnf:    cnf,
+		client:          client,
+		presignedClient: presignedClient,
+		cnf:             cnf,
 	}
 }
 
 // create url, directly upload
 func (u *storageRepo) Create(ctx context.Context, key string, expirey time.Duration) (*url.URL, error) {
-	return u.client.PresignedPutObject(ctx, u.cnf.StorageBucket, key, expirey)
+	return u.presignedClient.PresignedPutObject(ctx, u.cnf.TempBucket, key, expirey)
 }
 
 func (u *storageRepo) Download(ctx context.Context, key string, expirey time.Duration) (*url.URL, error) {
 	values := url.Values{}
 	values.Add("response-content-disposition", "attachment; filename="+key)
-	return u.client.PresignedGetObject(ctx, u.cnf.StorageBucket, key, expirey, values)
+	return u.presignedClient.PresignedGetObject(ctx, u.cnf.StorageBucket, key, expirey, values)
 }
 
 func (u *storageRepo) IsExists(ctx context.Context, key string) (bool, error) {
