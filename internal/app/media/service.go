@@ -22,7 +22,6 @@ type Service interface {
 	Status(ctx context.Context, key string) (bool, error)
 	Stream(ctx context.Context, key string, Range string) (*StreamResult, error)
 	Update(key string) error
-	Confirm(key string, filename string, claims jwt.Payload) error
 	Upload(filename string, contentType string, claims jwt.Payload) (*media.UploadResult, error)
 }
 
