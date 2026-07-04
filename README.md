@@ -185,7 +185,7 @@ flowchart TD
 .
 ├── cmd/                            # Entry point, dependency wiring
 │   ├── ffgif/                      #
-│   └── migration/                  #
+│   └── bootstrap/                  #
 ├── config/                         # Env-based config loading
 ├── internal/                       #
 │   ├── app/                        # Application Layer
@@ -237,17 +237,30 @@ flowchart TD
 │   └── token/                      #
 ├── static/                         # Frontend codes (Claude generated)
 ├── scripts/                        # Script files
+├── .gitignore
 ├── .env.example                    # Environment variables
-├── Makefile                        #
+├── .dockerignore
+├── docker-compose.yml
+├── Dockerfile
+├── go.mod
+├── go.sum
 └── README.md                       #
 ```
 
 
 ---
 
-## .env Variables
+## Setup
 
-```
+### Prerequisites
+
+- Docker
+
+### Environment
+
+Copy `.env.example` to `.env` and fill in your values:
+
+```env
 VERSION=                        # Project version
 SERVICE_NAME=                   # Project name
 ADDR=
@@ -287,35 +300,28 @@ RMQ_USER=
 RMQ_PASS=
 ```
 
----
-
-## Getting Started
-
-```bash
-git clone https://github.com/labib0x9/FFgif.git
-cd ffgif
-
-cp .env.example .env
-# edit .env — Postgres, Redis, MinIO, Mailtrap, JWT secret
-
-make services   # starts Postgres, Redis, RabbitMQ, MinIO (macOS/Homebrew)
-make backend    # go run main.go
+### Build And Run
+```
+docker compose up -d --build
 ```
 
-## Migration
+### Run
 
-- Migrations are managed with `golang-migrate` and need to run manually via migrate cli.
-
-```bash
-# connects to super user and create user, database
-go run ./cmd/migration/main.go -setup
-
-# run the migration
-go run ./cmd/migration/main.go -up
-
-# rollback migration level-1
-go run ./cmd/migration/main.go -down
 ```
+docker compose up
+```
+
+### Docker services
+```
+services:
+  postgres:   → PostgreSQL
+  redis:      → Redis 
+  rabbitmq:   → RabbitMQ
+  minio       → MinIO
+  bootstrap:  → CLI to setup postgres, redis and rabbitmq
+  api:        → API backend and frontend
+```
+
 ---
 
 ## API Reference
@@ -381,11 +387,10 @@ GET    /s/{token}/download       public download (no auth)
 
 ## Known Limitations
 
-- **No frontend**: minimal frontend is build to test using claude.
+- **Limited frontend**: minimal frontend is build to test using claude.
 - **Share handlers are stubs**: Routes are registered and the schema is migrated, but handler logic is commented out pending design decisions.
 - **Anonymous user flow is incomplete**: The demo/guest account path exists in the schema and some repo code but is commented out at the handler layer.
 - **No input validation on convert parameters**: Start/end time, FPS, and width are passed to FFmpeg without range validation — a malformed request can produce an unhelpful FFmpeg error rather than a clean 400.
-- **Single MinIO bucket**: Raw uploads and converted GIFs share one bucket. There is no lifecycle policy to expire unconverted raw files.
 - **`OneTimePerEmail` and `BlockIP` middlewares are stubs**: The rate-limiting middleware for sensitive auth endpoints is not yet implemented (currently pass-through).
 - **No HTTPS / TLS**: Local dev only, no TLS configuration.
 - **No integration or unit tests**: Test coverage is zero.
@@ -402,12 +407,10 @@ GET    /s/{token}/download       public download (no auth)
 - Implement `OneTimePerEmail` and `BlockIP` middleware
 - Persistent job records in Postgres (replace Redis-only job status)
 - Input validation for conversion parameters (start < end, FPS/width bounds)
-- Separate MinIO buckets for raw uploads and GIFs; lifecycle policy to expire raw files
 - Unit and integration tests (repository layer, use cases)
 - Complete share handler implementation
 - Complete anonymous user flow
 - GIF metadata enrichment: file size, dimensions, duration stored in the gifs table
 - Anonymous user accounts with 24-hour TTL and upgrade-to-registered path (partially implemented)
 - Admin endpoints
-- Graceful shutdown with signal handling
-- Docker Compose for full local stack
+- Separate MinIO buckets for raw uploads and GIFs; lifecycle policy to expire raw files
