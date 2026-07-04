@@ -36,12 +36,15 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.srv.Upload(req.Filename, req.ContentType, claims)
+	result, err := h.srv.Upload(r.Context(), req.Filename, req.ContentType, claims)
 	if err != nil {
 		switch err {
-
+		default:
+			{
+				jsonio.SendError(w, "internal server error", http.StatusInternalServerError)
+			}
 		}
-		slog.Warn("srv.Upload()", "error", err)
+		slog.Error("srv.Upload()", "error", err)
 		return
 	}
 

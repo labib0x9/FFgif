@@ -10,7 +10,7 @@ import (
 	"github.com/labib0x9/ffgif/pkg/random"
 )
 
-func (s *service) Upload(filename string, contentType string, claims jwt.Payload) (*media.UploadResult, error) {
+func (s *service) Upload(rctx context.Context, filename string, contentType string, claims jwt.Payload) (*media.UploadResult, error) {
 
 	userId := claims.Subject
 	_ = userId
@@ -25,6 +25,10 @@ func (s *service) Upload(filename string, contentType string, claims jwt.Payload
 
 	url, err := s.storage.Create(ctx, key, expirey)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := s.cache.Set(rctx, key, "uploading", 5*time.Minute); err != nil {
 		return nil, err
 	}
 

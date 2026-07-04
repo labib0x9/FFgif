@@ -5,6 +5,7 @@ import (
 
 	"github.com/labib0x9/ffgif/config"
 	"github.com/labib0x9/ffgif/internal/domain/auth"
+	"github.com/labib0x9/ffgif/internal/domain/cache"
 	"github.com/labib0x9/ffgif/internal/domain/media"
 	"github.com/labib0x9/ffgif/internal/domain/queue"
 	"github.com/labib0x9/ffgif/internal/domain/user"
@@ -22,7 +23,7 @@ type Service interface {
 	Status(ctx context.Context, key string) (bool, error)
 	Stream(ctx context.Context, key string, Range string) (*StreamResult, error)
 	Update(key string) error
-	Upload(filename string, contentType string, claims jwt.Payload) (*media.UploadResult, error)
+	Upload(rctx context.Context, filename string, contentType string, claims jwt.Payload) (*media.UploadResult, error)
 }
 
 type service struct {
@@ -33,6 +34,7 @@ type service struct {
 	lastVideoRepo media.LastVideoRepository
 	storage       media.StorageRepository
 	queue         queue.Queue
+	cache         cache.Cache
 	cnf           *config.Config
 }
 
@@ -44,6 +46,7 @@ func NewService(
 	lastVideoRepo media.LastVideoRepository,
 	storage media.StorageRepository,
 	queue queue.Queue,
+	cache cache.Cache,
 	cnf *config.Config,
 ) Service {
 	return &service{
@@ -54,6 +57,7 @@ func NewService(
 		lastVideoRepo: lastVideoRepo,
 		storage:       storage,
 		queue:         queue,
+		cache:         cache,
 		cnf:           cnf,
 	}
 }
