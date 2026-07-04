@@ -248,41 +248,43 @@ flowchart TD
 ## .env Variables
 
 ```
-VERSION=1.0.0                 # Project version
-SERVICE_NAME=ffgif            # Project name
-ADDR=127.0.0.1                # Address 
-PORT=8080                     # port to live
+VERSION=                        # Project version
+SERVICE_NAME=                   # Project name
+ADDR=
+PORT=
 
-JWT_SECRET=                   # 
-HASH_PEPPER=                  #
-BCRYPT_COST=12                # make password hash stronger
+JWT_SECRET=                     # Auth 
+HASH_PEPPER=
+BCRYPT_COST=
 
-DB_USER=                      # DB user name
-DB_PASSWORD=                  # 
-DB_PORT=                      #
-DB_ADDRESS=                   #
-DB_NAME=                      #
-DB_SSLMODE=                   #
+PG_USER=                        # PostgreSql
+PG_PASSWORD=
+PG_PORT=
+PG_ADDRESS=
+PG_NAME=
+PG_SSLMODE=
 
-DB_SUPERUSER=                 # DB root user
-DB_SUPERDB=                   # DB root database name
+PG_SUPERUSER=
+PG_SUPERDB=
 
-REDIS_ADDR=                   #
-REDIS_USER=                   #
-REDIS_PASS=                   #
+REDIS_ADDR=                     # Redis
 
-EMAIL=                        # sender's email
-MAILTRAP_USERNAME=            #
-MAILTRAP_PASSWORD=            #
+EMAIL=                          # Mailtrap
+MAILTRAP_USERNAME=
+MAILTRAP_PASSWORD=
 
-ENDPOINT=                     # MinIO address
-ACCESS_KEY_ID=                # 
-SECRET_ACCESS_KEY=            #
-BUCKET_NAME=                  #
+MINIO_ADDR=                     # Minio
+MINIO_ROOT_USER=
+MINIO_ROOT_PASSWORD=
+MINIO_TEMP_BUCKET=              # raw upload bucket
+MINIO_PERSIST_BUCKET=           # mp4 converted storage bucket
+MINIO_TEMP_BUCKET_TTL_DAYS=     # time to delete raw uploaded file
+MINIO_API_CORS_ALLOW_ORIGIN=    # minio cors
+MINIO_NOTIFY_EXCHANGE=          # rabbitmq exhange name where minio will send notification
 
-RMQ_ADDR=localhost:5672       # RabbitMq 
-RMQ_USER=guest                #
-RMQ_PASS=guest                #
+RMQ_ADDR=                       # Rabbitmq
+RMQ_USER=
+RMQ_PASS=
 ```
 
 ---
