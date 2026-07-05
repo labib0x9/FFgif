@@ -109,3 +109,58 @@ func newGifExec(ctx context.Context, f *GifFilter) *exec.Cmd {
 	cmd.Stderr = os.Stderr
 	return cmd
 }
+
+type Mp4Converter struct {
+	cmd *exec.Cmd
+}
+
+func NewMp4Converter(
+	ctx context.Context,
+	input string,
+	output string,
+	codecName string,
+) *Mp4Converter {
+	return &Mp4Converter{
+		cmd: newMp4ConverterExec(ctx, input, output, codecName),
+	}
+}
+
+func (f *Mp4Converter) Run() error {
+	if f.cmd == nil {
+		return NilPointerErr
+	}
+
+	err := f.cmd.Run()
+	if err != nil {
+		return fmt.Errorf("ffmpeg mp4 converter run failed: %w", err)
+	}
+
+	return nil
+}
+
+func newMp4ConverterExec(ctx context.Context, inputPath, outputPath string, CodecName string) *exec.Cmd {
+	var cmd *exec.Cmd
+	if CodecName == "h264" {
+		cmd = exec.CommandContext(
+			ctx, "ffmpeg",
+			"-i", inputPath,
+			"-c:v", "copy",
+			"-an",
+			"-movflags", "+faststart",
+			outputPath,
+		)
+	} else {
+		cmd = exec.CommandContext(
+			ctx, "ffmpeg",
+			"-i", inputPath,
+			"-c:v", "libx264",
+			"-preset", "medium",
+			"-crf", "23",
+			"-an",
+			"-movflags", "+faststart",
+			outputPath,
+		)
+	}
+	cmd.Stderr = os.Stderr
+	return cmd
+}
