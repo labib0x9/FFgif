@@ -185,7 +185,7 @@ flowchart TD
 .
 ├── cmd/                            # Entry point, dependency wiring
 │   ├── ffgif/                      #
-│   └── migration/                  #
+│   └── bootstrap/                  #
 ├── config/                         # Env-based config loading
 ├── internal/                       #
 │   ├── app/                        # Application Layer
@@ -237,83 +237,91 @@ flowchart TD
 │   └── token/                      #
 ├── static/                         # Frontend codes (Claude generated)
 ├── scripts/                        # Script files
+├── .gitignore
 ├── .env.example                    # Environment variables
-├── Makefile                        #
+├── .dockerignore
+├── docker-compose.yml
+├── Dockerfile
+├── go.mod
+├── go.sum
 └── README.md                       #
 ```
 
 
 ---
 
-## .env Variables
+## Setup
 
-```
-VERSION=1.0.0                 # Project version
-SERVICE_NAME=ffgif            # Project name
-ADDR=127.0.0.1                # Address 
-PORT=8080                     # port to live
+### Prerequisites
 
-JWT_SECRET=                   # 
-HASH_PEPPER=                  #
-BCRYPT_COST=12                # make password hash stronger
+- Docker
 
-DB_USER=                      # DB user name
-DB_PASSWORD=                  # 
-DB_PORT=                      #
-DB_ADDRESS=                   #
-DB_NAME=                      #
-DB_SSLMODE=                   #
+### Environment
 
-DB_SUPERUSER=                 # DB root user
-DB_SUPERDB=                   # DB root database name
+Copy `.env.example` to `.env` and fill in your values:
 
-REDIS_ADDR=                   #
-REDIS_USER=                   #
-REDIS_PASS=                   #
+```env
+VERSION=                        # Project version
+SERVICE_NAME=                   # Project name
+ADDR=
+PORT=
 
-EMAIL=                        # sender's email
-MAILTRAP_USERNAME=            #
-MAILTRAP_PASSWORD=            #
+JWT_SECRET=                     # Auth 
+HASH_PEPPER=
+BCRYPT_COST=
 
-ENDPOINT=                     # MinIO address
-ACCESS_KEY_ID=                # 
-SECRET_ACCESS_KEY=            #
-BUCKET_NAME=                  #
+PG_USER=                        # PostgreSql
+PG_PASSWORD=
+PG_PORT=
+PG_ADDRESS=
+PG_NAME=
+PG_SSLMODE=
 
-RMQ_ADDR=localhost:5672       # RabbitMq 
-RMQ_USER=guest                #
-RMQ_PASS=guest                #
-```
+PG_SUPERUSER=
+PG_SUPERDB=
 
----
+REDIS_ADDR=                     # Redis
 
-## Getting Started
+EMAIL=                          # Mailtrap
+MAILTRAP_USERNAME=
+MAILTRAP_PASSWORD=
 
-```bash
-git clone https://github.com/labib0x9/FFgif.git
-cd ffgif
+MINIO_ADDR=                     # Minio
+MINIO_ROOT_USER=
+MINIO_ROOT_PASSWORD=
+MINIO_TEMP_BUCKET=              # raw upload bucket
+MINIO_PERSIST_BUCKET=           # mp4 converted storage bucket
+MINIO_TEMP_BUCKET_TTL_DAYS=     # time to delete raw uploaded file
+MINIO_API_CORS_ALLOW_ORIGIN=    # minio cors
+MINIO_NOTIFY_EXCHANGE=          # rabbitmq exhange name where minio will send notification
 
-cp .env.example .env
-# edit .env — Postgres, Redis, MinIO, Mailtrap, JWT secret
-
-make services   # starts Postgres, Redis, RabbitMQ, MinIO (macOS/Homebrew)
-make backend    # go run main.go
+RMQ_ADDR=                       # Rabbitmq
+RMQ_USER=
+RMQ_PASS=
 ```
 
-## Migration
-
-- Migrations are managed with `golang-migrate` and need to run manually via migrate cli.
-
-```bash
-# connects to super user and create user, database
-go run ./cmd/migration/main.go -setup
-
-# run the migration
-go run ./cmd/migration/main.go -up
-
-# rollback migration level-1
-go run ./cmd/migration/main.go -down
+### Build And Run
 ```
+docker compose up -d --build
+```
+
+### Run
+
+```
+docker compose up
+```
+
+### Docker services
+```
+services:
+  postgres:   → PostgreSQL
+  redis:      → Redis 
+  rabbitmq:   → RabbitMQ
+  minio       → MinIO
+  bootstrap:  → CLI to setup postgres, redis and rabbitmq
+  api:        → API backend and frontend
+```
+
 ---
 
 ## API Reference
@@ -379,11 +387,10 @@ GET    /s/{token}/download       public download (no auth)
 
 ## Known Limitations
 
-- **No frontend**: minimal frontend is build to test using claude.
+- **Limited frontend**: minimal frontend is build to test using claude.
 - **Share handlers are stubs**: Routes are registered and the schema is migrated, but handler logic is commented out pending design decisions.
 - **Anonymous user flow is incomplete**: The demo/guest account path exists in the schema and some repo code but is commented out at the handler layer.
 - **No input validation on convert parameters**: Start/end time, FPS, and width are passed to FFmpeg without range validation — a malformed request can produce an unhelpful FFmpeg error rather than a clean 400.
-- **Single MinIO bucket**: Raw uploads and converted GIFs share one bucket. There is no lifecycle policy to expire unconverted raw files.
 - **`OneTimePerEmail` and `BlockIP` middlewares are stubs**: The rate-limiting middleware for sensitive auth endpoints is not yet implemented (currently pass-through).
 - **No HTTPS / TLS**: Local dev only, no TLS configuration.
 - **No integration or unit tests**: Test coverage is zero.
@@ -400,12 +407,10 @@ GET    /s/{token}/download       public download (no auth)
 - Implement `OneTimePerEmail` and `BlockIP` middleware
 - Persistent job records in Postgres (replace Redis-only job status)
 - Input validation for conversion parameters (start < end, FPS/width bounds)
-- Separate MinIO buckets for raw uploads and GIFs; lifecycle policy to expire raw files
 - Unit and integration tests (repository layer, use cases)
 - Complete share handler implementation
 - Complete anonymous user flow
 - GIF metadata enrichment: file size, dimensions, duration stored in the gifs table
 - Anonymous user accounts with 24-hour TTL and upgrade-to-registered path (partially implemented)
 - Admin endpoints
-- Graceful shutdown with signal handling
-- Docker Compose for full local stack
+- Separate MinIO buckets for raw uploads and GIFs; lifecycle policy to expire raw files
