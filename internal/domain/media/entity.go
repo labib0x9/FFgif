@@ -51,8 +51,8 @@ type LastUpload struct {
 	ContentType  string     `db:"content_type"  json:"content_type"`
 	SizeBytes    *int64     `db:"size_bytes"    json:"size_bytes,omitempty"`
 	DurationSec  *float64   `db:"duration_sec"  json:"duration_sec,omitempty"`
-	UploadedAt   time.Time  `db:"uploaded_at"   json:"uploaded_at"`
 	ThumbnailURL *string    `db:"thumbnail_url" json:"thumbnail_url,omitempty"`
+	UploadedAt   time.Time  `db:"uploaded_at"   json:"uploaded_at"`
 	DeletedAt    *time.Time `db:"deleted_at"    json:"deleted_at,omitempty"`
 	UpdatedAt    *time.Time `db:"updated_at"    json:"updated_at,omitempty"`
 }

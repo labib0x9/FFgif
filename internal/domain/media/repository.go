@@ -13,6 +13,7 @@ type StorageRepository interface {
 	Status(ctx context.Context, key string) (Info, error)
 	GetObject(ctx context.Context, start, end int64, key string) (Object, error)
 	DownloadLocal(ctx context.Context, key, destPath string) error
+	DownloadLocalRawVideo(ctx context.Context, key, destPath string) error
 	Upload(ctx context.Context, key, filePath, contentType string) error
 }
 
