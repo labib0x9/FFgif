@@ -13,7 +13,7 @@ import (
 func (s *service) Upload(rctx context.Context, filename string, claims jwt.Payload) (*media.UploadResult, error) {
 	userId := claims.Subject
 	ext := filepath.Ext(filename)
-	key := filepath.Join(userId, random.GenerateRandomID().String()+ext)
+	key := userId + ":" + random.GenerateRandomID().String() + ext
 	expirey := 5 * time.Minute
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
