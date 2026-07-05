@@ -12,23 +12,18 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 
 	if key == "" {
 		slog.Info("Status: key missing")
-		http.Error(w, "bad request", http.StatusBadRequest)
+		jsonio.SendError(w, "bad request", http.StatusBadRequest)
 		return
 	}
 
-	ok, err := h.srv.Status(r.Context(), key)
+	res, err := h.srv.Status(r.Context(), key)
 	if err != nil {
-		slog.Error("Status: get status failed", "err", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		slog.Error("Status: srv.Status() failed", "err", err)
+		jsonio.SendError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	if ok {
-		jsonio.SendJson(w, map[string]string{
-			"status": "ready",
-		}, http.StatusOK)
-		return
-	}
-
-	jsonio.SendJson(w, ok, http.StatusOK)
+	jsonio.SendJson(w, map[string]string{
+		"status": res,
+	}, http.StatusOK)
 }

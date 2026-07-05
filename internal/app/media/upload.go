@@ -28,7 +28,7 @@ func (s *service) Upload(rctx context.Context, filename string, contentType stri
 		return nil, err
 	}
 
-	if err := s.cache.Set(rctx, key, "uploading", 5*time.Minute); err != nil {
+	if err := s.UpdateUploadingStatus(rctx, key, "uploading"); err != nil {
 		return nil, err
 	}
 

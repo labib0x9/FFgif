@@ -20,10 +20,12 @@ type Service interface {
 	GetGifs(id string, filter string) (*GifResult, error)
 	LastVideo(userId string) (media.LastUploadResp, error)
 	Save(key string) error
-	Status(ctx context.Context, key string) (bool, error)
 	Stream(ctx context.Context, key string, Range string) (*StreamResult, error)
 	Update(key string) error
 	Upload(rctx context.Context, filename string, contentType string, claims jwt.Payload) (*media.UploadResult, error)
+	ProcessAndSave(ctx context.Context, key string) error
+	UpdateUploadingStatus(ctx context.Context, key string, status string) error
+	Status(ctx context.Context, key string) (string, error)
 }
 
 type service struct {
