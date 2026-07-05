@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/labib0x9/ffgif/internal/app/job"
+	"github.com/labib0x9/ffgif/internal/app/media"
 	"github.com/labib0x9/ffgif/internal/domain/queue"
 	"github.com/minio/minio-go/v7/pkg/notification"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -14,11 +14,11 @@ import (
 
 type ProcessingWorker struct {
 	client     queue.Queue
-	srv        job.Service
+	srv        media.Service
 	maxRetries int
 }
 
-func NewProcessingWorker(srv job.Service, client queue.Queue) *ProcessingWorker {
+func NewProcessingWorker(srv media.Service, client queue.Queue) *ProcessingWorker {
 	return &ProcessingWorker{
 		srv:        srv,
 		client:     client,
@@ -64,44 +64,43 @@ func (w *ProcessingWorker) handle(ctx context.Context, d amqp.Delivery) {
 		return
 	}
 
-	if msg.Err != nil {
+	if msg.Err != nil || len(msg.Records) == 0 {
 		slog.Error("invalid notification message", "error", err)
 		d.Nack(false, false)
 		return
 	}
 
-	slog.Info("I AM INSIDE THe RAW WORKER")
-	for _, record := range msg.Records {
-		fmt.Println("RECORD ", record)
+	key := msg.Records[0].S3.Object.Key
+
+	err = w.srv.UpdateUploadingStatus(ctx, key, "processing")
+	if err != nil {
+		slog.Error("UpdateUploadingStatus() failed", "error", err)
+		return
+	}
+	slog.Info("processing raw video", "key", key)
+
+	err = w.srv.ProcessAndSave(ctx, key)
+	if err != nil {
+		slog.Error("raw video processing failed", "key", key, "error", err)
+		w.srv.UpdateUploadingStatus(ctx, key, "failed")
+		err := d.Nack(false, false)
+		if err != nil {
+			slog.Error("nack dead-letter failed", "error", err)
+		}
+		return
 	}
 
-	// slog.Info("processing video", "key", msg.Key, "userID", msg.UserID, "JobId", msg.JobId)
+	err = d.Ack(false)
+	if err != nil {
+		slog.Error("ack failed", "error", err)
+		return
+	}
 
-	// err = w.srv.Process(ctx, msg)
-	// if err != nil {
-	// 	slog.Error("video processing failed", "error", err, "retries", msg.Retries, "JobId", msg.JobId)
+	err = w.srv.UpdateUploadingStatus(ctx, key, "ok")
+	if err != nil {
+		slog.Error("UpdateUploadingStatus() failed", "error", err)
+		return
+	}
 
-	// 	if msg.Retries < w.maxRetries {
-	// 		msg.Retries++
-	// 		err := d.Nack(false, true)
-	// 		if err != nil {
-	// 			slog.Error("nack retry failed", "error", err)
-	// 		}
-	// 		return
-	// 	}
-
-	// 	err := d.Nack(false, false)
-	// 	if err != nil {
-	// 		slog.Error("nack dead-letter failed", "error", err)
-	// 	}
-	// 	return
-	// }
-
-	// err = d.Ack(false)
-	// if err != nil {
-	// 	slog.Error("ack failed", "error", err)
-	// 	return
-	// }
-
-	// slog.Info("video processed successfully", "JobId", msg.JobId)
+	slog.Info("raw video processed successfully", "key", key)
 }
