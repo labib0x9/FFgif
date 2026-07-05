@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 
 	"github.com/labib0x9/ffgif/internal/app/media"
 	"github.com/labib0x9/ffgif/internal/domain/queue"
@@ -71,6 +72,12 @@ func (w *ProcessingWorker) handle(ctx context.Context, d amqp.Delivery) {
 	}
 
 	key := msg.Records[0].S3.Object.Key
+	decodedKey, err := url.QueryUnescape(key)
+	if err != nil {
+		slog.Error("Pre Processing Handler() decode key failed", "error", err)
+		return
+	}
+	key = decodedKey
 
 	err = w.srv.UpdateUploadingStatus(ctx, key, "processing")
 	if err != nil {
