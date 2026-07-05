@@ -2,12 +2,13 @@ package middleware
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/labib0x9/ffgif/internal/domain/cache"
+	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 type RateLimiter struct {
@@ -38,11 +39,15 @@ func NewRateLimiter(
 func (rl *RateLimiter) Limit() Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ip := strings.Split(r.RemoteAddr, ":")[0]
+			ip, err := getIp(r.RemoteAddr)
+			if err != nil {
+				jsonio.SendError(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
 			key := "rate_limit:ip:" + ip
 			res, err := rl.setLimit(r.Context(), key)
 			if err != nil {
-				http.Error(w, "internal server error", http.StatusInternalServerError)
+				jsonio.SendError(w, "internal server error", http.StatusInternalServerError)
 				return
 			}
 
@@ -53,7 +58,7 @@ func (rl *RateLimiter) Limit() Middleware {
 			if !res.allowed {
 				retryAfterSecs := res.wait_ms / 1000
 				w.Header().Set("Retry-After", strconv.FormatInt(retryAfterSecs, 10))
-				http.Error(w, "too many request", http.StatusTooManyRequests)
+				jsonio.SendError(w, "too many request", http.StatusTooManyRequests)
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -80,4 +85,9 @@ func (rl *RateLimiter) setLimit(ctx context.Context, key string) (Result, error)
 		last_refill: now,
 		token:       int(token),
 	}, nil
+}
+
+func getIp(addr string) (string, error) {
+	ip, _, err := net.SplitHostPort(addr)
+	return ip, err
 }
