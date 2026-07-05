@@ -342,6 +342,12 @@ services:
   api:        → API backend and frontend
 ```
 
+### Demo login
+```
+Email: anonymous@ffgif.local
+Pass: anonymous@ffgif
+```
+
 ---
 
 ## API Reference
