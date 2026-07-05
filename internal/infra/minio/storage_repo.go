@@ -71,6 +71,10 @@ func (u *storageRepo) GetObject(ctx context.Context, start, end int64, key strin
 	return media.Object{obj}, err
 }
 
+func (u *storageRepo) DownloadLocalRawVideo(ctx context.Context, key, destPath string) error {
+	return u.client.FGetObject(ctx, u.cnf.TempBucket, key, destPath, minio_go.GetObjectOptions{})
+}
+
 func (u *storageRepo) DownloadLocal(ctx context.Context, key, destPath string) error {
 	return u.client.FGetObject(ctx, u.cnf.StorageBucket, key, destPath, minio_go.GetObjectOptions{})
 }
