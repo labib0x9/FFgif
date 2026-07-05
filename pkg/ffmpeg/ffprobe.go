@@ -43,7 +43,7 @@ func (f *ProbeExtractor) Run() (*processor.FFprobeOutput, error) {
 
 func newProbeExex(ctx context.Context, input string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "ffprobe",
-		"-v", "quite",
+		"-v", "quiet",
 		"-print_format", "json",
 		"-show_format",
 		"-show_streams",
