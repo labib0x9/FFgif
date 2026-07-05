@@ -40,3 +40,11 @@ func (f *FFprobeOutput) IsValid() bool {
 	}
 	return true
 }
+
+type PrePrecessedResult struct {
+	VideoKey     string
+	ThumbnailKey string
+	Size         string
+	Duration     string
+	ContentType  string
+}
