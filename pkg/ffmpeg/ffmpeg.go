@@ -164,3 +164,44 @@ func newMp4ConverterExec(ctx context.Context, inputPath, outputPath string, Code
 	cmd.Stderr = os.Stderr
 	return cmd
 }
+
+type ThumbGenerator struct {
+	cmd *exec.Cmd
+}
+
+func NewThumbGenerator(
+	ctx context.Context,
+	input string,
+	output string,
+) *ThumbGenerator {
+	return &ThumbGenerator{
+		cmd: newThumbGeneratorExec(ctx, input, output),
+	}
+}
+
+func (f *ThumbGenerator) Run() error {
+	if f.cmd == nil {
+		return NilPointerErr
+	}
+
+	err := f.cmd.Run()
+	if err != nil {
+		return fmt.Errorf("ffmpeg mp4 converter run failed: %w", err)
+	}
+
+	return nil
+}
+
+func newThumbGeneratorExec(ctx context.Context, inputPath, outputPath string) *exec.Cmd {
+	cmd := exec.CommandContext(
+		ctx, "ffmpeg",
+		"-ss", "00:00:01",
+		"-i", inputPath,
+		"-vframes", "1",
+		"-q:v", "2",
+		outputPath,
+	)
+
+	cmd.Stderr = os.Stderr
+	return cmd
+}
