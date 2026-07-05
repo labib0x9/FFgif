@@ -83,3 +83,8 @@ type UploadResult struct {
 	Key      string `json:"key"`
 	ExpireIn int64  `json:"expires_in"`
 }
+
+type StreamResult struct {
+	PresignedUrl string `json:"url"`
+	ExpireIn     int    `json:"expires_in"`
+}

@@ -15,6 +15,7 @@ type StorageRepository interface {
 	DownloadLocal(ctx context.Context, key, destPath string) error
 	DownloadLocalRawVideo(ctx context.Context, key, destPath string) error
 	Upload(ctx context.Context, key, filePath, contentType string) error
+	GetStreamURL(ctx context.Context, key string, expiry time.Duration) (*url.URL, error)
 }
 
 type GifRepository interface {

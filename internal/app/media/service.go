@@ -21,7 +21,7 @@ type Service interface {
 	GetGifs(id string, filter string) (*GifResult, error)
 	LastVideo(userId string) (media.LastUploadResp, error)
 	Save(key string) error
-	Stream(ctx context.Context, key string, Range string) (*StreamResult, error)
+	Stream(ctx context.Context, key string) (*media.StreamResult, error)
 	Update(key string) error
 	Upload(rctx context.Context, filename string, claims jwt.Payload) (*media.UploadResult, error)
 	ProcessAndSave(ctx context.Context, key string) error

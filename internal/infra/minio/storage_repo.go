@@ -36,6 +36,12 @@ func (u *storageRepo) Download(ctx context.Context, key string, expirey time.Dur
 	return u.presignedClient.PresignedGetObject(ctx, u.cnf.StorageBucket, key, expirey, values)
 }
 
+func (u *storageRepo) GetStreamURL(ctx context.Context, key string, expiry time.Duration) (*url.URL, error) {
+	values := url.Values{}
+	values.Set("response-content-disposition", "inline; filename="+key)
+	return u.presignedClient.PresignedGetObject(ctx, u.cnf.StorageBucket, key, expiry, values)
+}
+
 func (u *storageRepo) IsExists(ctx context.Context, key string) (bool, error) {
 	info, err := u.client.StatObject(ctx, u.cnf.StorageBucket, key, minio_go.StatObjectOptions{})
 	if err != nil {
