@@ -19,7 +19,7 @@ func TestGIFGeneration(t *testing.T) {
 	outputPath := filepath.Join(tmpDir, "output.gif")
 	palettePath := filepath.Join(tmpDir, "palette.png")
 
-	ff := NewFFmpeg(
+	ff := NewGifConverter(
 		context.Background(),
 		inputPath,
 		outputPath,

@@ -30,18 +30,18 @@ type GifFilter struct {
 	Path        string
 }
 
-type Ffmpeg struct {
+type GifConverter struct {
 	pCmd *exec.Cmd
 	gCmd *exec.Cmd
 }
 
-func NewFFmpeg(
+func NewGifConverter(
 	ctx context.Context,
 	inputPath string, outputPath string, palettePath string,
 	Width int, FPS int,
 	Start float32, End float32,
 	Loop string,
-) *Ffmpeg {
+) *GifConverter {
 
 	paletteFilter := fmt.Sprintf("fps=%d,scale=%d:-1:flags=lanczos,palettegen", FPS, Width)
 	Pfilter := PaletteFilter{
@@ -63,13 +63,13 @@ func NewFFmpeg(
 		Path:        outputPath,
 	}
 
-	return &Ffmpeg{
+	return &GifConverter{
 		pCmd: newPaletteExec(ctx, &Pfilter),
 		gCmd: newGifExec(ctx, &gFilter),
 	}
 }
 
-func (f *Ffmpeg) Run() error {
+func (f *GifConverter) Run() error {
 	if f.pCmd == nil || f.gCmd == nil {
 		return NilPointerErr
 	}
