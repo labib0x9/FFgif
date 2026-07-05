@@ -1,6 +1,6 @@
 # FFGif
 
-A video-to-GIF conversion platform, also provides APIs. Users upload videos, configure conversion parameters (start/end time, FPS, width, loop), and receive a GIF which can be downloaded and shared. Built to explore async job processing, object storage, and production-grade backend patterns in Go.
+A video-to-GIF conversion platform. Users upload videos, configure conversion parameters (start/end time, FPS, width, loop), and receive a GIF which can be downloaded and shared. Built to explore async job processing, object storage, and production-grade backend patterns in Go.
 
 ---
 
@@ -415,6 +415,7 @@ GET    /s/{token}/download       public download (no auth)
 - **No integration or unit tests**: Test coverage is zero.
 - **Job status stored only in Redis with 5-minute TTL**: If a client polls after expiry, the status is gone. There is no persistent job record in Postgres.
 - **No transaction**: Currently databases has no transactions, so it doesn't follow any ACID principle.
+- **Account Verification**: Currently using mailtrap to verify account
 
 ---
 
@@ -422,14 +423,11 @@ GET    /s/{token}/download       public download (no auth)
 
 - Per-user quota tracking (storage bytes, GIF count)
 - Implement frontend (React + Vite)
-- Implement Transaction on database query at application level
-- Implement `OneTimePerEmail` and `BlockIP` middleware
 - Persistent job records in Postgres (replace Redis-only job status)
 - Input validation for conversion parameters (start < end, FPS/width bounds)
 - Unit and integration tests (repository layer, use cases)
 - Complete share handler implementation
 - Complete anonymous user flow
 - GIF metadata enrichment: file size, dimensions, duration stored in the gifs table
-- Anonymous user accounts with 24-hour TTL and upgrade-to-registered path (partially implemented)
+- Anonymous user accounts with 24-hour TTL and upgrade-to-registered path
 - Admin endpoints
-- Separate MinIO buckets for raw uploads and GIFs; lifecycle policy to expire raw files
