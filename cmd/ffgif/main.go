@@ -73,14 +73,14 @@ func main() {
 
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rabbitMq, *jwtProvider, *hasher)
 	jobService := jobapp.NewService(ffmpeg, gifRepo, lastUploadRepo, storageRepo, cacheRepo, rabbitMq)
-	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, lastUploadRepo, storageRepo, rabbitMq, cnf)
+	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, lastUploadRepo, storageRepo, rabbitMq, cacheRepo, ffmpeg, cnf)
 	shareService := shareapp.NewService()
 	userService := userapp.NewService(userRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
 
 	emailWorker := worker.NewEmailWorker(rabbitMq, mailer)
 	convertWorker := worker.NewVideoWorker(jobService, rabbitMq)
 	saveMetadataWorker := worker.NewSaveVideoWorker(rabbitMq, jobService)
-	processingWorker := worker.NewProcessingWorker(jobService, rabbitMq)
+	processingWorker := worker.NewProcessingWorker(mediaService, rabbitMq)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
