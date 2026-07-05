@@ -7,6 +7,7 @@ import (
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/domain/cache"
 	"github.com/labib0x9/ffgif/internal/domain/media"
+	"github.com/labib0x9/ffgif/internal/domain/processor"
 	"github.com/labib0x9/ffgif/internal/domain/queue"
 	"github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/pkg/jwt"
@@ -22,7 +23,7 @@ type Service interface {
 	Save(key string) error
 	Stream(ctx context.Context, key string, Range string) (*StreamResult, error)
 	Update(key string) error
-	Upload(rctx context.Context, filename string, contentType string, claims jwt.Payload) (*media.UploadResult, error)
+	Upload(rctx context.Context, filename string, claims jwt.Payload) (*media.UploadResult, error)
 	ProcessAndSave(ctx context.Context, key string) error
 	UpdateUploadingStatus(ctx context.Context, key string, status string) error
 	Status(ctx context.Context, key string) (string, error)
@@ -37,6 +38,7 @@ type service struct {
 	storage       media.StorageRepository
 	queue         queue.Queue
 	cache         cache.Cache
+	processor     processor.VideoProcessor
 	cnf           *config.Config
 }
 
@@ -49,6 +51,7 @@ func NewService(
 	storage media.StorageRepository,
 	queue queue.Queue,
 	cache cache.Cache,
+	processor processor.VideoProcessor,
 	cnf *config.Config,
 ) Service {
 	return &service{
@@ -60,6 +63,7 @@ func NewService(
 		storage:       storage,
 		queue:         queue,
 		cache:         cache,
+		processor:     processor,
 		cnf:           cnf,
 	}
 }

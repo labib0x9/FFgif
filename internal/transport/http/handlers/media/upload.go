@@ -10,8 +10,7 @@ import (
 )
 
 type uploadRequest struct {
-	Filename    string `json:"filename" validate:"required"`
-	ContentType string `json:"content_type" validate:"required"`
+	Filename string `json:"filename" validate:"required"`
 }
 
 func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +35,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.srv.Upload(r.Context(), req.Filename, req.ContentType, claims)
+	result, err := h.srv.Upload(r.Context(), req.Filename, claims)
 	if err != nil {
 		switch err {
 		default:

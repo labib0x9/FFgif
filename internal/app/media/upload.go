@@ -10,14 +10,10 @@ import (
 	"github.com/labib0x9/ffgif/pkg/random"
 )
 
-func (s *service) Upload(rctx context.Context, filename string, contentType string, claims jwt.Payload) (*media.UploadResult, error) {
-
+func (s *service) Upload(rctx context.Context, filename string, claims jwt.Payload) (*media.UploadResult, error) {
 	userId := claims.Subject
-	_ = userId
-	_ = contentType
-
 	ext := filepath.Ext(filename)
-	key := random.GenerateRandomID().String() + ext
+	key := filepath.Join(userId, random.GenerateRandomID().String()+ext)
 	expirey := 5 * time.Minute
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
