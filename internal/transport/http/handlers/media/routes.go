@@ -89,14 +89,6 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager
 	)
 
 	mux.Handle(
-		"POST /uploads/confirm",
-		manager.With(
-			http.HandlerFunc(h.Confirm),
-			h.middlewares.Auth,
-		),
-	)
-
-	mux.Handle(
 		"POST /uploads",
 		manager.With(
 			http.HandlerFunc(h.Upload),

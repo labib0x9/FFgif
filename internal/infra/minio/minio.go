@@ -12,6 +12,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/notification"
 )
 
+// endpoint = minio:9000
 func NewMinio(cnf *config.Minio) *minio.Client {
 	client, err := minio.New(
 		cnf.Endpoint,
@@ -22,6 +23,27 @@ func NewMinio(cnf *config.Minio) *minio.Client {
 				"",
 			),
 			Secure: false,
+			Region: "us-east-1",
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+	return client
+}
+
+// endpoint = 127.0.0.1:9000, presigned url should be created from here
+func NewPublicMinio(cnf *config.Minio) *minio.Client {
+	client, err := minio.New(
+		cnf.PublicEndpoint,
+		&minio.Options{
+			Creds: credentials.NewStaticV4(
+				cnf.RootUser,
+				cnf.RootPass,
+				"",
+			),
+			Secure: false,
+			Region: "us-east-1",
 		},
 	)
 	if err != nil {

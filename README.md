@@ -8,9 +8,11 @@ A video-to-GIF conversion platform, also provides APIs. Users upload videos, con
 
 - **JWT-based Authentication:** Signup with email verification, login, forgot/reset password flow, and token blocklisting on logout
 - **Presigned URL upload and download flow:** Client uploads and downloads directly from MinIO, backend never touches the bytes
+- **Event-driven ingestion:** MinIO bucket notifications trigger RabbitMQ on upload, decoupling ingestion from processing
 - **Async GIF conversion via RabbitMQ worker pool:** FFmpeg processes video locally, result uploaded back to MinIO
 - **GIF management:** list, get, delete, visibility status (public/private), download URL
 - **Rate Limiter:** Redis token bucket rate limiter implemented via a Lua script for atomic server-side enforcement
+- **Retry & dead-letter handling:** Failed conversion jobs retry with backoff before routing to a dead-letter queue
 
 ---
 
@@ -66,6 +68,62 @@ flowchart LR
 ```
 
 <details>
+<summary><strong>Video Upload Workflow</strong></summary>
+
+```mermaid
+sequenceDiagram
+    autonumber
+
+    participant Client
+    participant API as Backend API
+    participant Redis
+    participant MinIO as MinIO
+    participant Worker
+    participant FFProbe as ffprobe
+    participant FFmpeg as ffmpeg
+
+    Client->>API: POST /upload
+    API->>Redis: Create upload status = PENDING
+    API->>Client: Presigned PUT URL + Upload ID
+
+    Client->>MinIO: Upload video via Presigned URL
+
+    loop Poll status
+        Client->>API: GET /upload/{id}/status
+        API->>Redis: Read status
+        Redis-->>API: PENDING / PROCESSING / OK / FAILED
+        API-->>Client: Current status
+    end
+
+    MinIO-->>Worker: ObjectCreated event
+
+    Worker->>Redis: Update status = PROCESSING
+
+    Worker->>MinIO: Download uploaded video
+    MinIO-->>Worker: Video file
+
+    Worker->>FFProbe: Validate video
+    FFProbe-->>Worker: Valid / Invalid
+
+    alt Valid video
+        Worker->>FFmpeg: Convert to MP4
+        FFmpeg-->>Worker: MP4
+
+        Worker->>FFmpeg: Generate thumbnail
+        FFmpeg-->>Worker: Thumbnail
+
+        Worker->>MinIO: Upload MP4
+        Worker->>MinIO: Upload Thumbnail
+
+        Worker->>Redis: Update status = OK
+    else Invalid or processing failed
+        Worker->>Redis: Update status = FAILED
+    end
+```
+
+</details>
+
+<details>
 <summary><strong>Video Conversion Workflow</strong></summary>
 
 ```mermaid
@@ -117,44 +175,6 @@ sequenceDiagram
     API->>Redis: Read Status
 
     API-->>Client: completed
-```
-
-</details>
-
-<details>
-<summary><strong>DDD Target Architecture</strong></summary>
-
-```mermaid
-flowchart TD
-
-    HTTP["HTTP Handlers"]
-
-    APP["Application Layer<br/>Use Cases"]
-
-    DOMAIN["Domain Layer<br/>Entities + Business Rules"]
-
-    REPO["Repository Interfaces"]
-
-    PGREPO["Postgres Repository"]
-    REDISREPO["Redis Repository"]
-    MINIOREPO["MinIO Repository"]
-
-    PG[("PostgreSQL")]
-    REDIS[("Redis")]
-    MINIO[("MinIO")]
-
-    HTTP --> APP
-
-    APP --> DOMAIN
-    APP --> REPO
-
-    REPO --> PGREPO
-    REPO --> REDISREPO
-    REPO --> MINIOREPO
-
-    PGREPO --> PG
-    REDISREPO --> REDIS
-    MINIOREPO --> MINIO
 ```
 
 </details>
@@ -350,10 +370,9 @@ DELETE /users/me                 (auth required)
 ### Uploads
 ```
 POST   /uploads                  presigned URL generation
-GET    /uploads/{key}/status
-GET    /uploads/{key}/stream     byte-range streaming
+GET    /uploads/{key}/status     poll upload status from Redis
+GET    /uploads/{key}/stream     presigned URL streaming
 GET    /uploads/last             last uploaded video metadata
-POST   /uploads/confirm          trigger save-metadata job
 ```
 
 ### Convert

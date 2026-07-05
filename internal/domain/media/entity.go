@@ -7,6 +7,10 @@ import (
 	minio_go "github.com/minio/minio-go/v7"
 )
 
+var (
+	ContentLength = 512
+)
+
 type Gif struct {
 	Key          string    `json:"key" db:"key"`
 	Name         string    `json:"name" db:"name"`
@@ -47,8 +51,8 @@ type LastUpload struct {
 	ContentType  string     `db:"content_type"  json:"content_type"`
 	SizeBytes    *int64     `db:"size_bytes"    json:"size_bytes,omitempty"`
 	DurationSec  *float64   `db:"duration_sec"  json:"duration_sec,omitempty"`
-	UploadedAt   time.Time  `db:"uploaded_at"   json:"uploaded_at"`
 	ThumbnailURL *string    `db:"thumbnail_url" json:"thumbnail_url,omitempty"`
+	UploadedAt   time.Time  `db:"uploaded_at"   json:"uploaded_at"`
 	DeletedAt    *time.Time `db:"deleted_at"    json:"deleted_at,omitempty"`
 	UpdatedAt    *time.Time `db:"updated_at"    json:"updated_at,omitempty"`
 }
@@ -72,4 +76,15 @@ type Info struct {
 
 type Object struct {
 	*minio_go.Object
+}
+
+type UploadResult struct {
+	Url      string `json:"upload_url"`
+	Key      string `json:"key"`
+	ExpireIn int64  `json:"expires_in"`
+}
+
+type StreamResult struct {
+	PresignedUrl string `json:"url"`
+	ExpireIn     int    `json:"expires_in"`
 }

@@ -56,3 +56,7 @@ func (r *rabbitMQ) ConsumeSave(ctx context.Context, name string, concurrency int
 func (r *rabbitMQ) ConsumeVideo(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error) {
 	return r.consume(ctx, ProcessQueue, name, concurrency, false, false, false, false, nil)
 }
+
+func (r *rabbitMQ) ConsumeRawVideo(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error) {
+	return r.consume(ctx, UploadProcessQueue, name, concurrency, false, false, false, false, nil)
+}

@@ -3,8 +3,11 @@ package media
 import (
 	"context"
 
+	"github.com/labib0x9/ffgif/config"
 	"github.com/labib0x9/ffgif/internal/domain/auth"
+	"github.com/labib0x9/ffgif/internal/domain/cache"
 	"github.com/labib0x9/ffgif/internal/domain/media"
+	"github.com/labib0x9/ffgif/internal/domain/processor"
 	"github.com/labib0x9/ffgif/internal/domain/queue"
 	"github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/pkg/jwt"
@@ -18,11 +21,12 @@ type Service interface {
 	GetGifs(id string, filter string) (*GifResult, error)
 	LastVideo(userId string) (media.LastUploadResp, error)
 	Save(key string) error
-	Status(ctx context.Context, key string) (bool, error)
-	Stream(ctx context.Context, key string, Range string) (*StreamResult, error)
+	Stream(ctx context.Context, key string) (*media.StreamResult, error)
 	Update(key string) error
-	Confirm(key string, filename string, claims jwt.Payload) error
-	Upload(filename string, claims jwt.Payload) (*UploadResult, error)
+	Upload(rctx context.Context, filename string, claims jwt.Payload) (*media.UploadResult, error)
+	ProcessAndSave(ctx context.Context, key string) error
+	UpdateUploadingStatus(ctx context.Context, key string, status string) error
+	Status(ctx context.Context, key string) (string, error)
 }
 
 type service struct {
@@ -33,6 +37,9 @@ type service struct {
 	lastVideoRepo media.LastVideoRepository
 	storage       media.StorageRepository
 	queue         queue.Queue
+	cache         cache.Cache
+	processor     processor.VideoProcessor
+	cnf           *config.Config
 }
 
 func NewService(
@@ -43,6 +50,9 @@ func NewService(
 	lastVideoRepo media.LastVideoRepository,
 	storage media.StorageRepository,
 	queue queue.Queue,
+	cache cache.Cache,
+	processor processor.VideoProcessor,
+	cnf *config.Config,
 ) Service {
 	return &service{
 		authRepo:      authRepo,
@@ -52,5 +62,8 @@ func NewService(
 		lastVideoRepo: lastVideoRepo,
 		storage:       storage,
 		queue:         queue,
+		cache:         cache,
+		processor:     processor,
+		cnf:           cnf,
 	}
 }

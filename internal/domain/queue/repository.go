@@ -15,6 +15,7 @@ type Queue interface {
 	ConsumeEmail(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error)
 	ConsumeSave(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error)
 	ConsumeVideo(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error)
+	ConsumeRawVideo(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error)
 
 	Close() error
 	CloseConsumerChannel(name string) error

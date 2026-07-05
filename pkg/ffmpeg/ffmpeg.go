@@ -30,18 +30,18 @@ type GifFilter struct {
 	Path        string
 }
 
-type Ffmpeg struct {
+type GifConverter struct {
 	pCmd *exec.Cmd
 	gCmd *exec.Cmd
 }
 
-func NewFFmpeg(
+func NewGifConverter(
 	ctx context.Context,
 	inputPath string, outputPath string, palettePath string,
 	Width int, FPS int,
 	Start float32, End float32,
 	Loop string,
-) *Ffmpeg {
+) *GifConverter {
 
 	paletteFilter := fmt.Sprintf("fps=%d,scale=%d:-1:flags=lanczos,palettegen", FPS, Width)
 	Pfilter := PaletteFilter{
@@ -63,13 +63,13 @@ func NewFFmpeg(
 		Path:        outputPath,
 	}
 
-	return &Ffmpeg{
+	return &GifConverter{
 		pCmd: newPaletteExec(ctx, &Pfilter),
 		gCmd: newGifExec(ctx, &gFilter),
 	}
 }
 
-func (f *Ffmpeg) Run() error {
+func (f *GifConverter) Run() error {
 	if f.pCmd == nil || f.gCmd == nil {
 		return NilPointerErr
 	}
@@ -106,6 +106,102 @@ func newGifExec(ctx context.Context, f *GifFilter) *exec.Cmd {
 		"-y",
 		f.Path,
 	)
+	cmd.Stderr = os.Stderr
+	return cmd
+}
+
+type Mp4Converter struct {
+	cmd *exec.Cmd
+}
+
+func NewMp4Converter(
+	ctx context.Context,
+	input string,
+	output string,
+	codecName string,
+) *Mp4Converter {
+	return &Mp4Converter{
+		cmd: newMp4ConverterExec(ctx, input, output, codecName),
+	}
+}
+
+func (f *Mp4Converter) Run() error {
+	if f.cmd == nil {
+		return NilPointerErr
+	}
+
+	err := f.cmd.Run()
+	if err != nil {
+		return fmt.Errorf("ffmpeg mp4 converter run failed: %w", err)
+	}
+
+	return nil
+}
+
+func newMp4ConverterExec(ctx context.Context, inputPath, outputPath string, CodecName string) *exec.Cmd {
+	var cmd *exec.Cmd
+	if CodecName == "h264" {
+		cmd = exec.CommandContext(
+			ctx, "ffmpeg",
+			"-i", inputPath,
+			"-c:v", "copy",
+			"-an",
+			"-movflags", "+faststart",
+			outputPath,
+		)
+	} else {
+		cmd = exec.CommandContext(
+			ctx, "ffmpeg",
+			"-i", inputPath,
+			"-c:v", "libx264",
+			"-preset", "medium",
+			"-crf", "23",
+			"-an",
+			"-movflags", "+faststart",
+			outputPath,
+		)
+	}
+	cmd.Stderr = os.Stderr
+	return cmd
+}
+
+type ThumbGenerator struct {
+	cmd *exec.Cmd
+}
+
+func NewThumbGenerator(
+	ctx context.Context,
+	input string,
+	output string,
+) *ThumbGenerator {
+	return &ThumbGenerator{
+		cmd: newThumbGeneratorExec(ctx, input, output),
+	}
+}
+
+func (f *ThumbGenerator) Run() error {
+	if f.cmd == nil {
+		return NilPointerErr
+	}
+
+	err := f.cmd.Run()
+	if err != nil {
+		return fmt.Errorf("ffmpeg mp4 converter run failed: %w", err)
+	}
+
+	return nil
+}
+
+func newThumbGeneratorExec(ctx context.Context, inputPath, outputPath string) *exec.Cmd {
+	cmd := exec.CommandContext(
+		ctx, "ffmpeg",
+		"-ss", "00:00:01",
+		"-i", inputPath,
+		"-vframes", "1",
+		"-q:v", "2",
+		outputPath,
+	)
+
 	cmd.Stderr = os.Stderr
 	return cmd
 }
