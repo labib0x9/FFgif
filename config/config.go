@@ -50,6 +50,13 @@ type Mailtrap struct {
 	Pass string
 }
 
+type SMTP struct {
+	Host string
+	Port int
+	User string
+	Pass string
+}
+
 type Config struct {
 	Version    string
 	Addr       string
@@ -62,6 +69,7 @@ type Config struct {
 	Redis      *Redis
 	Email      string
 	Mailtrap   *Mailtrap
+	SMTP       *SMTP
 	Minio      *Minio
 	RabbitMq   *RabbitMq
 }
@@ -107,6 +115,11 @@ func loadConfig() {
 		origins[i] = strings.TrimSpace(origins[i])
 	}
 
+	smtpPort, err := strconv.Atoi(fn("SMTP_PORT"))
+	if err != nil {
+		log.Fatalln(err)
+	}
+
 	configuration = &Config{
 		Version:    fn("VERSION"),
 		Addr:       fn("ADDR"),
@@ -148,6 +161,12 @@ func loadConfig() {
 			Addr: fn("RMQ_ADDR"),
 			User: fn("RMQ_USER"),
 			Pass: fn("RMQ_PASS"),
+		},
+		SMTP: &SMTP{
+			Host: fn("SMTP_HOST"),
+			Port: smtpPort,
+			User: fn("SMTP_USER"),
+			Pass: fn("SMTP_PASS"),
 		},
 	}
 }

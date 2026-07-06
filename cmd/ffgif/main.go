@@ -68,7 +68,7 @@ func main() {
 	hasher := password.NewHasher(cnf.HashPepper, cnf.BcryptCost)
 	middlewares := middleware.NewMiddlewares(cnf, cacheRepo, *jwtProvider)
 	validate := validator.New()
-	mailer := mailer.NewMailer(cnf)
+	mailer := mailer.NewSmtpMailer(cnf)
 	ffmpeg := gifprocessor.NewFmeg(storageRepo)
 
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rabbitMq, *jwtProvider, *hasher)
