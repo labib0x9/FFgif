@@ -131,6 +131,10 @@ services:
       - EMAIL=${EMAIL}
       - MAILTRAP_USERNAME=${MAILTRAP_USERNAME}
       - MAILTRAP_PASSWORD=${MAILTRAP_PASSWORD}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
     depends_on:
       postgres:
         condition: service_healthy
@@ -180,6 +184,10 @@ services:
       - EMAIL=${EMAIL}
       - MAILTRAP_USERNAME=${MAILTRAP_USERNAME}
       - MAILTRAP_PASSWORD=${MAILTRAP_PASSWORD}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
     depends_on:
       postgres:
         condition: service_healthy
