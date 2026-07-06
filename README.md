@@ -13,6 +13,7 @@ A video-to-GIF conversion platform. Users upload videos, configure conversion pa
 - **GIF management:** list, get, delete, visibility status (public/private), download URL
 - **Rate Limiter:** Redis token bucket rate limiter implemented via a Lua script for atomic server-side enforcement
 - **Retry & dead-letter handling:** Failed conversion jobs retry with backoff before routing to a dead-letter queue
+- **Mail sending:** Emails are send via smtp
 
 ---
 
@@ -183,19 +184,19 @@ sequenceDiagram
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|-----------|
-| Language | Go 1.25 |
-| HTTP | `net/http` (stdlib, no framework) |
-| Database | PostgreSQL via `sqlx` |
-| Migrations | `golang-migrate` |
-| Cache | Redis via `go-redis` |
-| Object Storage | MinIO (`minio-go`) |
-| Message Queue | RabbitMQ (`amqp091-go`) |
-| Video Processing | FFmpeg (via `os/exec`) |
-| Auth | JWT (`golang-jwt/jwt`) + bcrypt + pepper |
-| Validation | `go-playground/validator` |
-| Email | Mailtrap (SMTP sandbox) |
+| Component        | Technology                               |
+| ---------------- | ---------------------------------------- |
+| Language         | Go 1.25                                  |
+| HTTP             | `net/http` (stdlib, no framework)        |
+| Database         | PostgreSQL via `sqlx`                    |
+| Migrations       | `golang-migrate`                         |
+| Cache            | Redis via `go-redis`                     |
+| Object Storage   | MinIO (`minio-go`)                       |
+| Message Queue    | RabbitMQ (`amqp091-go`)                  |
+| Video Processing | FFmpeg (via `os/exec`)                   |
+| Auth             | JWT (`golang-jwt/jwt`) + bcrypt + pepper |
+| Validation       | `go-playground/validator`                |
+| Email            | Mailtrap (SMTP sandbox)                  |
 
 ---
 
@@ -267,7 +268,6 @@ sequenceDiagram
 └── README.md                       #
 ```
 
-
 ---
 
 ## Setup
@@ -286,7 +286,7 @@ SERVICE_NAME=                   # Project name
 ADDR=
 PORT=
 
-JWT_SECRET=                     # Auth 
+JWT_SECRET=                     # Auth
 HASH_PEPPER=
 BCRYPT_COST=
 
@@ -314,13 +314,20 @@ MINIO_PERSIST_BUCKET=           # mp4 converted storage bucket
 MINIO_TEMP_BUCKET_TTL_DAYS=     # time to delete raw uploaded file
 MINIO_API_CORS_ALLOW_ORIGIN=    # minio cors
 MINIO_NOTIFY_EXCHANGE=          # rabbitmq exhange name where minio will send notification
+MINIO_PUBLIC_ENDPOINT=          # rabbitmq public endpoint where client requests
 
 RMQ_ADDR=                       # Rabbitmq
 RMQ_USER=
 RMQ_PASS=
+
+SMTP_HOST=                      # SMTP for sending email
+SMTP_PORT=
+SMTP_USER=
+SMTP_PASS=
 ```
 
 ### Build And Run
+
 ```
 docker compose up -d --build
 ```
@@ -332,10 +339,11 @@ docker compose up
 ```
 
 ### Docker services
+
 ```
 services:
   postgres:   → PostgreSQL
-  redis:      → Redis 
+  redis:      → Redis
   rabbitmq:   → RabbitMQ
   minio       → MinIO
   bootstrap:  → CLI to setup postgres, redis and rabbitmq
@@ -343,9 +351,25 @@ services:
 ```
 
 ### Demo login
+
 ```
 Email: anonymous@ffgif.local
 Pass: anonymous@ffgif
+```
+
+### Mail send
+
+```
+Option 1:
+1. use https://mailtrap.io/ sandbox for testing
+
+mailer := mailer.NewMailtrap(cnf)
+
+Option 2:
+1. goto  https://myaccount.google.com/apppasswords
+2. get new password for mail
+
+mailer := mailer.NewSmtpMailer(cnf)
 ```
 
 ---
@@ -353,6 +377,7 @@ Pass: anonymous@ffgif
 ## API Reference
 
 ### Auth
+
 ```
 POST   /auth/signup
 POST   /auth/login
@@ -365,6 +390,7 @@ POST   /auth/reset
 ```
 
 ### User
+
 ```
 GET    /users/profile/me         (auth required)
 PATCH  /users/profile/me         (auth required)
@@ -374,6 +400,7 @@ DELETE /users/me                 (auth required)
 ```
 
 ### Uploads
+
 ```
 POST   /uploads                  presigned URL generation
 GET    /uploads/{key}/status     poll upload status from Redis
@@ -382,12 +409,14 @@ GET    /uploads/last             last uploaded video metadata
 ```
 
 ### Convert
+
 ```
 POST   /convert                  enqueue conversion job
 GET    /convert/{jobId}/status   poll job status from Redis
 ```
 
 ### GIFs
+
 ```
 GET    /gifs/me
 GET    /gifs/me/recents
@@ -399,6 +428,7 @@ POST   /gifs/me/recents/{key}/save
 ```
 
 ### Shares
+
 ```
 POST   /gifs/me/{id}/shares
 GET    /gifs/me/{id}/shares
@@ -421,7 +451,6 @@ GET    /s/{token}/download       public download (no auth)
 - **No integration or unit tests**: Test coverage is zero.
 - **Job status stored only in Redis with 5-minute TTL**: If a client polls after expiry, the status is gone. There is no persistent job record in Postgres.
 - **No transaction**: Currently databases has no transactions, so it doesn't follow any ACID principle.
-- **Account Verification**: Currently using mailtrap to verify account
 
 ---
 
