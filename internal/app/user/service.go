@@ -1,6 +1,8 @@
 package user
 
 import (
+	"context"
+
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/pkg/jwt"
@@ -8,8 +10,8 @@ import (
 )
 
 type Service interface {
-	ChangePassword(id string, currentPass string, pass string, confirmPass string) error
-	DeleteUser(id string, pass string) error
+	ChangePassword(ctx context.Context, id string, currentPass string, pass string, confirmPass string) error
+	DeleteUser(ctx context.Context, id string, pass string) error
 	GetProfile(id string) (user.ProfileResp, error)
 	GetQuota(id string) (*user.Quota, error)
 	UpdateProfile(profile user.ProfileResp, id string) (user.ProfileResp, error)

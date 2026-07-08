@@ -37,7 +37,7 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.srv.ChangePassword(id, req.CurrentPassword, req.Password, req.ConfirmPassword); err != nil {
+	if err := h.srv.ChangePassword(r.Context(), id, req.CurrentPassword, req.Password, req.ConfirmPassword); err != nil {
 		switch err {
 
 		}

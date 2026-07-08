@@ -24,7 +24,7 @@ func (h *Handler) ResetPasswordGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.srv.ResetPasswordGet(token)
+	token, err := h.srv.ResetPasswordGet(r.Context(), token)
 	if err != nil {
 		slog.Warn("srv.ResetPasswordGet() failed:", "error", err)
 		jsonio.SendError(w, "expired or invalid token", http.StatusGone)

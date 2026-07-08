@@ -11,7 +11,7 @@ import (
 )
 
 func (s *service) ForgotPassword(ctx context.Context, email string) error {
-	user, err := s.authRepo.GetByEmail(email)
+	user, err := s.authRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return auth.ErrUserNotFound
@@ -24,7 +24,7 @@ func (s *service) ForgotPassword(ctx context.Context, email string) error {
 	}
 
 	var reseter auth.Reseter
-	oldToken, err := s.reseterRepo.GetById(user.Id)
+	oldToken, err := s.reseterRepo.GetById(ctx, user.Id)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return auth.ErrTokenFetchFailed
 	}
@@ -37,7 +37,7 @@ func (s *service) ForgotPassword(ctx context.Context, email string) error {
 			Token:  resetToken,
 			UserId: user.Id,
 		}
-		if err := s.reseterRepo.Create(reseter); err != nil {
+		if err := s.reseterRepo.Create(ctx, reseter); err != nil {
 			return auth.ErrCreateResetTokenFailed
 		}
 	}

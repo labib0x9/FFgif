@@ -71,7 +71,9 @@ func main() {
 	mailer := mailer.NewSmtpMailer(cnf)
 	ffmpeg := gifprocessor.NewFmeg(storageRepo)
 
-	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rabbitMq, *jwtProvider, *hasher)
+	tnx := postgres.NewTxManager(dbConn)
+
+	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rabbitMq, *jwtProvider, *hasher, tnx)
 	jobService := jobapp.NewService(ffmpeg, gifRepo, lastUploadRepo, storageRepo, cacheRepo, rabbitMq)
 	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, lastUploadRepo, storageRepo, rabbitMq, cacheRepo, ffmpeg, cnf)
 	shareService := shareapp.NewService()

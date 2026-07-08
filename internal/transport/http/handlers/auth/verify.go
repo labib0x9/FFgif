@@ -17,7 +17,7 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.srv.Verify(token); err != nil {
+	if err := h.srv.Verify(r.Context(), token); err != nil {
 		switch {
 		case errors.Is(err, auth.ErrInvalidToken):
 			jsonio.SendError(w, "token expired or invalid", http.StatusGone)

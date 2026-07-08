@@ -35,7 +35,7 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.srv.DeleteUser(id, req.Password); err != nil {
+	if err := h.srv.DeleteUser(r.Context(), id, req.Password); err != nil {
 		switch err {
 
 		}

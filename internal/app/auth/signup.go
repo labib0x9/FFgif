@@ -15,7 +15,7 @@ type SignupResult struct {
 
 func (s *service) Signup(ctx context.Context, email string, username string, fullname string, password string) (*SignupResult, error) {
 	msg, err := s.tnx.With(ctx, func(ctx context.Context) (any, error) {
-		_, err := s.authRepo.GetByEmail(email)
+		_, err := s.authRepo.GetByEmail(ctx, email)
 		if err == nil {
 			return nil, auth.ErrUserExits
 		}
@@ -34,7 +34,7 @@ func (s *service) Signup(ctx context.Context, email string, username string, ful
 			IsVerified:   false,
 		}
 
-		createdUser, err := s.authRepo.Create(newUser)
+		createdUser, err := s.authRepo.Create(ctx, newUser)
 		if err != nil {
 			return nil, auth.ErrUserCreateFailed
 		}
@@ -46,7 +46,7 @@ func (s *service) Signup(ctx context.Context, email string, username string, ful
 			Token:  verifyTokenHash,
 		}
 
-		if err = s.verifierRepo.Create(newVerifier); err != nil {
+		if err = s.verifierRepo.Create(ctx, newVerifier); err != nil {
 			return nil, auth.ErrVerifierTokenCreateFailed
 		}
 
@@ -55,7 +55,7 @@ func (s *service) Signup(ctx context.Context, email string, username string, ful
 			ProfilePic: "",
 		}
 
-		if err = s.profileRepo.SetProfile(profile); err != nil {
+		if err = s.profileRepo.SetProfile(ctx, profile); err != nil {
 			return nil, auth.ErrSetProfileFailed
 		}
 
@@ -63,7 +63,7 @@ func (s *service) Signup(ctx context.Context, email string, username string, ful
 			UserID: createdUser.Id,
 		}
 
-		if err := s.quotaRepo.Create(quota); err != nil {
+		if err := s.quotaRepo.Create(ctx, quota); err != nil {
 			return nil, auth.ErrQuotaCreateFailed
 		}
 

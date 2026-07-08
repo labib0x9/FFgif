@@ -11,7 +11,7 @@ import (
 )
 
 func (s *service) ResendVerify(ctx context.Context, email string) error {
-	user, err := s.authRepo.GetByEmail(email)
+	user, err := s.authRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return auth.ErrUserNotFound
@@ -23,13 +23,13 @@ func (s *service) ResendVerify(ctx context.Context, email string) error {
 		return auth.ErrUserAlreadyVerified
 	}
 
-	oldVerifier, err := s.verifierRepo.GetById(user.Id)
+	oldVerifier, err := s.verifierRepo.GetById(ctx, user.Id)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			return auth.ErrTokenFetchFailed
 		}
 	} else {
-		if err := s.verifierRepo.Delete(oldVerifier.Id); err != nil {
+		if err := s.verifierRepo.Delete(ctx, oldVerifier.Id); err != nil {
 			return err
 		}
 	}
@@ -41,7 +41,7 @@ func (s *service) ResendVerify(ctx context.Context, email string) error {
 		Token:  verifyTokenHash,
 	}
 
-	if err = s.verifierRepo.Create(newVerifier); err != nil {
+	if err = s.verifierRepo.Create(ctx, newVerifier); err != nil {
 		return auth.ErrVerifierTokenCreateFailed
 	}
 
