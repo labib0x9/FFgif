@@ -450,7 +450,7 @@ GET    /s/{token}/download       public download (no auth)
 - **No HTTPS / TLS**: Local dev only, no TLS configuration.
 - **No integration or unit tests**: Test coverage is zero.
 - **Job status stored only in Redis with 5-minute TTL**: If a client polls after expiry, the status is gone. There is no persistent job record in Postgres.
-- **No transaction**: Currently databases has no transactions, so it doesn't follow any ACID principle.
+- **No transaction**: Currently only Auth service is using transaction.
 
 ---
 
