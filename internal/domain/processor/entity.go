@@ -48,3 +48,8 @@ type PrePrecessedResult struct {
 	Duration     string
 	ContentType  string
 }
+
+type JobResult struct {
+	GifKey   string
+	ThumbKey string
+}

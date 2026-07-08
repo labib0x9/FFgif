@@ -63,11 +63,11 @@ func (w *VideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 		return
 	}
 
-	slog.Info("processing video", "key", msg.Key, "userID", msg.UserID, "JobId", msg.JobId)
+	slog.Info("converting video", "key", msg.Key, "userID", msg.UserID, "JobId", msg.JobId)
 
 	err = w.srv.Process(ctx, msg)
 	if err != nil {
-		slog.Error("video processing failed", "error", err, "retries", msg.Retries, "JobId", msg.JobId)
+		slog.Error("video convertion failed", "error", err, "retries", msg.Retries, "JobId", msg.JobId)
 
 		if msg.Retries < w.maxRetries {
 			msg.Retries++
