@@ -20,15 +20,14 @@ func (s *service) Status(ctx context.Context, jobId string) (*StatusResult, erro
 	key := "messaage_queue:job_id:" + jobId
 	val, err := s.cache.Get(ctx, key)
 	if err != nil {
-		// key expired..
-		// return
-		// slog.Warn("Status: Get key failed", "Err", err)
-		// http.Error(w, "internal server error", http.StatusInternalServerError)
 		return nil, job.ErrCacheGetFailed
 	}
 
 	gifKey := "messaage_queue_gif:job_id:" + jobId
-	gif, _ := s.cache.Get(ctx, gifKey)
+	gif, err := s.cache.Get(ctx, gifKey)
+	if err != nil {
+		return nil, err
+	}
 
 	return &StatusResult{
 		JobId:  jobId,

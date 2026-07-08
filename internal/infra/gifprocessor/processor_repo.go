@@ -22,17 +22,19 @@ func NewFmeg(minioRepo media.StorageRepository) *Fmeg {
 	}
 }
 
-func (f *Fmeg) Process(ctx context.Context, JobId string, Key string, Start float32, End float32, Width int, FPS int, Loop bool) (string, error) {
-	inputPath := filepath.Join(os.TempDir(), Key+"_input."+f.getContentType(ctx, Key))
+func (f *Fmeg) Process(ctx context.Context, JobId string, Key string, Start float32, End float32, Width int, FPS int, Loop bool) (*processor.JobResult, error) {
+	inputPath := filepath.Join(os.TempDir(), "input_"+Key+".mp4")
 	outputPath := filepath.Join(os.TempDir(), Key+"_output.gif")
 	palettePath := filepath.Join(os.TempDir(), Key+"_palette.png")
+	thumpOutputPath := filepath.Join(os.TempDir(), "thumb_"+Key+".jpg")
 
 	defer os.Remove(inputPath)
 	defer os.Remove(outputPath)
 	defer os.Remove(palettePath)
+	defer os.Remove(thumpOutputPath)
 
 	if err := f.minio.DownloadLocal(ctx, Key, inputPath); err != nil {
-		return "", fmt.Errorf("download failed: %w", err)
+		return nil, fmt.Errorf("download failed: %w", err)
 	}
 
 	if FPS == 0 {
@@ -50,16 +52,28 @@ func (f *Fmeg) Process(ctx context.Context, JobId string, Key string, Start floa
 
 	runner := ffmpeg.NewGifConverter(ctx, inputPath, outputPath, palettePath, Width, FPS, Start, End, loop)
 	if err := runner.Run(); err != nil {
-		//
-		return "", fmt.Errorf("ffmpeg failed")
+		return nil, fmt.Errorf("gif conversion failed: %w", err)
+	}
+
+	videoThumbGenerator := ffmpeg.NewThumbGenerator(ctx, inputPath, thumpOutputPath, Start+1.0)
+	if err := videoThumbGenerator.Run(); err != nil {
+		return nil, fmt.Errorf("ffmpeg failed to generate thumbnail from video")
 	}
 
 	gifKey := random.GenerateRandomID().String() + "_output.gif"
 	if err := f.minio.Upload(ctx, gifKey, outputPath, "image/gif"); err != nil {
-		return "", fmt.Errorf("upload failed: %w", err)
+		return nil, fmt.Errorf("gif upload failed: %w", err)
 	}
 
-	return gifKey, nil
+	thumbKey := "thumpnail_" + random.GenerateRandomID().String() + ".jpg"
+	if err := f.minio.Upload(ctx, thumbKey, thumpOutputPath, "image/jpg"); err != nil {
+		return nil, fmt.Errorf("thumbnail upload failed: %w", err)
+	}
+
+	return &processor.JobResult{
+		GifKey:   gifKey,
+		ThumbKey: thumbKey,
+	}, nil
 }
 
 // download to local, validate the video file, convert to mp4 and returns the output path
@@ -91,7 +105,7 @@ func (f *Fmeg) PreProcess(ctx context.Context, key string) (*processor.PrePreces
 		return nil, fmt.Errorf("ffmpeg failed to convert raw video to mp4")
 	}
 
-	videoThumbGenerator := ffmpeg.NewThumbGenerator(ctx, outputPath, thumpOutputPath)
+	videoThumbGenerator := ffmpeg.NewThumbGenerator(ctx, outputPath, thumpOutputPath, 1.0)
 	if err := videoThumbGenerator.Run(); err != nil {
 		return nil, fmt.Errorf("ffmpeg failed to generate thumbnail from raw video")
 	}
@@ -125,24 +139,4 @@ func (f *Fmeg) PreProcess(ctx context.Context, key string) (*processor.PrePreces
 	}
 
 	return &preResult, nil
-}
-
-func (f *Fmeg) getContentType(ctx context.Context, key string) string {
-	info, err := f.minio.Status(ctx, key)
-	if err != nil {
-		return ""
-	}
-	switch info.ContentType {
-	case "video/mp4":
-		return "mp4"
-	case "video/quicktime":
-		return "mov"
-	case "video/x-matroska":
-		return "mkv"
-	case "video/webm":
-		return "webm"
-	case "video/avi":
-		return "avi"
-	}
-	return ""
 }

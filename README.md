@@ -39,9 +39,9 @@ flowchart LR
     MinIO[("MinIO")]
     RabbitMQ["RabbitMQ"]
 
-    EmailWorker["Email Worker"]
+    PreWorker["Pre-Processing Worker"]
     VideoWorker["Video Worker"]
-    SaveWorker["Save Metadata Worker"]
+    EmailWorker["Email Worker"]
 
     FFmpeg["FFmpeg"]
 
@@ -52,19 +52,22 @@ flowchart LR
     API --> MinIO
     API --> RabbitMQ
 
-    RabbitMQ --> EmailWorker
+    %% Upload pipeline
+    MinIO -. ObjectCreated Event .-> RabbitMQ
+    RabbitMQ --> PreWorker
+    PreWorker --> MinIO
+    PreWorker --> PG
+
+    %% Conversion pipeline
     RabbitMQ --> VideoWorker
-    RabbitMQ --> SaveWorker
-
-    EmailWorker --> PG
-
-    SaveWorker --> PG
-    SaveWorker --> MinIO
-
     VideoWorker --> MinIO
     VideoWorker --> FFmpeg
-    VideoWorker --> PG
     VideoWorker --> Redis
+    VideoWorker --> PG
+
+    %% Email pipeline
+    RabbitMQ --> EmailWorker
+    EmailWorker --> PG
 ```
 
 <details>
@@ -128,53 +131,46 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
 
     participant Client
-    participant API
-    participant MinIO
+    participant API as Backend API
+    participant Redis
     participant RabbitMQ
     participant Worker
-    participant FFmpeg
-    participant PostgreSQL
-    participant Redis
-
-    Client->>API: POST /uploads
-
-    API-->>Client: Presigned URL
-
-    Client->>MinIO: Upload Video
-
-    Client->>API: POST /uploads/confirm
-
-    API->>RabbitMQ: Publish Save Metadata Job
+    participant FFmpeg as ffmpeg
+    participant MinIO
 
     Client->>API: POST /convert
+    API->>Redis: Create job status = QUEUED
+    API->>RabbitMQ: Publish conversion job
+    API-->>Client: 202 Accepted + Job ID
 
-    API->>RabbitMQ: Publish Conversion Job
+    loop Poll status
+        Client->>API: GET /convert/{jobId}/status
+        API->>Redis: Read job status
+        Redis-->>API: QUEUED / CONVERTING / COMPLETED / FAILED
+        API-->>Client: Current status
+    end
 
-    Worker->>RabbitMQ: Consume Job
+    Worker->>RabbitMQ: Consume conversion job
 
-    Worker->>MinIO: Download Video
+    Worker->>Redis: Update status = CONVERTING
 
-    Worker->>FFmpeg: Generate Palette
+    Worker->>FFmpeg: Convert video to GIF
+    FFmpeg-->>Worker: GIF
 
-    FFmpeg-->>Worker: palette.png
-
-    Worker->>FFmpeg: Encode GIF
-
-    FFmpeg-->>Worker: output.gif
+    Worker->>FFmpeg: Generate thumbnail
+    FFmpeg-->>Worker: Thumbnail
 
     Worker->>MinIO: Upload GIF
+    Worker->>MinIO: Upload Thumbnail
 
-    Worker->>PostgreSQL: Save GIF Metadata
-
-    Worker->>Redis: Update Job Status
-
-    Client->>API: GET /convert/{jobId}/status
-
-    API->>Redis: Read Status
-
-    API-->>Client: completed
+    alt Conversion successful
+        Worker->>Redis: Update status = COMPLETED
+    else Conversion failed
+        Worker->>Redis: Update status = FAILED
+    end
 ```
 
 </details>

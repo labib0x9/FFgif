@@ -14,7 +14,7 @@ func (s *service) Process(ctx context.Context, msg queue.VideoMessage) error {
 		return err
 	}
 
-	gifId, err := s.processor.Process(ctx, msg.JobId, msg.Key, msg.Start, msg.End, msg.Width, msg.FPS, msg.Loop)
+	result, err := s.processor.Process(ctx, msg.JobId, msg.Key, msg.Start, msg.End, msg.Width, msg.FPS, msg.Loop)
 	if err != nil {
 		return err
 	}
@@ -29,9 +29,9 @@ func (s *service) Process(ctx context.Context, msg queue.VideoMessage) error {
 	}
 
 	gif := media.Gif{
-		Key:    gifId,
-		UserId: msg.UserID,
-		// Url:    w.gifRepo.GetUrl(gifId),
+		Key:          result.GifKey,
+		UserId:       msg.UserID,
+		ThumbnailUrl: result.ThumbKey,
 	}
 
 	if err := s.gifRepo.Create(gif); err != nil {

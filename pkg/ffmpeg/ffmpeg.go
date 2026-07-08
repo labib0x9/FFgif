@@ -169,13 +169,15 @@ type ThumbGenerator struct {
 	cmd *exec.Cmd
 }
 
+// startAt = in seconds from video
 func NewThumbGenerator(
 	ctx context.Context,
 	input string,
 	output string,
+	startAt float32,
 ) *ThumbGenerator {
 	return &ThumbGenerator{
-		cmd: newThumbGeneratorExec(ctx, input, output),
+		cmd: newThumbGeneratorExec(ctx, startAt, input, output),
 	}
 }
 
@@ -192,7 +194,7 @@ func (f *ThumbGenerator) Run() error {
 	return nil
 }
 
-func newThumbGeneratorExec(ctx context.Context, inputPath, outputPath string) *exec.Cmd {
+func newThumbGeneratorExec(ctx context.Context, startAt float32, inputPath, outputPath string) *exec.Cmd {
 	cmd := exec.CommandContext(
 		ctx, "ffmpeg",
 		"-ss", "00:00:01",
