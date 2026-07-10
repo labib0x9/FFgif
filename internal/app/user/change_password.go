@@ -29,7 +29,7 @@ func (s *service) ChangePassword(ctx context.Context, id string, currentPass str
 		return user.ErrHashGenFailed
 	}
 
-	err = s.userRepo.ChangePassword(id, newPassHash)
+	err = s.userRepo.ChangePassword(ctx, id, newPassHash)
 	if err != nil {
 		// http.Error(w, "internal server error", http.StatusInternalServerError)
 		// slog.Error("ChangePassword: user not found", "err", err, "id", id)

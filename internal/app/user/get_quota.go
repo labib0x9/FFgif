@@ -1,8 +1,12 @@
 package user
 
-import "github.com/labib0x9/ffgif/internal/domain/user"
+import (
+	"context"
 
-func (s *service) GetQuota(id string) (*user.Quota, error) {
+	"github.com/labib0x9/ffgif/internal/domain/user"
+)
+
+func (s *service) GetQuota(ctx context.Context, id string) (*user.Quota, error) {
 
 	// quota, err :=
 	// if err != nil {
@@ -11,5 +15,5 @@ func (s *service) GetQuota(id string) (*user.Quota, error) {
 	// 	return
 	// }
 
-	return s.quotaRepo.GetById(id)
+	return s.quotaRepo.GetById(ctx, id)
 }

@@ -12,9 +12,9 @@ import (
 type Service interface {
 	ChangePassword(ctx context.Context, id string, currentPass string, pass string, confirmPass string) error
 	DeleteUser(ctx context.Context, id string, pass string) error
-	GetProfile(id string) (user.ProfileResp, error)
-	GetQuota(id string) (*user.Quota, error)
-	UpdateProfile(profile user.ProfileResp, id string) (user.ProfileResp, error)
+	GetProfile(ctx context.Context, id string) (user.ProfileResp, error)
+	GetQuota(ctx context.Context, id string) (*user.Quota, error)
+	UpdateProfile(ctx context.Context, profile user.ProfileResp, id string) (user.ProfileResp, error)
 }
 
 type service struct {

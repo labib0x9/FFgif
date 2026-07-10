@@ -29,7 +29,7 @@ func (h *Handler) GetGifs(w http.ResponseWriter, r *http.Request) {
 		filter = f
 	}
 
-	result, err := h.srv.GetGifs(id, filter)
+	result, err := h.srv.GetGifs(r.Context(), id, filter)
 	if err != nil {
 		switch err {
 

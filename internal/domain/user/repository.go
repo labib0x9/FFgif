@@ -3,10 +3,10 @@ package user
 import "context"
 
 type UserRepository interface {
-	GetProfile(id string) (ProfileResp, error)
+	GetProfile(ctx context.Context, id string) (ProfileResp, error)
 	SetProfile(ctx context.Context, profile Profile) error
-	UpdateProfile(profile ProfileResp, userId string) (ProfileResp, error)
-	ChangePassword(userId string, hash string) error
+	UpdateProfile(ctx context.Context, profile ProfileResp, userId string) (ProfileResp, error)
+	ChangePassword(ctx context.Context, userId string, hash string) error
 }
 
 // type AnonAuthRepository interface {
@@ -15,16 +15,16 @@ type UserRepository interface {
 // }
 
 type AnonUserRepository interface {
-	GetProfile(id string) (ProfileResp, error)
-	SetProfile(profile Profile) error
+	GetProfile(ctx context.Context, id string) (ProfileResp, error)
+	SetProfile(ctx context.Context, profile Profile) error
 }
 
 type QuotaRepository interface {
 	Create(ctx context.Context, quota Quota) error
-	GetById(userId string) (*Quota, error)
+	GetById(ctx context.Context, userId string) (*Quota, error)
 }
 
 type AnonQuotaRepository interface {
-	Create(quota Quota) error
-	GetById(userId string) (*Quota, error)
+	Create(ctx context.Context, quota Quota) error
+	GetById(ctx context.Context, userId string) (*Quota, error)
 }

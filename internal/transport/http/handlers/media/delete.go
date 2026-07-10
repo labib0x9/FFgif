@@ -17,7 +17,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	key := r.PathValue("key")
 
-	if err := h.srv.Delete(key); err != nil {
+	if err := h.srv.Delete(r.Context(), key); err != nil {
 		switch err {
 
 		}

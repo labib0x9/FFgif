@@ -20,15 +20,15 @@ type StorageRepository interface {
 
 type GifRepository interface {
 	Create(ctx context.Context, gif Gif) error
-	Get(user_id string, status string) ([]GifResp, error)
-	GetByKey(key string) (GifResp, error)
-	GetRecents(user_id string) ([]GifResp, error)
-	Delete(key string) error
-	Update(key string, gif GifResp) error
-	SaveRecent(key string) error
+	Get(ctx context.Context, user_id string, status string) ([]GifResp, error)
+	GetByKey(ctx context.Context, key string) (GifResp, error)
+	GetRecents(ctx context.Context, user_id string) ([]GifResp, error)
+	Delete(ctx context.Context, key string) error
+	Update(ctx context.Context, key string, gif GifResp) error
+	SaveRecent(ctx context.Context, key string) error
 }
 
 type LastVideoRepository interface {
 	Create(ctx context.Context, upload LastUpload) error
-	GetLastVideo(user_id string) (LastUploadResp, error)
+	GetLastVideo(ctx context.Context, user_id string) (LastUploadResp, error)
 }

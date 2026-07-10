@@ -31,7 +31,7 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.srv.UpdateProfile(req, id)
+	updated, err := h.srv.UpdateProfile(r.Context(), req, id)
 	if err != nil {
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		slog.Warn("UpdateProfile: update failed", "error", err)

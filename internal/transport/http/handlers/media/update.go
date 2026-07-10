@@ -18,7 +18,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 
 	key := r.PathValue("key")
 
-	if err := h.srv.Update(key); err != nil {
+	if err := h.srv.Update(r.Context(), key); err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		slog.Error("UpdateGif: Update() failed", "error", err, "key", key)
 		return

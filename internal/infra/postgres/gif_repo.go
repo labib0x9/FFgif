@@ -20,16 +20,18 @@ func NewGifRepository(db *sqlx.DB, cnf *config.Minio) media.GifRepository {
 }
 
 func (r *gifRepo) Create(ctx context.Context, gif media.Gif) error {
+	db := getDBFromCtx(ctx, r.db)
 	query := `insert into 
 		gifs(user_id, key)
 		values(:user_id, :key)
 	`
 
-	_, err := r.db.NamedExec(query, gif)
+	_, err := sqlx.NamedExecContext(ctx, db, query, gif)
 	return err
 }
 
-func (r *gifRepo) Get(user_id string, status string) ([]media.GifResp, error) {
+func (r *gifRepo) Get(ctx context.Context, user_id string, status string) ([]media.GifResp, error) {
+	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
 			key, status, persist, download, created_at
@@ -40,18 +42,19 @@ func (r *gifRepo) Get(user_id string, status string) ([]media.GifResp, error) {
 	var val []media.GifResp
 	if status != "all" {
 		query += ` and status = $2`
-		if err := r.db.Select(&val, query, user_id, status); err != nil {
+		if err := sqlx.SelectContext(ctx, db, &val, query, user_id, status); err != nil {
 			return []media.GifResp{}, err
 		}
 	} else {
-		if err := r.db.Select(&val, query, user_id); err != nil {
+		if err := sqlx.SelectContext(ctx, db, &val, query, user_id); err != nil {
 			return []media.GifResp{}, err
 		}
 	}
 	return val, nil
 }
 
-func (r *gifRepo) GetByKey(key string) (media.GifResp, error) {
+func (r *gifRepo) GetByKey(ctx context.Context, key string) (media.GifResp, error) {
+	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
 			key, status, persist, download, created_at
@@ -59,13 +62,14 @@ func (r *gifRepo) GetByKey(key string) (media.GifResp, error) {
 			gifs
 		where key = $1`
 	var val media.GifResp
-	if err := r.db.Get(&val, query, key); err != nil {
+	if err := sqlx.GetContext(ctx, db, &val, query, key); err != nil {
 		return media.GifResp{}, err
 	}
 	return val, nil
 }
 
-func (r *gifRepo) GetRecents(user_id string) ([]media.GifResp, error) {
+func (r *gifRepo) GetRecents(ctx context.Context, user_id string) ([]media.GifResp, error) {
+	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
 			key, status, persist, download, created_at
@@ -76,23 +80,28 @@ func (r *gifRepo) GetRecents(user_id string) ([]media.GifResp, error) {
         limit 20`
 
 	var val []media.GifResp
-	if err := r.db.Select(&val, query, user_id); err != nil {
+	if err := sqlx.SelectContext(ctx, db, &val, query, user_id); err != nil {
 		return []media.GifResp{}, err
 	}
 	return val, nil
 }
 
-func (r *gifRepo) Delete(key string) error {
+func (r *gifRepo) Delete(ctx context.Context, key string) error {
+	db := getDBFromCtx(ctx, r.db)
 	query := `delete from gifs where key = $1`
-	_, err := r.db.Exec(query, key)
+	_, err := db.ExecContext(ctx, query, key)
 	return err
 }
 
-func (r *gifRepo) Update(key string, gif media.GifResp) error {
+func (r *gifRepo) Update(ctx context.Context, key string, gif media.GifResp) error {
+	db := getDBFromCtx(ctx, r.db)
+	_ = db
 	return nil
 }
 
-func (r *gifRepo) SaveRecent(key string) error {
+func (r *gifRepo) SaveRecent(ctx context.Context, key string) error {
+	db := getDBFromCtx(ctx, r.db)
+	_ = db
 	return nil
 }
 
@@ -105,6 +114,7 @@ func NewLastVideoRepository(db *sqlx.DB) media.LastVideoRepository {
 }
 
 func (l *lastVideoRepo) Create(ctx context.Context, upload media.LastUpload) error {
+	db := getDBFromCtx(ctx, l.db)
 	query := `
         INSERT INTO last_upload
             (user_id, file_key, file_name, content_type, size_bytes, uploaded_at, updated_at)
@@ -118,14 +128,15 @@ func (l *lastVideoRepo) Create(ctx context.Context, upload media.LastUpload) err
             uploaded_at  = EXCLUDED.uploaded_at,
             updated_at   = NOW()
     `
-	_, err := l.db.NamedExecContext(ctx, query, upload)
+	_, err := sqlx.NamedExecContext(ctx, db, query, upload)
 	if err != nil {
 		return fmt.Errorf("SaveMetadata: %w", err)
 	}
 	return nil
 }
 
-func (l *lastVideoRepo) GetLastVideo(user_id string) (media.LastUploadResp, error) {
+func (l *lastVideoRepo) GetLastVideo(ctx context.Context, user_id string) (media.LastUploadResp, error) {
+	db := getDBFromCtx(ctx, l.db)
 	query := `
 		select
 			user_id, file_key, file_name, content_type, size_bytes, duration_sec, uploaded_at, thumbnail_url
@@ -133,7 +144,7 @@ func (l *lastVideoRepo) GetLastVideo(user_id string) (media.LastUploadResp, erro
 		where user_id = $1
 	`
 	var value media.LastUploadResp
-	if err := l.db.Get(&value, query, user_id); err != nil {
+	if err := sqlx.GetContext(ctx, db, &value, query, user_id); err != nil {
 		return media.LastUploadResp{}, err
 	}
 	return value, nil

@@ -16,7 +16,7 @@ func (h *Handler) LastVideo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.srv.LastVideo(userId)
+	result, err := h.srv.LastVideo(r.Context(), userId)
 	if err != nil {
 		switch err {
 
