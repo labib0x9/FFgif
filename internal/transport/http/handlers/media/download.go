@@ -18,7 +18,7 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 
 	key := r.PathValue("key")
 
-	url, err := h.srv.Download(key)
+	url, err := h.srv.Download(r.Context(), key)
 	if err != nil {
 		switch err {
 

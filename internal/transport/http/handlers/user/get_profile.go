@@ -15,7 +15,7 @@ func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
 		slog.Error("GetProfile: id not found")
 		return
 	}
-	found, err := h.srv.GetProfile(id)
+	found, err := h.srv.GetProfile(r.Context(), id)
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		slog.Error("GetProfile: user not found", "err", err, "id", id)

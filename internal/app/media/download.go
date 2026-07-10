@@ -7,8 +7,8 @@ import (
 	"github.com/labib0x9/ffgif/internal/domain/media"
 )
 
-func (s *service) Download(key string) (string, error) {
-	_, err := s.gifRepo.GetByKey(key)
+func (s *service) Download(ctx context.Context, key string) (string, error) {
+	_, err := s.gifRepo.GetByKey(ctx, key)
 	if err != nil {
 		return "", media.ErrGifNotFound
 	}

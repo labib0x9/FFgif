@@ -14,7 +14,7 @@ func (h *Handler) GetQuota(w http.ResponseWriter, r *http.Request) {
 		slog.Error("GetQuota: id not found")
 		return
 	}
-	quota, err := h.srv.GetQuota(id)
+	quota, err := h.srv.GetQuota(r.Context(), id)
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		slog.Error("GetQuota: quota not found", "err", err, "id", id)

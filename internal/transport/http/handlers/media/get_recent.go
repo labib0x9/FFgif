@@ -16,7 +16,7 @@ func (h *Handler) GetRecents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gifs, err := h.srv.GetRecents(id)
+	gifs, err := h.srv.GetRecents(r.Context(), id)
 	if err != nil {
 		switch err {
 

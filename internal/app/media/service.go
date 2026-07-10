@@ -14,15 +14,15 @@ import (
 )
 
 type Service interface {
-	Delete(key string) error
-	Download(key string) (string, error)
-	GetByKey(key string) (media.GifResp, error)
-	GetRecents(id string) ([]media.GifResp, error)
-	GetGifs(id string, filter string) (*GifResult, error)
-	LastVideo(userId string) (media.LastUploadResp, error)
-	Save(key string) error
+	Delete(ctx context.Context, key string) error
+	Download(ctx context.Context, key string) (string, error)
+	GetByKey(ctx context.Context, key string) (media.GifResp, error)
+	GetRecents(ctx context.Context, id string) ([]media.GifResp, error)
+	GetGifs(ctx context.Context, id string, filter string) (*GifResult, error)
+	LastVideo(ctx context.Context, userId string) (media.LastUploadResp, error)
+	Save(ctx context.Context, key string) error
 	Stream(ctx context.Context, key string) (*media.StreamResult, error)
-	Update(key string) error
+	Update(ctx context.Context, key string) error
 	Upload(rctx context.Context, filename string, claims jwt.Payload) (*media.UploadResult, error)
 	ProcessAndSave(ctx context.Context, key string) error
 	UpdateUploadingStatus(ctx context.Context, key string, status string) error

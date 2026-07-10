@@ -1,6 +1,8 @@
 package media
 
 import (
+	"context"
+
 	"github.com/labib0x9/ffgif/internal/domain/media"
 )
 
@@ -11,8 +13,8 @@ type GifResult struct {
 	Limit int             `json:"limit"`
 }
 
-func (s *service) GetGifs(id string, filter string) (*GifResult, error) {
-	gifs, err := s.gifRepo.Get(id, filter)
+func (s *service) GetGifs(ctx context.Context, id string, filter string) (*GifResult, error) {
+	gifs, err := s.gifRepo.Get(ctx, id, filter)
 	if err != nil {
 		// http.Error(w, "internal server error", http.StatusInternalServerError)
 		// slog.Error("GetGifs: Get() failed", "error", err, "user_id", id)

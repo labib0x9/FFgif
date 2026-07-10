@@ -15,7 +15,7 @@ func (h *Handler) GetByKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.srv.GetByKey(key)
+	resp, err := h.srv.GetByKey(r.Context(), key)
 	if err != nil {
 		switch err {
 

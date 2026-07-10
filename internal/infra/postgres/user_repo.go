@@ -8,14 +8,15 @@ import (
 )
 
 type userRepo struct {
-	dbConn *sqlx.DB
+	db *sqlx.DB
 }
 
 func NewUserRepository(db *sqlx.DB) user.UserRepository {
-	return &userRepo{dbConn: db}
+	return &userRepo{db: db}
 }
 
-func (r *userRepo) GetProfile(id string) (user.ProfileResp, error) {
+func (r *userRepo) GetProfile(ctx context.Context, id string) (user.ProfileResp, error) {
+	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
 			u.username, p.profile_pic, u.fullname, u.email, u.is_verified
@@ -28,23 +29,25 @@ func (r *userRepo) GetProfile(id string) (user.ProfileResp, error) {
 	`
 	// query := `select * from profiles where user_id = $1`
 	var profile user.ProfileResp
-	if err := r.dbConn.Get(&profile, query, id); err != nil {
+	if err := sqlx.GetContext(ctx, db, &profile, query, id); err != nil {
 		return user.ProfileResp{}, err
 	}
 	return profile, nil
 }
 
 func (r *userRepo) SetProfile(ctx context.Context, profile user.Profile) error {
+	db := getDBFromCtx(ctx, r.db)
 	query := `insert into 
 		profiles(user_id, profile_pic)
 		values(:user_id, :profile_pic)
 	`
 
-	_, err := r.dbConn.NamedExec(query, profile)
+	_, err := sqlx.NamedExecContext(ctx, db, query, profile)
 	return err
 }
 
-func (r *userRepo) UpdateProfile(profile user.ProfileResp, userId string) (user.ProfileResp, error) {
+func (r *userRepo) UpdateProfile(ctx context.Context, profile user.ProfileResp, userId string) (user.ProfileResp, error) {
+	db := getDBFromCtx(ctx, r.db)
 	query1 := `
 	update users 
 	set
@@ -61,20 +64,21 @@ func (r *userRepo) UpdateProfile(profile user.ProfileResp, userId string) (user.
 	where user_id = $2
 	`
 
-	_, err := r.dbConn.Exec(query1, profile.Username, profile.Fullname, userId)
+	_, err := db.ExecContext(ctx, query1, profile.Username, profile.Fullname, userId)
 	if err != nil {
 		return user.ProfileResp{}, err
 	}
 
-	_, err = r.dbConn.Exec(query2, profile.ProfilePic, userId)
+	_, err = db.ExecContext(ctx, query2, profile.ProfilePic, userId)
 	if err != nil {
 		return user.ProfileResp{}, err
 	}
 
-	return r.GetProfile(userId)
+	return r.GetProfile(ctx, userId)
 }
 
-func (r *userRepo) ChangePassword(userId string, hash string) error {
+func (r *userRepo) ChangePassword(ctx context.Context, userId string, hash string) error {
+	db := getDBFromCtx(ctx, r.db)
 	query1 := `
 	update users 
 	set
@@ -82,7 +86,7 @@ func (r *userRepo) ChangePassword(userId string, hash string) error {
 		updated_at = NOW()
 	where id = $2
 	`
-	_, err := r.dbConn.Exec(query1, hash, userId)
+	_, err := db.ExecContext(ctx, query1, hash, userId)
 	if err != nil {
 		return err
 	}
@@ -133,14 +137,15 @@ func (r *userRepo) ChangePassword(userId string, hash string) error {
 // }
 
 type anonUserRepo struct {
-	dbConn *sqlx.DB
+	db *sqlx.DB
 }
 
 func NewAnonUserRepository(db *sqlx.DB) user.AnonUserRepository {
-	return &anonUserRepo{dbConn: db}
+	return &anonUserRepo{db: db}
 }
 
-func (r *anonUserRepo) GetProfile(id string) (user.ProfileResp, error) {
+func (r *anonUserRepo) GetProfile(ctx context.Context, id string) (user.ProfileResp, error) {
+	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
 			u.username, p.profile_pic, u.fullname
@@ -152,18 +157,19 @@ func (r *anonUserRepo) GetProfile(id string) (user.ProfileResp, error) {
 		 	u.id = $1
 	`
 	var profile user.ProfileResp
-	if err := r.dbConn.Get(&profile, query, id); err != nil {
+	if err := sqlx.GetContext(ctx, db, &profile, query, id); err != nil {
 		return user.ProfileResp{}, err
 	}
 	return profile, nil
 }
 
-func (r *anonUserRepo) SetProfile(profile user.Profile) error {
+func (r *anonUserRepo) SetProfile(ctx context.Context, profile user.Profile) error {
+	db := getDBFromCtx(ctx, r.db)
 	query := `insert into 
 		anon_profiles(user_id, profile_pic)
 		values(:user_id, :profile_pic)
 	`
 
-	_, err := r.dbConn.NamedExec(query, profile)
+	_, err := sqlx.NamedExecContext(ctx, db, query, profile)
 	return err
 }

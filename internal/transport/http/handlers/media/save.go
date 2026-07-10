@@ -16,7 +16,7 @@ func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := r.PathValue("key")
-	if err := h.srv.Save(key); err != nil {
+	if err := h.srv.Save(r.Context(), key); err != nil {
 		switch err {
 
 		}
