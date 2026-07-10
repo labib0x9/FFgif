@@ -19,7 +19,7 @@ type StorageRepository interface {
 }
 
 type GifRepository interface {
-	Create(gif Gif) error
+	Create(ctx context.Context, gif Gif) error
 	Get(user_id string, status string) ([]GifResp, error)
 	GetByKey(key string) (GifResp, error)
 	GetRecents(user_id string) ([]GifResp, error)

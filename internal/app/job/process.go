@@ -34,7 +34,7 @@ func (s *service) Process(ctx context.Context, msg queue.VideoMessage) error {
 		ThumbnailUrl: result.ThumbKey,
 	}
 
-	if err := s.gifRepo.Create(gif); err != nil {
+	if err := s.gifRepo.Create(ctx, gif); err != nil {
 		if err := s.cache.Set(ctx, key, "failed", 5*time.Minute); err != nil {
 			return err
 		}

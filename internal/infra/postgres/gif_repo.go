@@ -11,17 +11,15 @@ import (
 
 type gifRepo struct {
 	db *sqlx.DB
-	// cnf *config.Minio
 }
 
 func NewGifRepository(db *sqlx.DB, cnf *config.Minio) media.GifRepository {
 	return &gifRepo{
 		db: db,
-		// cnf: cnf,
 	}
 }
 
-func (r *gifRepo) Create(gif media.Gif) error {
+func (r *gifRepo) Create(ctx context.Context, gif media.Gif) error {
 	query := `insert into 
 		gifs(user_id, key)
 		values(:user_id, :key)
