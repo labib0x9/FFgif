@@ -1,6 +1,8 @@
 package postgres
 
 import (
+	"context"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/labib0x9/ffgif/internal/domain/user"
 )
@@ -13,7 +15,7 @@ func NewQuotaRepository(db *sqlx.DB) user.QuotaRepository {
 	return &quotaRepo{dbConn: db}
 }
 
-func (r *quotaRepo) Create(quota user.Quota) error {
+func (r *quotaRepo) Create(ctx context.Context, quota user.Quota) error {
 	query := `insert into 
 		quota(user_id)
 		values(:user_id)

@@ -1,15 +1,17 @@
 package user
 
 import (
+	"context"
+
 	"github.com/google/uuid"
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/domain/user"
 )
 
-func (s *service) DeleteUser(id string, pass string) error {
+func (s *service) DeleteUser(ctx context.Context, id string, pass string) error {
 	uuid, err := uuid.Parse(id)
 
-	found, err := s.authRepo.GetById(uuid)
+	found, err := s.authRepo.GetById(ctx, uuid)
 	if err != nil {
 		return auth.ErrUserNotFound
 	}
@@ -20,7 +22,7 @@ func (s *service) DeleteUser(id string, pass string) error {
 		return user.ErrPasswordMismatched
 	}
 
-	if err := s.authRepo.DeleteById(uuid); err != nil {
+	if err := s.authRepo.DeleteById(ctx, uuid); err != nil {
 		// http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		// slog.Warn("Login: password mismatched", "error", err, "user_id", id)
 		return user.ErrTableUpdateFailed

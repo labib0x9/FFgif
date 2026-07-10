@@ -1,6 +1,8 @@
 package postgres
 
 import (
+	"context"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/labib0x9/ffgif/internal/domain/user"
 )
@@ -32,7 +34,7 @@ func (r *userRepo) GetProfile(id string) (user.ProfileResp, error) {
 	return profile, nil
 }
 
-func (r *userRepo) SetProfile(profile user.Profile) error {
+func (r *userRepo) SetProfile(ctx context.Context, profile user.Profile) error {
 	query := `insert into 
 		profiles(user_id, profile_pic)
 		values(:user_id, :profile_pic)

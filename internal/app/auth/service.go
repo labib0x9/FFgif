@@ -5,6 +5,7 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/domain/cache"
+	"github.com/labib0x9/ffgif/internal/domain/db"
 	"github.com/labib0x9/ffgif/internal/domain/queue"
 	"github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/pkg/jwt"
@@ -13,13 +14,13 @@ import (
 
 type Service interface {
 	Signup(ctx context.Context, email string, username string, fullname string, password string) (*SignupResult, error)
-	Login(email string, password string) (*Result, error)
+	Login(ctx context.Context, email string, password string) (*Result, error)
 	Logout(ctx context.Context, jwt string, claims jwt.Payload) error
 	ForgotPassword(ctx context.Context, email string) error
 	ResendVerify(ctx context.Context, email string) error
-	ResetPasswordGet(token string) (string, error)
+	ResetPasswordGet(ctx context.Context, token string) (string, error)
 	ResetPasswordPost(ctx context.Context, token string, pass string, confirmPass string) error
-	Verify(token string) error
+	Verify(ctx context.Context, token string) error
 }
 
 type service struct {
@@ -32,6 +33,7 @@ type service struct {
 	queue        queue.Queue
 	jwt          jwt.Jwt
 	hasher       password.Hasher
+	tnx          db.TxManager
 }
 
 func NewService(
@@ -44,6 +46,7 @@ func NewService(
 	queue queue.Queue,
 	jwt jwt.Jwt,
 	hasher password.Hasher,
+	tnx db.TxManager,
 ) Service {
 	return &service{
 		authRepo:     authRepo,
@@ -55,6 +58,7 @@ func NewService(
 		queue:        queue,
 		jwt:          jwt,
 		hasher:       hasher,
+		tnx:          tnx,
 	}
 }
 
