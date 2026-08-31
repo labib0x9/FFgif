@@ -6,6 +6,6 @@ import (
 	"github.com/labib0x9/ffgif/internal/domain/media"
 )
 
-func (s *service) GetRecents(ctx context.Context, id string) ([]media.GifResponse, error) {
+func (s *service) GetRecents(ctx context.Context, id string) ([]media.GifResp, error) {
 	return s.gifRepo.GetRecents(ctx, id)
 }

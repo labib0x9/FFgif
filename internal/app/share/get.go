@@ -1,11 +1,20 @@
 package share
 
-import (
-	"context"
+func (h *service) Get() {
+	// id := middleware.GetUserId(r)
+	// if id == "" {
+	// 	http.Error(w, "internal server error", http.StatusInternalServerError)
+	// 	slog.Error("GetShares: id not found")
+	// 	return
+	// }
 
-	"github.com/labib0x9/ffgif/internal/domain/share"
-)
+	// gifId := r.PathValue("id")
+	// shares, err := h.gifRepo.GetShares(id, gifId)
+	// if err != nil {
+	// 	http.Error(w, "internal server error", http.StatusInternalServerError)
+	// 	slog.Error("GetShares: GetShares() failed", "error", err, "gif_id", gifId)
+	// 	return
+	// }
 
-func (s *service) Get(ctx context.Context, user string) ([]share.GifResponse, error) {
-	return s.shareRepo.Get(ctx, user)
+	// utils.SendJson(w, shares, http.StatusOK)
 }

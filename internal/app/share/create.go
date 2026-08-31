@@ -1,31 +1,34 @@
 package share
 
-import (
-	"context"
-	"time"
+func (h *service) Create() {
+	// id := middleware.GetUserId(r)
+	// if id == "" {
+	// 	http.Error(w, "internal server error", http.StatusInternalServerError)
+	// 	slog.Error("CreateShare: id not found")
+	// 	return
+	// }
 
-	"github.com/labib0x9/ffgif/internal/domain/auth"
-	"github.com/labib0x9/ffgif/internal/domain/media"
-	"github.com/labib0x9/ffgif/internal/domain/share"
-)
+	// gifId := r.PathValue("id")
 
-// shareBy = id of user, sharedWith = email of user
-func (s *service) Create(ctx context.Context, sharedBy string, gifKey string, sharedWith string, expiresAt time.Time) error {
-	sharedUser, err := s.authRepo.GetByEmail(ctx, sharedWith)
-	if err != nil {
-		return auth.ErrUserNotFound
-	}
-	_, err = s.gifRepo.GetByKey(ctx, gifKey)
-	if err != nil {
-		return media.ErrGifNotFound
-	}
+	// var body struct {
+	// 	ExpiresIn int    `json:"expires_in"` // hours, 0 = never
+	// 	Access    string `json:"access"`     // "view" or "download"
+	// }
+	// if err := utils.ParseJson(r, &body); err != nil {
+	// 	http.Error(w, "bad request", http.StatusBadRequest)
+	// 	slog.Error("CreateShare: ParseJson() failed", "error", err)
+	// 	return
+	// }
+	// if body.Access == "" {
+	// 	body.Access = "view"
+	// }
 
-	share := share.Share{
-		GifKey:     gifKey,
-		OwnerID:    sharedBy,
-		SharedWith: sharedUser.Id.String(),
-		ExpiresAt:  &expiresAt,
-	}
+	// share, err := h.shareRepo.Create(id, gifId, body.Access, body.ExpiresIn)
+	// if err != nil {
+	// 	http.Error(w, "internal server error", http.StatusInternalServerError)
+	// 	slog.Error("CreateShare: CreateShare() failed", "error", err)
+	// 	return
+	// }
 
-	return s.shareRepo.Create(ctx, share)
+	// utils.SendJson(w, share, http.StatusCreated)
 }

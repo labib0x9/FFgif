@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
-	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 type reqForgot struct {
@@ -19,13 +19,13 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 
 	if err := decoder.Decode(&req); err != nil {
-		httputil.SendError(w, "Bad request", http.StatusBadRequest)
+		jsonio.SendError(w, "Bad request", http.StatusBadRequest)
 		slog.Warn("ForgotPassword: bad json body", "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		httputil.SendError(w, "field required", 422)
+		jsonio.SendError(w, "field required", 422)
 		slog.Warn("ForgotPassword: struct validation failed", "error", err)
 		return
 	}
@@ -34,15 +34,15 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	if err != nil && !errors.Is(err, auth.ErrMessageQueueFailed) {
 		switch {
 		case errors.Is(err, auth.ErrUserNotVerified):
-			httputil.SendError(w, "user is not varified", http.StatusForbidden)
+			jsonio.SendError(w, "user is not varified", http.StatusForbidden)
 		case errors.Is(err, auth.ErrUserNotFound):
-			httputil.SendError(w, "user not found", http.StatusNotFound)
+			jsonio.SendError(w, "user not found", http.StatusNotFound)
 		default:
-			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+			jsonio.SendError(w, "internal server error", http.StatusInternalServerError)
 		}
 		slog.Warn("srv.ForgotPassword(): failed", "error", err)
 		return
 	}
 
-	httputil.SendJson(w, "check mail", http.StatusOK)
+	jsonio.SendJson(w, "check mail", http.StatusOK)
 }

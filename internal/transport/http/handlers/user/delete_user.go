@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 type reqDeletePassword struct {
@@ -42,5 +42,5 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.SendJson(w, "deleted", http.StatusGone)
+	jsonio.SendJson(w, "deleted", http.StatusGone)
 }

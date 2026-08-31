@@ -155,7 +155,7 @@ type verifierRepo struct {
 
 func NewVerifierRepo(
 	db *sqlx.DB,
-) auth.VerifierRepository {
+) auth.VerifierRepo {
 	return &verifierRepo{
 		db: db,
 	}
@@ -205,7 +205,7 @@ type reseterRepo struct {
 
 func NewReseterRepo(
 	db *sqlx.DB,
-) auth.ReseterRepository {
+) auth.ReseterRepo {
 	return &reseterRepo{
 		db: db,
 	}

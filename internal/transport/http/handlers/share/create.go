@@ -1,48 +1,38 @@
 package share
 
 import (
-	"encoding/json"
-	"log/slog"
 	"net/http"
-	"time"
-
-	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
-	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
-type reqCreate struct {
-	SharedWith string    `json:"shared_with"`
-	ExpireAt   time.Time `json:"expire_at"`
-}
-
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
-	id := middleware.GetUserId(r)
-	if id == "" {
-		httputil.SendError(w, "unauthenticated", http.StatusUnauthorized)
-		slog.Error("CreateShare: user id not found")
-		return
-	}
+	// id := middleware.GetUserId(r)
+	// if id == "" {
+	// 	http.Error(w, "internal server error", http.StatusInternalServerError)
+	// 	slog.Error("CreateShare: id not found")
+	// 	return
+	// }
 
-	gifId := r.PathValue("key")
-	if gifId == "" {
-		httputil.SendError(w, "gif key is missing", http.StatusBadRequest)
-		slog.Error("CreateShare: gif id not found")
-		return
-	}
+	// gifId := r.PathValue("id")
 
-	var req reqCreate
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		slog.Error("CreateShare: json parse failed", "error", err)
-		return
-	}
+	// var body struct {
+	// 	ExpiresIn int    `json:"expires_in"` // hours, 0 = never
+	// 	Access    string `json:"access"`     // "view" or "download"
+	// }
+	// if err := utils.ParseJson(r, &body); err != nil {
+	// 	http.Error(w, "bad request", http.StatusBadRequest)
+	// 	slog.Error("CreateShare: ParseJson() failed", "error", err)
+	// 	return
+	// }
+	// if body.Access == "" {
+	// 	body.Access = "view"
+	// }
 
-	err := h.srv.Create(r.Context(), id, gifId, req.SharedWith, req.ExpireAt)
-	if err != nil {
-		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
-		slog.Error("CreateShare: CreateShare() failed", "error", err)
-		return
-	}
+	// share, err := h.shareRepo.Create(id, gifId, body.Access, body.ExpiresIn)
+	// if err != nil {
+	// 	http.Error(w, "internal server error", http.StatusInternalServerError)
+	// 	slog.Error("CreateShare: CreateShare() failed", "error", err)
+	// 	return
+	// }
 
-	httputil.SendJson(w, "shared", http.StatusCreated)
+	// utils.SendJson(w, share, http.StatusCreated)
 }

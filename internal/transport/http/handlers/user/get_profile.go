@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
+	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
@@ -22,7 +22,7 @@ func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.SendJson(w, found, http.StatusOK)
+	jsonio.SendJson(w, found, http.StatusOK)
 }
 
 func getId(r *http.Request) string {

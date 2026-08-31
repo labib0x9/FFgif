@@ -8,7 +8,7 @@ import (
 	"net/url"
 
 	"github.com/labib0x9/ffgif/internal/app/media"
-	"github.com/labib0x9/ffgif/internal/port/queue"
+	"github.com/labib0x9/ffgif/internal/domain/queue"
 	"github.com/minio/minio-go/v7/pkg/notification"
 	amqp "github.com/rabbitmq/amqp091-go"
 )

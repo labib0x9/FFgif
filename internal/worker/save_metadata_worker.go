@@ -7,19 +7,19 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/labib0x9/ffgif/internal/app/media"
-	jobdomain "github.com/labib0x9/ffgif/internal/domain/media"
-	"github.com/labib0x9/ffgif/internal/port/queue"
+	"github.com/labib0x9/ffgif/internal/app/job"
+	jobdomain "github.com/labib0x9/ffgif/internal/domain/job"
+	"github.com/labib0x9/ffgif/internal/domain/queue"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type SaveVideoWorker struct {
 	client     queue.Queue
-	srv        media.Service
+	srv        job.Service
 	maxRetries int
 }
 
-func NewSaveVideoWorker(client queue.Queue, srv media.Service) *SaveVideoWorker {
+func NewSaveVideoWorker(client queue.Queue, srv job.Service) *SaveVideoWorker {
 	return &SaveVideoWorker{
 		client:     client,
 		srv:        srv,

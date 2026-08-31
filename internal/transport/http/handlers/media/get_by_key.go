@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 func (h *Handler) GetByKey(w http.ResponseWriter, r *http.Request) {
@@ -23,5 +23,5 @@ func (h *Handler) GetByKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.SendJson(w, resp, http.StatusOK)
+	jsonio.SendJson(w, resp, http.StatusOK)
 }

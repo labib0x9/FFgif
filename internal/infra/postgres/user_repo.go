@@ -15,7 +15,7 @@ func NewUserRepository(db *sqlx.DB) user.UserRepository {
 	return &userRepo{db: db}
 }
 
-func (r *userRepo) GetProfile(ctx context.Context, id string) (user.ProfileResponse, error) {
+func (r *userRepo) GetProfile(ctx context.Context, id string) (user.ProfileResp, error) {
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
@@ -28,9 +28,9 @@ func (r *userRepo) GetProfile(ctx context.Context, id string) (user.ProfileRespo
 		 	u.id = $1
 	`
 	// query := `select * from profiles where user_id = $1`
-	var profile user.ProfileResponse
+	var profile user.ProfileResp
 	if err := sqlx.GetContext(ctx, db, &profile, query, id); err != nil {
-		return user.ProfileResponse{}, err
+		return user.ProfileResp{}, err
 	}
 	return profile, nil
 }
@@ -46,7 +46,7 @@ func (r *userRepo) SetProfile(ctx context.Context, profile user.Profile) error {
 	return err
 }
 
-func (r *userRepo) UpdateProfile(ctx context.Context, profile user.ProfileResponse, userId string) (user.ProfileResponse, error) {
+func (r *userRepo) UpdateProfile(ctx context.Context, profile user.ProfileResp, userId string) (user.ProfileResp, error) {
 	db := getDBFromCtx(ctx, r.db)
 	query1 := `
 	update users 
@@ -66,12 +66,12 @@ func (r *userRepo) UpdateProfile(ctx context.Context, profile user.ProfileRespon
 
 	_, err := db.ExecContext(ctx, query1, profile.Username, profile.Fullname, userId)
 	if err != nil {
-		return user.ProfileResponse{}, err
+		return user.ProfileResp{}, err
 	}
 
 	_, err = db.ExecContext(ctx, query2, profile.ProfilePic, userId)
 	if err != nil {
-		return user.ProfileResponse{}, err
+		return user.ProfileResp{}, err
 	}
 
 	return r.GetProfile(ctx, userId)
@@ -144,7 +144,7 @@ func NewAnonUserRepository(db *sqlx.DB) user.AnonUserRepository {
 	return &anonUserRepo{db: db}
 }
 
-func (r *anonUserRepo) GetProfile(ctx context.Context, id string) (user.ProfileResponse, error) {
+func (r *anonUserRepo) GetProfile(ctx context.Context, id string) (user.ProfileResp, error) {
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
@@ -156,9 +156,9 @@ func (r *anonUserRepo) GetProfile(ctx context.Context, id string) (user.ProfileR
 		where
 		 	u.id = $1
 	`
-	var profile user.ProfileResponse
+	var profile user.ProfileResp
 	if err := sqlx.GetContext(ctx, db, &profile, query, id); err != nil {
-		return user.ProfileResponse{}, err
+		return user.ProfileResp{}, err
 	}
 	return profile, nil
 }

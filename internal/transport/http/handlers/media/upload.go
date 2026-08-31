@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
+	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 type uploadRequest struct {
@@ -17,20 +17,20 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	var req uploadRequest
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&req); err != nil {
-		httputil.SendError(w, "Bad request", http.StatusBadRequest)
+		jsonio.SendError(w, "Bad request", http.StatusBadRequest)
 		slog.Warn("Upload: bad json body", "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		httputil.SendError(w, "invalid credentials", http.StatusUnauthorized)
+		jsonio.SendError(w, "invalid credentials", http.StatusUnauthorized)
 		slog.Warn("Upload: struct validation failed", "error", err)
 		return
 	}
 
 	claims, ok := middleware.GetClaims(r)
 	if !ok {
-		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+		jsonio.SendError(w, "internal server error", http.StatusInternalServerError)
 		slog.Warn("Upload: failed to get claims", "Addr", r.RemoteAddr)
 		return
 	}
@@ -40,12 +40,12 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		switch err {
 		default:
 			{
-				httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+				jsonio.SendError(w, "internal server error", http.StatusInternalServerError)
 			}
 		}
 		slog.Error("srv.Upload()", "error", err)
 		return
 	}
 
-	httputil.SendJson(w, result, http.StatusCreated)
+	jsonio.SendJson(w, result, http.StatusCreated)
 }

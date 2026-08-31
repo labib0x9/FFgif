@@ -30,7 +30,7 @@ func (r *gifRepo) Create(ctx context.Context, gif media.Gif) error {
 	return err
 }
 
-func (r *gifRepo) Get(ctx context.Context, user_id string, status string) ([]media.GifResponse, error) {
+func (r *gifRepo) Get(ctx context.Context, user_id string, status string) ([]media.GifResp, error) {
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
@@ -39,21 +39,21 @@ func (r *gifRepo) Get(ctx context.Context, user_id string, status string) ([]med
 			gifs
 		where user_id = $1`
 
-	var val []media.GifResponse
+	var val []media.GifResp
 	if status != "all" {
 		query += ` and status = $2`
 		if err := sqlx.SelectContext(ctx, db, &val, query, user_id, status); err != nil {
-			return []media.GifResponse{}, err
+			return []media.GifResp{}, err
 		}
 	} else {
 		if err := sqlx.SelectContext(ctx, db, &val, query, user_id); err != nil {
-			return []media.GifResponse{}, err
+			return []media.GifResp{}, err
 		}
 	}
 	return val, nil
 }
 
-func (r *gifRepo) GetByKey(ctx context.Context, key string) (media.GifResponse, error) {
+func (r *gifRepo) GetByKey(ctx context.Context, key string) (media.GifResp, error) {
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
@@ -61,14 +61,14 @@ func (r *gifRepo) GetByKey(ctx context.Context, key string) (media.GifResponse, 
 		from
 			gifs
 		where key = $1`
-	var val media.GifResponse
+	var val media.GifResp
 	if err := sqlx.GetContext(ctx, db, &val, query, key); err != nil {
-		return media.GifResponse{}, err
+		return media.GifResp{}, err
 	}
 	return val, nil
 }
 
-func (r *gifRepo) GetRecents(ctx context.Context, user_id string) ([]media.GifResponse, error) {
+func (r *gifRepo) GetRecents(ctx context.Context, user_id string) ([]media.GifResp, error) {
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
@@ -79,9 +79,9 @@ func (r *gifRepo) GetRecents(ctx context.Context, user_id string) ([]media.GifRe
 		order by created_at desc
         limit 20`
 
-	var val []media.GifResponse
+	var val []media.GifResp
 	if err := sqlx.SelectContext(ctx, db, &val, query, user_id); err != nil {
-		return []media.GifResponse{}, err
+		return []media.GifResp{}, err
 	}
 	return val, nil
 }
@@ -93,7 +93,7 @@ func (r *gifRepo) Delete(ctx context.Context, key string) error {
 	return err
 }
 
-func (r *gifRepo) Update(ctx context.Context, key string, gif media.GifResponse) error {
+func (r *gifRepo) Update(ctx context.Context, key string, gif media.GifResp) error {
 	db := getDBFromCtx(ctx, r.db)
 	_ = db
 	return nil
@@ -135,7 +135,7 @@ func (l *lastVideoRepo) Create(ctx context.Context, upload media.LastUpload) err
 	return nil
 }
 
-func (l *lastVideoRepo) GetLastVideo(ctx context.Context, user_id string) (media.LastUploadResponse, error) {
+func (l *lastVideoRepo) GetLastVideo(ctx context.Context, user_id string) (media.LastUploadResp, error) {
 	db := getDBFromCtx(ctx, l.db)
 	query := `
 		select
@@ -143,9 +143,9 @@ func (l *lastVideoRepo) GetLastVideo(ctx context.Context, user_id string) (media
 		from last_upload
 		where user_id = $1
 	`
-	var value media.LastUploadResponse
+	var value media.LastUploadResp
 	if err := sqlx.GetContext(ctx, db, &value, query, user_id); err != nil {
-		return media.LastUploadResponse{}, err
+		return media.LastUploadResp{}, err
 	}
 	return value, nil
 }

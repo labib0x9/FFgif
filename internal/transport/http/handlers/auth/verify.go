@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
-	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
@@ -20,13 +20,13 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 	if err := h.srv.Verify(r.Context(), token); err != nil {
 		switch {
 		case errors.Is(err, auth.ErrInvalidToken):
-			httputil.SendError(w, "token expired or invalid", http.StatusGone)
+			jsonio.SendError(w, "token expired or invalid", http.StatusGone)
 		default:
-			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+			jsonio.SendError(w, "internal server error", http.StatusInternalServerError)
 		}
 		slog.Warn("srv.Verify() failed", "error", err)
 		return
 	}
 
-	httputil.SendJson(w, "account verified", http.StatusOK)
+	jsonio.SendJson(w, "account verified", http.StatusOK)
 }
