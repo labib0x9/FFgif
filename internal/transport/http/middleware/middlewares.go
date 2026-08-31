@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"github.com/labib0x9/ffgif/config"
-	"github.com/labib0x9/ffgif/internal/domain/cache"
+	"github.com/labib0x9/ffgif/internal/port/cache"
 	"github.com/labib0x9/ffgif/pkg/jwt"
 )
 

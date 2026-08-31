@@ -5,15 +5,15 @@ import (
 	"net/http"
 
 	"github.com/labib0x9/ffgif/internal/domain/media"
+	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
-	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 type gifResp struct {
-	Data  []media.GifResp `json:"data"`
-	Total int             `json:"total"`
-	Page  int             `json:"page"`
-	Limit int             `json:"limit"`
+	Data  []media.GifResponse `json:"data"`
+	Total int                 `json:"total"`
+	Page  int                 `json:"page"`
+	Limit int                 `json:"limit"`
 }
 
 func (h *Handler) GetGifs(w http.ResponseWriter, r *http.Request) {
@@ -37,5 +37,5 @@ func (h *Handler) GetGifs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonio.SendJson(w, result, http.StatusOK)
+	httputil.SendJson(w, result, http.StatusOK)
 }

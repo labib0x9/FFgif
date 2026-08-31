@@ -6,11 +6,11 @@ import (
 	"net/http"
 
 	"github.com/labib0x9/ffgif/internal/domain/user"
-	"github.com/labib0x9/ffgif/pkg/jsonio"
+	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
 
 func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
-	var req user.ProfileResp
+	var req user.ProfileResponse
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&req); err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
@@ -38,5 +38,5 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonio.SendJson(w, updated, 200)
+	httputil.SendJson(w, updated, 200)
 }

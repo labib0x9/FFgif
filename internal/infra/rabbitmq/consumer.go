@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	queuedomain "github.com/labib0x9/ffgif/internal/domain/queue"
+	queuedomain "github.com/labib0x9/ffgif/internal/port/queue"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 

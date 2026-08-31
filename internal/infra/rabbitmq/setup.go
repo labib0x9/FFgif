@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/labib0x9/ffgif/config"
-	"github.com/labib0x9/ffgif/internal/domain/queue"
+	"github.com/labib0x9/ffgif/internal/port/queue"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 

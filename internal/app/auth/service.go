@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
-	"github.com/labib0x9/ffgif/internal/domain/cache"
-	"github.com/labib0x9/ffgif/internal/domain/db"
-	"github.com/labib0x9/ffgif/internal/domain/queue"
+	"github.com/labib0x9/ffgif/internal/port/cache"
+	"github.com/labib0x9/ffgif/internal/port/db"
+	"github.com/labib0x9/ffgif/internal/port/queue"
 	"github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/pkg/jwt"
 	"github.com/labib0x9/ffgif/pkg/password"
@@ -25,9 +25,9 @@ type Service interface {
 
 type service struct {
 	authRepo     auth.AuthRepository
-	verifierRepo auth.VerifierRepo
+	verifierRepo auth.VerifierRepository
 	profileRepo  user.UserRepository
-	reseterRepo  auth.ReseterRepo
+	reseterRepo  auth.ReseterRepository
 	quotaRepo    user.QuotaRepository
 	cache        cache.Cache
 	queue        queue.Queue
@@ -38,9 +38,9 @@ type service struct {
 
 func NewService(
 	authRepo auth.AuthRepository,
-	verifierRepo auth.VerifierRepo,
+	verifierRepo auth.VerifierRepository,
 	profileRepo user.UserRepository,
-	reseterRepo auth.ReseterRepo,
+	reseterRepo auth.ReseterRepository,
 	quotaRepo user.QuotaRepository,
 	cache cache.Cache,
 	queue queue.Queue,

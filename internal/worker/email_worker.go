@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/labib0x9/ffgif/internal/domain/mailer"
-	"github.com/labib0x9/ffgif/internal/domain/queue"
+	"github.com/labib0x9/ffgif/internal/port/mailer"
+	"github.com/labib0x9/ffgif/internal/port/queue"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 

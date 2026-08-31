@@ -7,6 +7,6 @@ import (
 )
 
 func (s *service) Update(ctx context.Context, key string) error {
-	var req media.GifResp
+	var req media.GifResponse
 	return s.gifRepo.Update(ctx, key, req)
 }

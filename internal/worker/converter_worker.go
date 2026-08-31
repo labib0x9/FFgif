@@ -6,18 +6,18 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/labib0x9/ffgif/internal/app/job"
-	"github.com/labib0x9/ffgif/internal/domain/queue"
+	"github.com/labib0x9/ffgif/internal/app/media"
+	"github.com/labib0x9/ffgif/internal/port/queue"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type VideoWorker struct {
 	client     queue.Queue
-	srv        job.Service
+	srv        media.Service
 	maxRetries int
 }
 
-func NewVideoWorker(srv job.Service, client queue.Queue) *VideoWorker {
+func NewVideoWorker(srv media.Service, client queue.Queue) *VideoWorker {
 	return &VideoWorker{
 		srv:        srv,
 		client:     client,
