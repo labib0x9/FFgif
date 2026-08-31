@@ -7,7 +7,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/labib0x9/ffgif/internal/domain/processor"
+	"github.com/labib0x9/ffgif/internal/port/processor"
 )
 
 type ProbeExtractor struct {

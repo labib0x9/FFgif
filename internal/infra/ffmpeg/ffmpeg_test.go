@@ -16,6 +16,9 @@ func TestGIFGeneration(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	inputPath := filepath.Join("testdata", "sample.mov")
+	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
+		t.Skip("test fixture testdata/sample.mov not present, skipping ffmpeg execution test")
+	}
 	outputPath := filepath.Join(tmpDir, "output.gif")
 	palettePath := filepath.Join(tmpDir, "palette.png")
 
