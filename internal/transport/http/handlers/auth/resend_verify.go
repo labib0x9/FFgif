@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
-	"github.com/labib0x9/ffgif/pkg/jsonio"
+	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
 
 type resendRequest struct {
@@ -19,13 +19,13 @@ func (h *Handler) ResendVerify(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 
 	if err := decoder.Decode(&req); err != nil {
-		jsonio.SendError(w, "Bad request", http.StatusBadRequest)
+		httputil.SendError(w, "Bad request", http.StatusBadRequest)
 		slog.Warn("ResendVerify: bad json body", "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		jsonio.SendError(w, "field required", 422)
+		httputil.SendError(w, "field required", 422)
 		slog.Warn("ResendVerify: struct validation failed", "error", err)
 		return
 	}
@@ -34,17 +34,17 @@ func (h *Handler) ResendVerify(w http.ResponseWriter, r *http.Request) {
 	if err != nil && !errors.Is(err, auth.ErrMessageQueueFailed) {
 		switch {
 		case errors.Is(err, auth.ErrUserNotFound):
-			jsonio.SendError(w, "user not found", http.StatusNotFound)
+			httputil.SendError(w, "user not found", http.StatusNotFound)
 		case errors.Is(err, auth.ErrTokenFetchFailed):
 			fallthrough
 		case errors.Is(err, auth.ErrUserNotVerified):
-			jsonio.SendError(w, "not verified", http.StatusForbidden)
+			httputil.SendError(w, "not verified", http.StatusForbidden)
 		default:
-			jsonio.SendError(w, "internal server error", http.StatusInternalServerError)
+			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
 		}
 		slog.Warn("srv.ResendVerify(): failed", "error", err)
 		return
 	}
 
-	jsonio.SendJson(w, "check mail", http.StatusOK)
+	httputil.SendJson(w, "check mail", http.StatusOK)
 }

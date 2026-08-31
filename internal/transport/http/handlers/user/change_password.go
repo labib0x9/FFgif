@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/labib0x9/ffgif/pkg/jsonio"
+	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
 
 type reqChangePassword struct {
@@ -44,5 +44,5 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonio.SendJson(w, "changed", http.StatusOK)
+	httputil.SendJson(w, "changed", http.StatusOK)
 }
