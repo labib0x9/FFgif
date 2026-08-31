@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
-	"github.com/labib0x9/ffgif/internal/domain/queue"
+	"github.com/labib0x9/ffgif/internal/port/queue"
 )
 
 func (s *service) ResetPasswordGet(ctx context.Context, token string) (string, error) {

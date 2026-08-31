@@ -6,7 +6,7 @@ import (
 	"errors"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
-	"github.com/labib0x9/ffgif/internal/domain/queue"
+	"github.com/labib0x9/ffgif/internal/port/queue"
 	"github.com/labib0x9/ffgif/pkg/token"
 )
 
