@@ -8,7 +8,7 @@ import (
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager) {
 	mux.Handle(
-		"POST /gifs/me/{id}/shares",
+		"POST /gifs/me/{key}/shares",
 		manager.With(
 			http.HandlerFunc(h.Create),
 			h.middlewares.Auth,
@@ -16,41 +16,41 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager
 	)
 
 	mux.Handle(
-		"GET /gifs/me/{id}/shares",
+		"GET /gifs/me/shares",
 		manager.With(
 			http.HandlerFunc(h.Get),
 			h.middlewares.Auth,
 		),
 	)
 
-	mux.Handle(
-		"PATCH /gifs/me/{id}/shares/{shareId}",
-		manager.With(
-			http.HandlerFunc(h.Update),
-			h.middlewares.Auth,
-		),
-	)
+	// mux.Handle(
+	// 	"PATCH /gifs/me/{key}/shares/{shareId}",
+	// 	manager.With(
+	// 		http.HandlerFunc(h.Update),
+	// 		h.middlewares.Auth,
+	// 	),
+	// )
 
-	mux.Handle(
-		"DELETE /gifs/me/{id}/shares/{shareId}",
-		manager.With(
-			http.HandlerFunc(h.Delete),
-			h.middlewares.Auth,
-		),
-	)
+	// mux.Handle(
+	// 	"DELETE /gifs/me/{key}/shares/{shareId}",
+	// 	manager.With(
+	// 		http.HandlerFunc(h.Delete),
+	// 		h.middlewares.Auth,
+	// 	),
+	// )
 
-	// Public shared link (no Auth)
-	mux.Handle(
-		"GET /s/{token}",
-		manager.With(
-			http.HandlerFunc(h.View),
-		),
-	)
+	// // Public shared link (no Auth)
+	// mux.Handle(
+	// 	"GET /s/{token}",
+	// 	manager.With(
+	// 		http.HandlerFunc(h.View),
+	// 	),
+	// )
 
-	mux.Handle(
-		"GET /s/{token}/download",
-		manager.With(
-			http.HandlerFunc(h.Download),
-		),
-	)
+	// mux.Handle(
+	// 	"GET /s/{token}/download",
+	// 	manager.With(
+	// 		http.HandlerFunc(h.Download),
+	// 	),
+	// )
 }
