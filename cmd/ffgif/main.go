@@ -9,11 +9,11 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/labib0x9/ffgif/config"
 	authapp "github.com/labib0x9/ffgif/internal/app/auth"
-	jobapp "github.com/labib0x9/ffgif/internal/app/job"
 	mediaapp "github.com/labib0x9/ffgif/internal/app/media"
 	shareapp "github.com/labib0x9/ffgif/internal/app/share"
 	userapp "github.com/labib0x9/ffgif/internal/app/user"
-	"github.com/labib0x9/ffgif/internal/infra/gifprocessor"
+	"github.com/labib0x9/ffgif/internal/infra/ffmpeg"
+	"github.com/labib0x9/ffgif/internal/infra/mailer"
 	"github.com/labib0x9/ffgif/internal/infra/minio"
 	"github.com/labib0x9/ffgif/internal/infra/postgres"
 	"github.com/labib0x9/ffgif/internal/infra/rabbitmq"
@@ -22,7 +22,6 @@ import (
 	ratelimitter "github.com/labib0x9/ffgif/internal/infra/redis/rate_limiter"
 	rest "github.com/labib0x9/ffgif/internal/transport/http"
 	authhandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/auth"
-	jobhandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/job"
 	mediahandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/media"
 	sharehandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/share"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/static"
@@ -30,7 +29,6 @@ import (
 	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 	"github.com/labib0x9/ffgif/internal/worker"
 	"github.com/labib0x9/ffgif/pkg/jwt"
-	"github.com/labib0x9/ffgif/pkg/mailer"
 	"github.com/labib0x9/ffgif/pkg/password"
 )
 
@@ -69,19 +67,18 @@ func main() {
 	middlewares := middleware.NewMiddlewares(cnf, cacheRepo, *jwtProvider)
 	validate := validator.New()
 	mailer := mailer.NewSmtpMailer(cnf)
-	ffmpeg := gifprocessor.NewFmeg(storageRepo)
+	ffmpeg := ffmpeg.NewFmeg(storageRepo)
 
 	tnx := postgres.NewTxManager(dbConn)
 
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rabbitMq, *jwtProvider, *hasher, tnx)
-	jobService := jobapp.NewService(ffmpeg, gifRepo, lastUploadRepo, storageRepo, cacheRepo, rabbitMq)
 	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, lastUploadRepo, storageRepo, rabbitMq, cacheRepo, ffmpeg, cnf)
 	shareService := shareapp.NewService()
 	userService := userapp.NewService(userRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
 
 	emailWorker := worker.NewEmailWorker(rabbitMq, mailer)
-	convertWorker := worker.NewVideoWorker(jobService, rabbitMq)
-	saveMetadataWorker := worker.NewSaveVideoWorker(rabbitMq, jobService)
+	convertWorker := worker.NewVideoWorker(mediaService, rabbitMq)
+	saveMetadataWorker := worker.NewSaveVideoWorker(rabbitMq, mediaService)
 	processingWorker := worker.NewProcessingWorker(mediaService, rabbitMq)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -93,7 +90,6 @@ func main() {
 	go processingWorker.Run(ctx, "processing-worker", 3)
 
 	authHandler := authhandler.NewHandler(authService, middlewares, validate)
-	jobHandler := jobhandler.NewHandler(jobService, middlewares, validate)
 	mediaHandler := mediahandler.NewHandler(mediaService, middlewares, validate)
 	shareHandler := sharehandler.NewHandler(shareService, middlewares, validate)
 	userHandler := userhandler.NewHandler(userService, middlewares, validate)
@@ -101,7 +97,6 @@ func main() {
 
 	server := rest.NewServer(
 		authHandler,
-		jobHandler,
 		mediaHandler,
 		shareHandler,
 		userHandler,

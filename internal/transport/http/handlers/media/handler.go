@@ -23,3 +23,22 @@ func NewHandler(
 		validate:    validate,
 	}
 }
+
+
+// type Handler struct {
+// 	srv         job.Service
+// 	middlewares *middleware.Middlewares
+// 	validate    *validator.Validate
+// }
+
+// func NewHandler(
+// 	srv job.Service,
+// 	middlewares *middleware.Middlewares,
+// 	validate *validator.Validate,
+// ) *Handler {
+// 	return &Handler{
+// 		srv:         srv,
+// 		middlewares: middlewares,
+// 		validate:    validate,
+// 	}
+// }

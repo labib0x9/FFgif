@@ -7,7 +7,7 @@ import (
 )
 
 type GifResult struct {
-	Data  []media.GifResp `json:"data"`
+	Data  []media.GifResponse `json:"data"`
 	Total int             `json:"total"`
 	Page  int             `json:"page"`
 	Limit int             `json:"limit"`

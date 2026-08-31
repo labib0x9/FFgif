@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/labib0x9/ffgif/pkg/jsonio"
+	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
 
 func (h *Handler) Stream(w http.ResponseWriter, r *http.Request) {
@@ -12,7 +12,7 @@ func (h *Handler) Stream(w http.ResponseWriter, r *http.Request) {
 
 	if key == "" {
 		slog.Info("Status: key missing")
-		jsonio.SendError(w, "bad request", http.StatusBadRequest)
+		httputil.SendError(w, "bad request", http.StatusBadRequest)
 		return
 	}
 
@@ -20,9 +20,9 @@ func (h *Handler) Stream(w http.ResponseWriter, r *http.Request) {
 	res, err := h.srv.Stream(r.Context(), key)
 	if err != nil {
 		slog.Info("Status: srv.Stream() failed", "err", err)
-		jsonio.SendError(w, "internal server error", http.StatusInternalServerError)
+		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	jsonio.SendJson(w, res, http.StatusOK)
+	httputil.SendJson(w, res, http.StatusOK)
 }

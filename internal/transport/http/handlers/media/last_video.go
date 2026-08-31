@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 	middleware "github.com/labib0x9/ffgif/internal/transport/http/middleware"
-	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 func (h *Handler) LastVideo(w http.ResponseWriter, r *http.Request) {
@@ -24,7 +24,7 @@ func (h *Handler) LastVideo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonio.SendJson(w, result, http.StatusOK)
+	httputil.SendJson(w, result, http.StatusOK)
 }
 
 func getId(r *http.Request) string {

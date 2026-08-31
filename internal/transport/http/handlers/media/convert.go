@@ -1,12 +1,12 @@
-package job
+package media
 
 import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
 
+	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
-	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 type convertRequ struct {
@@ -22,20 +22,20 @@ func (h *Handler) Convert(w http.ResponseWriter, r *http.Request) {
 	var req convertRequ
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&req); err != nil {
-		jsonio.SendError(w, "Bad request", http.StatusBadRequest)
+		httputil.SendError(w, "Bad request", http.StatusBadRequest)
 		slog.Warn("Convert: bad json body", "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		jsonio.SendError(w, "invalid credentials", http.StatusUnauthorized)
+		httputil.SendError(w, "invalid credentials", http.StatusUnauthorized)
 		slog.Warn("Convert: struct validation failed", "error", err)
 		return
 	}
 
 	userId := middleware.GetUserId(r)
 	if userId == "" {
-		jsonio.SendError(w, "internal server error", http.StatusInternalServerError)
+		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
 		slog.Warn("Convert: message queue failed", "error", "userId is null")
 		return
 	}
@@ -44,13 +44,13 @@ func (h *Handler) Convert(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		default:
-			jsonio.SendError(w, "internal server error", http.StatusInternalServerError)
+			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
 		}
 		slog.Error("srv.Convert() failed", "error", err)
 		return
 	}
 
-	jsonio.SendJson(w, map[string]string{
+	httputil.SendJson(w, map[string]string{
 		"job_id": result.Id,
 		"status": result.Status,
 	}, http.StatusOK)

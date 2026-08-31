@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
-	"github.com/labib0x9/ffgif/pkg/jsonio"
 )
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
@@ -24,5 +24,5 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonio.SendJson(w, map[string]string{"message": "updated"}, http.StatusOK)
+	httputil.SendJson(w, map[string]string{"message": "updated"}, http.StatusOK)
 }

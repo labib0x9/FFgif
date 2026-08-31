@@ -1,10 +1,10 @@
-package job
+package media
 
 import (
 	"context"
 	"time"
 
-	"github.com/labib0x9/ffgif/internal/domain/job"
+	"github.com/labib0x9/ffgif/internal/domain/media"
 )
 
 type StatusResult struct {
@@ -15,12 +15,12 @@ type StatusResult struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-func (s *service) Status(ctx context.Context, jobId string) (*StatusResult, error) {
+func (s *service) ConversionStatus(ctx context.Context, jobId string) (*StatusResult, error) {
 
 	key := "messaage_queue:job_id:" + jobId
 	val, err := s.cache.Get(ctx, key)
 	if err != nil {
-		return nil, job.ErrCacheGetFailed
+		return nil, media.ErrCacheGetFailed
 	}
 
 	gifKey := "messaage_queue_gif:job_id:" + jobId

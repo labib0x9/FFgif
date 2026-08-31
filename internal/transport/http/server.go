@@ -8,9 +8,8 @@ import (
 	"net/http"
 
 	"github.com/labib0x9/ffgif/config"
-	"github.com/labib0x9/ffgif/internal/domain/cache"
+	"github.com/labib0x9/ffgif/internal/port/cache"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/auth"
-	"github.com/labib0x9/ffgif/internal/transport/http/handlers/job"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/media"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/share"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/static"
@@ -21,7 +20,6 @@ import (
 type Server struct {
 	server        http.Server
 	AuthHandler   *auth.Handler
-	JobHandler    *job.Handler
 	MediaHandler  *media.Handler
 	ShareHandler  *share.Handler
 	UserHandler   *user.Handler
@@ -30,7 +28,6 @@ type Server struct {
 
 func NewServer(
 	AuthHandler *auth.Handler,
-	JobHandler *job.Handler,
 	MediaHandler *media.Handler,
 	ShareHandler *share.Handler,
 	UserHandler *user.Handler,
@@ -38,7 +35,6 @@ func NewServer(
 ) *Server {
 	return &Server{
 		AuthHandler:   AuthHandler,
-		JobHandler:    JobHandler,
 		MediaHandler:  MediaHandler,
 		ShareHandler:  ShareHandler,
 		UserHandler:   UserHandler,
@@ -62,7 +58,6 @@ func (s *Server) Start(rate cache.RateLimiter, cnf *config.Config) {
 	wrappedMux := manager.WrapMux(mux)
 
 	s.AuthHandler.RegisterRoutes(mux, manager)
-	s.JobHandler.RegisterRoutes(mux, manager)
 	s.MediaHandler.RegisterRoutes(mux, manager)
 	s.ShareHandler.RegisterRoutes(mux, manager)
 	s.UserHandler.RegisterRoutes(mux, manager)

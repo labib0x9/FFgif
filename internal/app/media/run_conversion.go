@@ -1,11 +1,11 @@
-package job
+package media
 
 import (
 	"context"
 	"time"
 
 	"github.com/labib0x9/ffgif/internal/domain/media"
-	"github.com/labib0x9/ffgif/internal/domain/queue"
+	"github.com/labib0x9/ffgif/internal/port/queue"
 )
 
 func (s *service) Process(ctx context.Context, msg queue.VideoMessage) error {
