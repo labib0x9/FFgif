@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/labib0x9/ffgif/internal/domain/media"
@@ -16,11 +17,11 @@ func (s *service) Process(ctx context.Context, msg queue.VideoMessage) error {
 
 	result, err := s.processor.Process(ctx, msg.JobId, msg.Key, msg.Start, msg.End, msg.Width, msg.FPS, msg.Loop)
 	if err != nil {
-		return err
+		return errors.Join(err, s.cache.Set(ctx, key, "failed", 5*time.Minute))
 	}
 
 	gifKey := "messaage_queue_gif:job_id:" + msg.JobId
-	if err := s.cache.Set(ctx, gifKey, gifKey, 5*time.Minute); err != nil {
+	if err := s.cache.Set(ctx, gifKey, result.GifKey, 5*time.Minute); err != nil {
 		return err
 	}
 
@@ -35,10 +36,7 @@ func (s *service) Process(ctx context.Context, msg queue.VideoMessage) error {
 	}
 
 	if err := s.gifRepo.Create(ctx, gif); err != nil {
-		if err := s.cache.Set(ctx, key, "failed", 5*time.Minute); err != nil {
-			return err
-		}
-		return err
+		return errors.Join(err, s.cache.Set(ctx, key, "failed", 5*time.Minute))
 	}
 	return nil
 }
