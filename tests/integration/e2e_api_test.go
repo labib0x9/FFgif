@@ -213,8 +213,8 @@ func TestE2E_FullUserAndJobLifecycle(t *testing.T) {
 		cache, queue, *jwtProvider, *hasher, txManager,
 	)
 	userService := userapp.NewService(profileRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
-	mediaService := mediaapp.NewService(authRepo, profileRepo, quotaRepo, nil, nil, nil, queue, cache, nil, cnf)
-	shareService := shareapp.NewService()
+	mediaService := mediaapp.NewService(authRepo, profileRepo, quotaRepo, nil, nil, nil, nil, queue, cache, nil, cnf)
+	shareService := shareapp.NewService(authRepo, nil, nil)
 
 	authH := authhandler.NewHandler(authService, middlewares, val)
 	userH := userhandler.NewHandler(userService, middlewares, val)

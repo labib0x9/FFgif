@@ -27,4 +27,5 @@ type GifResponse struct {
 type ShareRepository interface {
 	Create(ctx context.Context, gif Share) error
 	Get(ctx context.Context, userID string) ([]GifResponse, error)
+	GetOwner(ctx context.Context, user string, key string) (string, error)
 }

@@ -12,7 +12,6 @@ import (
 type Service interface {
 	Create(ctx context.Context, sharedBy string, gifKey string, sharedWith string, expiresAt time.Time) error
 	Delete()
-	Download()
 	Get(ctx context.Context, user string) ([]share.GifResponse, error)
 	Update()
 	View()
@@ -24,8 +23,16 @@ type service struct {
 	shareRepo share.ShareRepository
 }
 
-func NewService() Service {
-	return &service{}
+func NewService(
+	authRepo auth.AuthRepository,
+	gifRepo media.GifRepository,
+	shareRepo share.ShareRepository,
+) Service {
+	return &service{
+		authRepo:  authRepo,
+		gifRepo:   gifRepo,
+		shareRepo: shareRepo,
+	}
 }
 
 // type Jwt interface {

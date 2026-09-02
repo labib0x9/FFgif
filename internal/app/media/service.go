@@ -6,6 +6,7 @@ import (
 	"github.com/labib0x9/ffgif/config"
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/domain/media"
+	"github.com/labib0x9/ffgif/internal/domain/share"
 	"github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/internal/port/cache"
 	"github.com/labib0x9/ffgif/internal/port/processor"
@@ -15,7 +16,7 @@ import (
 
 type Service interface {
 	Delete(ctx context.Context, userId string, key string) error
-	Download(ctx context.Context, key string) (string, error)
+	Download(ctx context.Context, userId, key string) (string, error)
 	GetByKey(ctx context.Context, key string) (media.GifResponse, error)
 	GetRecents(ctx context.Context, id string) ([]media.GifResponse, error)
 	GetGifs(ctx context.Context, id string, filter string) (*GifResult, error)
@@ -39,6 +40,7 @@ type service struct {
 	profileRepo   user.UserRepository
 	quotaRepo     user.QuotaRepository
 	gifRepo       media.GifRepository
+	shareRepo     share.ShareRepository
 	lastVideoRepo media.LastVideoRepository
 	storage       media.StorageRepository
 	queue         queue.Queue
@@ -52,6 +54,7 @@ func NewService(
 	profileRepo user.UserRepository,
 	quotaRepo user.QuotaRepository,
 	gifRepo media.GifRepository,
+	shareRepo share.ShareRepository,
 	lastVideoRepo media.LastVideoRepository,
 	storage media.StorageRepository,
 	queue queue.Queue,
@@ -64,6 +67,7 @@ func NewService(
 		profileRepo:   profileRepo,
 		quotaRepo:     quotaRepo,
 		gifRepo:       gifRepo,
+		shareRepo:     shareRepo,
 		lastVideoRepo: lastVideoRepo,
 		storage:       storage,
 		queue:         queue,

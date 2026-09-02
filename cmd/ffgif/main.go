@@ -58,7 +58,7 @@ func main() {
 
 	lastUploadRepo := postgres.NewLastVideoRepository(dbConn)
 	gifRepo := postgres.NewGifRepository(dbConn, cnf.Minio) // ?? db + bucket
-	// shareRepo := postgres.NewShareRepository(dbConn)
+	shareRepo := postgres.NewShareRepository(dbConn)
 
 	jwtProvider := jwt.NewJwt(cnf.JwtSecret)
 	hasher := password.NewHasher(cnf.HashPepper, cnf.BcryptCost)
@@ -69,8 +69,8 @@ func main() {
 	tnx := postgres.NewTxManager(dbConn)
 
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rabbitMq, *jwtProvider, *hasher, tnx)
-	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, lastUploadRepo, storageRepo, rabbitMq, cacheRepo, ffmpeg, cnf)
-	shareService := shareapp.NewService()
+	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, shareRepo, lastUploadRepo, storageRepo, rabbitMq, cacheRepo, ffmpeg, cnf)
+	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo)
 	userService := userapp.NewService(userRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

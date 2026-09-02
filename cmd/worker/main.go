@@ -45,13 +45,14 @@ func main() {
 	authRepo := postgres.NewAuthRepository(dbConn)
 	userRepo := postgres.NewUserRepository(dbConn)
 	quotaRepo := postgres.NewQuotaRepository(dbConn)
+	shareRepo := postgres.NewShareRepository(dbConn)
 
 	lastUploadRepo := postgres.NewLastVideoRepository(dbConn)
 	gifRepo := postgres.NewGifRepository(dbConn, cnf.Minio)
 
 	ffmpeg := ffmpeg.NewFmeg(storageRepo)
 
-	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, lastUploadRepo, storageRepo, rabbitMq, cacheRepo, ffmpeg, cnf)
+	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, shareRepo, lastUploadRepo, storageRepo, rabbitMq, cacheRepo, ffmpeg, cnf)
 
 	emailWorker := worker.NewEmailWorker(rabbitMq, mailer)
 	convertWorker := worker.NewVideoWorker(mediaService, rabbitMq)
