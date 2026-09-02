@@ -2,6 +2,8 @@ package user
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
 	"github.com/google/uuid"
 	"github.com/labib0x9/ffgif/internal/domain/auth"
@@ -10,29 +12,33 @@ import (
 
 func (s *service) ChangePassword(ctx context.Context, id string, currentPass string, pass string, confirmPass string) error {
 	uuid, err := uuid.Parse(id)
+	if err != nil {
+		return err
+	}
 
 	found, err := s.authRepo.GetById(ctx, uuid)
 	if err != nil {
-		return auth.ErrUserNotFound
+		if errors.Is(err, sql.ErrNoRows) {
+			return auth.ErrUserNotFound
+		}
+		return err
 	}
 
-	if !s.hasher.CompareHashAndPassword(found.PasswordHash, pass) {
-		// http.Error(w, "invalid credentials", http.StatusUnauthorized)
-		// slog.Warn("Login: password mismatched", "error", err, "user_id", id)
-		return user.ErrPasswordMismatched
+	if pass != confirmPass {
+		return auth.ErrPasswordMismatched
+	}
+
+	if !s.hasher.CompareHashAndPassword(found.PasswordHash, currentPass) {
+		return auth.ErrInvalidCredential
 	}
 
 	newPassHash, err := s.hasher.GenerateHash(pass)
 	if err != nil {
-		// http.Error(w, "internal server error", http.StatusInternalServerError)
-		// slog.Error("ChangePassword: hash generation failed", "error", err)
 		return user.ErrHashGenFailed
 	}
 
 	err = s.userRepo.ChangePassword(ctx, id, newPassHash)
 	if err != nil {
-		// http.Error(w, "internal server error", http.StatusInternalServerError)
-		// slog.Error("ChangePassword: user not found", "err", err, "id", id)
 		return user.ErrTableUpdateFailed
 	}
 	return nil
