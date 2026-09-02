@@ -8,16 +8,14 @@ import (
 
 type GifResult struct {
 	Data  []media.GifResponse `json:"data"`
-	Total int             `json:"total"`
-	Page  int             `json:"page"`
-	Limit int             `json:"limit"`
+	Total int                 `json:"total"`
+	Page  int                 `json:"page"`
+	Limit int                 `json:"limit"`
 }
 
 func (s *service) GetGifs(ctx context.Context, id string, filter string) (*GifResult, error) {
 	gifs, err := s.gifRepo.Get(ctx, id, filter)
 	if err != nil {
-		// http.Error(w, "internal server error", http.StatusInternalServerError)
-		// slog.Error("GetGifs: Get() failed", "error", err, "user_id", id)
 		return nil, media.ErrGifFetchFailed
 	}
 

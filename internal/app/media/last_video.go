@@ -12,12 +12,8 @@ func (s *service) LastVideo(ctx context.Context, userId string) (media.LastUploa
 	videoMetadata, err := s.lastVideoRepo.GetLastVideo(ctx, userId)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			// http.Error(w, "Not found", http.StatusNotFound)
-			// slog.Warn("LastVideo: video metadata found", "err", err)
 			return media.LastUploadResponse{}, media.ErrLastVideoNotFound
 		}
-		// http.Error(w, "internal server error", http.StatusInternalServerError)
-		// slog.Error("LastVideo: video metadata found", "err", err)
 		return media.LastUploadResponse{}, err
 	}
 	return videoMetadata, nil

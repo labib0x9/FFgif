@@ -30,12 +30,12 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, media.ErrGifNotFound):
 			httputil.SendError(w, "gif not found", http.StatusNotFound)
-		case errors.Is(err, media.ErrGifOwnerMismatch):
-			httputil.SendError(w, "forbidden", http.StatusForbidden)
+		// case errors.Is(err, media.ErrGifOwnerMismatch):
+		// 	httputil.SendError(w, "forbidden", http.StatusForbidden)
 		default:
 			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("Media handler - Delete()", "err", err)
+		slog.Error("Media handler - Download()", "err", err)
 		return
 	}
 

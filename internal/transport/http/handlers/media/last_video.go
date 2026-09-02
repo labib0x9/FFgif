@@ -1,9 +1,11 @@
 package media
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
+	"github.com/labib0x9/ffgif/internal/domain/media"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 	middleware "github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
@@ -11,16 +13,20 @@ import (
 func (h *Handler) LastVideo(w http.ResponseWriter, r *http.Request) {
 	userId := getId(r)
 	if userId == "" {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		slog.Error("LastVideo: id not found")
+		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
+		slog.Error("Media handler - LastVideo()", "err", "user_id not found")
 		return
 	}
 
 	result, err := h.srv.LastVideo(r.Context(), userId)
 	if err != nil {
-		switch err {
-
+		switch {
+		case errors.Is(err, media.ErrLastVideoNotFound):
+			httputil.SendError(w, "video not found", http.StatusNotFound)
+		default:
+			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
 		}
+		slog.Error("Media handler - LastVideo()", "err", err)
 		return
 	}
 
