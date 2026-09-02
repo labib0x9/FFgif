@@ -31,7 +31,7 @@ func NewJwt(key []byte) *Jwt {
 
 func (j *Jwt) Create(fullname string, id string, email string, role string) (string, error) {
 	var claims Payload
-	if fullname == "" || email == "" || role == "" {
+	if fullname == "" || role == "" {
 		return "", EmptyValueErr
 	}
 	if role != "anon" {
@@ -41,7 +41,7 @@ func (j *Jwt) Create(fullname string, id string, email string, role string) (str
 			Role:     role,
 			RegisteredClaims: jwt.RegisteredClaims{
 				Subject:   id,
-				Issuer:    "projectpdf",
+				Issuer:    "ffgif",
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			},
@@ -52,7 +52,7 @@ func (j *Jwt) Create(fullname string, id string, email string, role string) (str
 			Role:     role,
 			RegisteredClaims: jwt.RegisteredClaims{
 				Subject:   id,
-				Issuer:    "projectpdf",
+				Issuer:    "ffgif",
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 			},
