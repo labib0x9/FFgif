@@ -202,7 +202,7 @@ func (f *ThumbGenerator) Run() error {
 func newThumbGeneratorExec(ctx context.Context, startAt float32, inputPath, outputPath string) *exec.Cmd {
 	cmd := exec.CommandContext(
 		ctx, "ffmpeg",
-		"-ss", "00:00:01",
+		"-ss", fmt.Sprintf("%.2f", startAt),
 		"-i", inputPath,
 		"-vframes", "1",
 		"-q:v", "2",
