@@ -22,8 +22,8 @@ func NewGifRepository(db *sqlx.DB, cnf *config.Minio) media.GifRepository {
 func (r *gifRepo) Create(ctx context.Context, gif media.Gif) error {
 	db := getDBFromCtx(ctx, r.db)
 	query := `insert into 
-		gifs(user_id, key)
-		values(:user_id, :key)
+		gifs(user_id, key, thumbnail_url, url, name)
+		values(:user_id, :key, :thumbnail_url, :url, :name)
 	`
 
 	_, err := sqlx.NamedExecContext(ctx, db, query, gif)
@@ -34,7 +34,7 @@ func (r *gifRepo) Get(ctx context.Context, user_id string, status string) ([]med
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
-			key, status, persist, download, created_at
+			name, thumbnail_url, url, key, status, persist, download, created_at
 		from
 			gifs
 		where user_id = $1`
@@ -67,7 +67,7 @@ func (r *gifRepo) GetByKey(ctx context.Context, key string) (media.GifResponse, 
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
-			key, status, persist, download, created_at
+			name, thumbnail_url, url,key, status, persist, download, created_at
 		from
 			gifs
 		where key = $1`
@@ -82,7 +82,7 @@ func (r *gifRepo) GetRecents(ctx context.Context, user_id string) ([]media.GifRe
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
-			key, status, persist, download, created_at
+			name, thumbnail_url, url,key, status, persist, download, created_at
 		from
 			gifs
 		where user_id = $1
