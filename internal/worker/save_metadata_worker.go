@@ -76,12 +76,12 @@ func (w *SaveVideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 			}
 		default:
 			{
-				if msg.Retries < w.maxRetries {
-					msg.Retries++
-					d.Nack(false, true)
-					slog.Error("Create retry", "error", err)
-					return
-				}
+				// if msg.Retries < w.maxRetries {
+				// 	msg.Retries++
+				// 	d.Nack(false, true)
+				// 	slog.Error("Create retry", "error", err)
+				// 	return
+				// }
 				slog.Error("Create error", "error", err)
 				d.Nack(false, false)
 				return

@@ -69,14 +69,14 @@ func (w *VideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 	if err != nil {
 		slog.Error("video convertion failed", "error", err, "retries", msg.Retries, "JobId", msg.JobId)
 
-		if msg.Retries < w.maxRetries {
-			msg.Retries++
-			err := d.Nack(false, true)
-			if err != nil {
-				slog.Error("nack retry failed", "error", err)
-			}
-			return
-		}
+		// if msg.Retries < w.maxRetries {
+		// 	msg.Retries++
+		// 	err := d.Nack(false, true)
+		// 	if err != nil {
+		// 		slog.Error("nack retry failed", "error", err)
+		// 	}
+		// 	return
+		// }
 
 		err := d.Nack(false, false)
 		if err != nil {
@@ -94,15 +94,15 @@ func (w *VideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 	slog.Info("video processed successfully", "JobId", msg.JobId)
 }
 
-func retryCount(d amqp.Delivery) int {
-	deaths, ok := d.Headers["x-death"].([]interface{})
-	if !ok || len(deaths) == 0 {
-		return 0
-	}
-	entry, ok := deaths[0].(amqp.Table)
-	if !ok {
-		return 0
-	}
-	count, _ := entry["count"].(int64)
-	return int(count)
-}
+// func retryCount(d amqp.Delivery) int {
+// 	deaths, ok := d.Headers["x-death"].([]interface{})
+// 	if !ok || len(deaths) == 0 {
+// 		return 0
+// 	}
+// 	entry, ok := deaths[0].(amqp.Table)
+// 	if !ok {
+// 		return 0
+// 	}
+// 	count, _ := entry["count"].(int64)
+// 	return int(count)
+// }

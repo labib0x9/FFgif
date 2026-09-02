@@ -101,16 +101,16 @@ func (w *EmailWorker) handle(d amqp.Delivery) {
 	}
 
 	if err != nil {
-		retries := retryCount(d)
-		slog.Error("email job failed", "error", err, "retries", retries)
+		// retries := retryCount(d)
+		// slog.Error("email job failed", "error", err, "retries", retries)
 
-		if retries < w.maxRetries {
-			err := d.Nack(false, true)
-			if err != nil {
-				slog.Error("nack retry failed", "error", err)
-			}
-			return
-		}
+		// if retries < w.maxRetries {
+		// 	err := d.Nack(false, true)
+		// 	if err != nil {
+		// 		slog.Error("nack retry failed", "error", err)
+		// 	}
+		// 	return
+		// }
 
 		err := d.Nack(false, false)
 		if err != nil {
