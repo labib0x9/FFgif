@@ -43,7 +43,8 @@ func NewGifConverter(
 	Loop string,
 ) *GifConverter {
 
-	paletteFilter := fmt.Sprintf("fps=%d,scale=%d:-1:flags=lanczos,palettegen", FPS, Width)
+	// paletteFilter := fmt.Sprintf("fps=%d,scale=%d:-1:flags=lanczos,palettegen", FPS, Width)
+	paletteFilter := fmt.Sprintf("fps=%d,scale=%d:-1:flags=lanczos,format=rgb24,palettegen", FPS, Width)
 	Pfilter := PaletteFilter{
 		Start:     Start,
 		Duration:  End - Start,
@@ -88,6 +89,8 @@ func newPaletteExec(ctx context.Context, f *PaletteFilter) *exec.Cmd {
 		"-t", fmt.Sprintf("%.2f", f.Duration),
 		"-i", f.InputPath,
 		"-vf", f.Filter,
+		"-update", "1",
+		"-frames:v", "1",
 		"-y",
 		f.Path,
 	)
@@ -147,6 +150,7 @@ func newMp4ConverterExec(ctx context.Context, inputPath, outputPath string, Code
 			"-c:v", "copy",
 			"-an",
 			"-movflags", "+faststart",
+			"-y",
 			outputPath,
 		)
 	} else {
@@ -158,6 +162,7 @@ func newMp4ConverterExec(ctx context.Context, inputPath, outputPath string, Code
 			"-crf", "23",
 			"-an",
 			"-movflags", "+faststart",
+			"-y",
 			outputPath,
 		)
 	}
@@ -201,6 +206,8 @@ func newThumbGeneratorExec(ctx context.Context, startAt float32, inputPath, outp
 		"-i", inputPath,
 		"-vframes", "1",
 		"-q:v", "2",
+		"-update", "1",
+		"-vf", "format=yuvj420p",
 		outputPath,
 	)
 

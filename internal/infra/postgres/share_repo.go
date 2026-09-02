@@ -33,7 +33,7 @@ func (s *shareRepo) Get(ctx context.Context, userID string) ([]share.GifResponse
 	db := getDBFromCtx(ctx, s.db)
 	query := `
 		select
-			s.gif_key, s.owner_id, s.shared_with, s.expires_at, g.name, g.thumbnail_url, g.url, 
+			s.gif_key, s.owner_id, s.shared_with, s.expires_at, g.name, g.thumbnail_url, g.url 
 		from
 			shares s
 		join
