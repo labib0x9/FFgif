@@ -13,7 +13,6 @@ import (
 	shareapp "github.com/labib0x9/ffgif/internal/app/share"
 	userapp "github.com/labib0x9/ffgif/internal/app/user"
 	"github.com/labib0x9/ffgif/internal/infra/ffmpeg"
-	"github.com/labib0x9/ffgif/internal/infra/mailer"
 	"github.com/labib0x9/ffgif/internal/infra/minio"
 	"github.com/labib0x9/ffgif/internal/infra/postgres"
 	"github.com/labib0x9/ffgif/internal/infra/rabbitmq"
@@ -27,7 +26,6 @@ import (
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/static"
 	userhandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/user"
 	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
-	"github.com/labib0x9/ffgif/internal/worker"
 	"github.com/labib0x9/ffgif/pkg/jwt"
 	"github.com/labib0x9/ffgif/pkg/password"
 )
@@ -66,7 +64,6 @@ func main() {
 	hasher := password.NewHasher(cnf.HashPepper, cnf.BcryptCost)
 	middlewares := middleware.NewMiddlewares(cnf, cacheRepo, *jwtProvider)
 	validate := validator.New()
-	mailer := mailer.NewSmtpMailer(cnf)
 	ffmpeg := ffmpeg.NewFmeg(storageRepo)
 
 	tnx := postgres.NewTxManager(dbConn)
@@ -76,18 +73,8 @@ func main() {
 	shareService := shareapp.NewService()
 	userService := userapp.NewService(userRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
 
-	emailWorker := worker.NewEmailWorker(rabbitMq, mailer)
-	convertWorker := worker.NewVideoWorker(mediaService, rabbitMq)
-	saveMetadataWorker := worker.NewSaveVideoWorker(rabbitMq, mediaService)
-	processingWorker := worker.NewProcessingWorker(mediaService, rabbitMq)
-
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-
-	go emailWorker.Run(ctx, "email-worker", 10)
-	go convertWorker.Run(ctx, "convert-worker", 2)
-	go saveMetadataWorker.Run(ctx, "save-worker", 5)
-	go processingWorker.Run(ctx, "processing-worker", 3)
 
 	authHandler := authhandler.NewHandler(authService, middlewares, validate)
 	mediaHandler := mediahandler.NewHandler(mediaService, middlewares, validate)
