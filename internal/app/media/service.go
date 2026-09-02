@@ -14,7 +14,7 @@ import (
 )
 
 type Service interface {
-	Delete(ctx context.Context, key string) error
+	Delete(ctx context.Context, userId string, key string) error
 	Download(ctx context.Context, key string) (string, error)
 	GetByKey(ctx context.Context, key string) (media.GifResponse, error)
 	GetRecents(ctx context.Context, id string) ([]media.GifResponse, error)

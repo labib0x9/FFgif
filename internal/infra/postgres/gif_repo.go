@@ -53,6 +53,16 @@ func (r *gifRepo) Get(ctx context.Context, user_id string, status string) ([]med
 	return val, nil
 }
 
+func (r *gifRepo) GetOwner(ctx context.Context, key string) (string, error) {
+	db := getDBFromCtx(ctx, r.db)
+	query := `select user_id from gifs where key = $1`
+	var userId string
+	if err := sqlx.GetContext(ctx, db, &userId, query, key); err != nil {
+		return "", err
+	}
+	return userId, nil
+}
+
 func (r *gifRepo) GetByKey(ctx context.Context, key string) (media.GifResponse, error) {
 	db := getDBFromCtx(ctx, r.db)
 	query := `

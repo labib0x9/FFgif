@@ -7,8 +7,9 @@ import (
 )
 
 var (
-	ErrGifNotFound    = errors.New("")
-	ErrGifFetchFailed = errors.New("")
+	ErrGifNotFound      = errors.New("")
+	ErrGifFetchFailed   = errors.New("")
+	ErrGifOwnerMismatch = errors.New("Gif Owner mismatch")
 )
 
 type Gif struct {
@@ -43,4 +44,5 @@ type GifRepository interface {
 	Delete(ctx context.Context, key string) error
 	Update(ctx context.Context, key string, gif GifResponse) error
 	SaveRecent(ctx context.Context, key string) error
+	GetOwner(ctx context.Context, key string) (string, error)
 }
