@@ -8,3 +8,5 @@ cors.json
 api.md
 /pkg/ffmpeg/testdata/*
 .markdown-collab/
+internal/infra/.DS_Store
+pkg/.DS_Store
