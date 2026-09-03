@@ -11,10 +11,8 @@ import (
 
 type Service interface {
 	Create(ctx context.Context, sharedBy string, gifKey string, sharedWith string, expiresAt time.Time) error
-	Delete()
+	Delete(ctx context.Context, userId, gifKey, shareId string) error
 	Get(ctx context.Context, user string) ([]share.GifResponse, error)
-	Update()
-	View()
 }
 
 type service struct {
@@ -34,13 +32,3 @@ func NewService(
 		shareRepo: shareRepo,
 	}
 }
-
-// type Jwt interface {
-// 	Create(fullname string, id string, email string, role string) (string, error)
-// 	Verify(tokenStr string) (jwt.Payload, error)
-// }
-
-// type Hasher interface {
-// 	GenerateHash(pass string) (string, error)
-// 	CompareHashAndPassword(hashedPass string, pass string) bool
-// }

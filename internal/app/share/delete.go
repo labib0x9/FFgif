@@ -1,18 +1,24 @@
 package share
 
-func (h *service) Delete() {
-	// id := middleware.GetUserId(r)
-	// if id == "" {
-	// 	http.Error(w, "internal server error", http.StatusInternalServerError)
-	// 	slog.Error("DeleteShare: id not found")
-	// 	return
-	// }
+import (
+	"context"
+	"database/sql"
+	"errors"
 
-	// shareId := r.PathValue("shareId")
-	// if err := h.gifRepo.DeleteShare(id, shareId); err != nil {
-	// 	http.Error(w, "internal server error", http.StatusInternalServerError)
-	// 	slog.Error("DeleteShare: DeleteShare() failed", "error", err, "share_id", shareId)
-	// 	return
-	// }
-	// w.WriteHeader(http.StatusNoContent)
+	"github.com/labib0x9/ffgif/internal/domain/share"
+)
+
+func (h *service) Delete(ctx context.Context, userId, gifKey, shareWithId string) error {
+	owner, err := h.shareRepo.GetOwner(ctx, shareWithId, gifKey)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return share.ErrNotFound
+		}
+		return err
+	}
+	if owner != userId {
+		return share.ErrNotAuthorized
+	}
+
+	return h.shareRepo.Delete(ctx, gifKey, shareWithId)
 }

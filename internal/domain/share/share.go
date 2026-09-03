@@ -2,7 +2,13 @@ package share
 
 import (
 	"context"
+	"errors"
 	"time"
+)
+
+var (
+	ErrNotFound      = errors.New("not found")
+	ErrNotAuthorized = errors.New("not authorized")
 )
 
 type Share struct {
@@ -15,6 +21,7 @@ type Share struct {
 }
 
 type GifResponse struct {
+	ID           string     `json:"id" db:"id"`
 	Name         string     `json:"name" db:"name"`
 	Url          string     `json:"url" db:"url"`
 	ThumbnailUrl string     `json:"thumbnail_url" db:"thumbnail_url"`
@@ -28,4 +35,5 @@ type ShareRepository interface {
 	Create(ctx context.Context, gif Share) error
 	Get(ctx context.Context, userID string) ([]GifResponse, error)
 	GetOwner(ctx context.Context, user string, key string) (string, error)
+	Delete(ctx context.Context, key, shareWithId string) error
 }

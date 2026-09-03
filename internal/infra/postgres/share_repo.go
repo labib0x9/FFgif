@@ -33,7 +33,7 @@ func (s *shareRepo) Get(ctx context.Context, userID string) ([]share.GifResponse
 	db := getDBFromCtx(ctx, s.db)
 	query := `
 		select
-			s.gif_key, s.owner_id, s.shared_with, s.expires_at, g.name, g.thumbnail_url, g.url 
+			s.id, s.gif_key, s.owner_id, s.shared_with, s.expires_at, g.name, g.thumbnail_url, g.url 
 		from
 			shares s
 		join
@@ -51,8 +51,13 @@ func (s *shareRepo) Get(ctx context.Context, userID string) ([]share.GifResponse
 	return val, nil
 }
 
-// func (s *shareRepo) Delete()            {}
-// func (s *shareRepo) GetBySharedWithId() {}
+func (s *shareRepo) Delete(ctx context.Context, key, shareWithId string) error {
+	db := getDBFromCtx(ctx, s.db)
+	query := `delete from shares where gif_key = $1 and shared_with = $2`
+
+	_, err := db.ExecContext(ctx, query, key, shareWithId)
+	return err
+}
 
 func (s *shareRepo) GetOwner(ctx context.Context, userId string, key string) (string, error) {
 	db := getDBFromCtx(ctx, s.db)
