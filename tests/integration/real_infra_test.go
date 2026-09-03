@@ -581,7 +581,18 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 	}
 	t.Log("✓ (25/28) GET /gifs/me/shares passed")
 
-	// Route 26: DELETE /gifs/me/{key}
+	// Route 26: DELETE /gifs/me/{key}/shares/{shareWithId}
+	bobUser, _ := authRepo.GetByEmail(context.Background(), bobEmail)
+	deleteShareReq := httptest.NewRequest(http.MethodDelete, "/gifs/me/"+generatedGifKey+"/shares/"+bobUser.Id.String(), nil)
+	deleteShareReq.Header.Set("Authorization", "Bearer "+token)
+	deleteShareRec := httptest.NewRecorder()
+	wrappedHandler.ServeHTTP(deleteShareRec, deleteShareReq)
+	if deleteShareRec.Code != http.StatusOK {
+		t.Fatalf("DELETE /gifs/me/{key}/shares/{shareWithId} failed (%d): %s", deleteShareRec.Code, deleteShareRec.Body.String())
+	}
+	t.Log("✓ (26/29) DELETE /gifs/me/{key}/shares/{shareWithId} passed")
+
+	// Route 27: DELETE /gifs/me/{key}
 	deleteGifReq := httptest.NewRequest(http.MethodDelete, "/gifs/me/"+generatedGifKey, nil)
 	deleteGifReq.Header.Set("Authorization", "Bearer "+token)
 	deleteGifRec := httptest.NewRecorder()
@@ -589,13 +600,13 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 	if deleteGifRec.Code != http.StatusOK {
 		t.Fatalf("DELETE /gifs/me/{key} failed (%d): %s", deleteGifRec.Code, deleteGifRec.Body.String())
 	}
-	t.Log("✓ (26/28) DELETE /gifs/me/{key} passed")
+	t.Log("✓ (27/29) DELETE /gifs/me/{key} passed")
 
 	// ==========================================
 	// [PASSWORD & ACCOUNT DELETION ROUTES]
 	// ==========================================
 
-	// Route 27: PATCH /users/change-password
+	// Route 28: PATCH /users/change-password
 	changePassBody, _ := json.Marshal(map[string]string{
 		"current_password": "Password123!",
 		"password":         "NewSecretPass456!",
@@ -608,9 +619,9 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 	if changePassRec.Code != http.StatusOK {
 		t.Fatalf("PATCH /users/change-password failed (%d): %s", changePassRec.Code, changePassRec.Body.String())
 	}
-	t.Log("✓ (27/28) PATCH /users/change-password passed")
+	t.Log("✓ (28/29) PATCH /users/change-password passed")
 
-	// Route 28: DELETE /users/me
+	// Route 29: DELETE /users/me
 	deleteUserBody, _ := json.Marshal(map[string]string{"password": "NewSecretPass456!"})
 	deleteUserReq := httptest.NewRequest(http.MethodDelete, "/users/me", bytes.NewReader(deleteUserBody))
 	deleteUserReq.Header.Set("Authorization", "Bearer "+token)
@@ -619,11 +630,11 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 	if deleteUserRec.Code != http.StatusGone && deleteUserRec.Code != http.StatusOK {
 		t.Fatalf("DELETE /users/me failed (%d): %s", deleteUserRec.Code, deleteUserRec.Body.String())
 	}
-	t.Log("✓ (28/28) DELETE /users/me passed")
+	t.Log("✓ (29/29) DELETE /users/me passed")
 
 	// Clean up MinIO objects
 	_ = minioClient.RemoveObject(context.Background(), cfg.Minio.TempBucket, uploadResp.Key, minioClientPkg.RemoveObjectOptions{})
 	_ = minioClient.RemoveObject(context.Background(), cfg.Minio.StorageBucket, generatedGifKey, minioClientPkg.RemoveObjectOptions{})
 
-	t.Log("🎉 100% OF ALL 28 ROUTES COVERED AND VERIFIED AGAINST REAL INFRASTRUCTURE!")
+	t.Log("🎉 100% OF ALL 29 ROUTES COVERED AND VERIFIED AGAINST REAL INFRASTRUCTURE!")
 }

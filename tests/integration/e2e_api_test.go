@@ -290,6 +290,10 @@ func (r *inMemoryShareRepo) GetOwner(ctx context.Context, user string, key strin
 	}
 	return "", sql.ErrNoRows
 }
+func (r *inMemoryShareRepo) Delete(ctx context.Context, key, shareWithId string) error {
+	delete(r.shares, key+":"+shareWithId)
+	return nil
+}
 
 type inMemoryStorageRepo struct{}
 
@@ -598,7 +602,20 @@ func TestE2E_FullUserAndJobLifecycle(t *testing.T) {
 		t.Fatalf("Bob download shared GIF failed: %d", bobDownloadRec.Code)
 	}
 
-	// 13. Alice Deletes GIF
+	// 13. Alice Deletes Share with Bob
+	deleteShareMux := http.NewServeMux()
+	deleteShareMux.Handle("DELETE /gifs/me/{key}/shares/{shareWithId}", middlewares.Auth(http.HandlerFunc(shareH.Delete)))
+
+	deleteShareReq := httptest.NewRequest(http.MethodDelete, "/gifs/me/"+generatedGifKey+"/shares/"+bobUser.Id.String(), nil)
+	deleteShareReq.Header.Set("Authorization", "Bearer "+token1)
+	deleteShareRec := httptest.NewRecorder()
+	deleteShareMux.ServeHTTP(deleteShareRec, deleteShareReq)
+
+	if deleteShareRec.Code != http.StatusOK {
+		t.Fatalf("Delete Share failed: %d", deleteShareRec.Code)
+	}
+
+	// 14. Alice Deletes GIF
 	deleteMux := http.NewServeMux()
 	deleteMux.Handle("DELETE /gifs/me/{key}", middlewares.Auth(http.HandlerFunc(mediaH.Delete)))
 

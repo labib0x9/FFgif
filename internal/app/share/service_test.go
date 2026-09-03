@@ -2,6 +2,7 @@ package share_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -69,6 +70,8 @@ type mockShareRepo struct {
 	createdShare *domainshare.Share
 	createFunc   func(ctx context.Context, s domainshare.Share) error
 	getFunc      func(ctx context.Context, user string) ([]domainshare.GifResponse, error)
+	getOwnerFunc func(ctx context.Context, user string, key string) (string, error)
+	deleteFunc   func(ctx context.Context, key, shareWithId string) error
 }
 
 func (m *mockShareRepo) Create(ctx context.Context, s domainshare.Share) error {
@@ -85,7 +88,16 @@ func (m *mockShareRepo) Get(ctx context.Context, user string) ([]domainshare.Gif
 	return []domainshare.GifResponse{}, nil
 }
 func (m *mockShareRepo) GetOwner(ctx context.Context, user string, key string) (string, error) {
+	if m.getOwnerFunc != nil {
+		return m.getOwnerFunc(ctx, user, key)
+	}
 	return "", nil
+}
+func (m *mockShareRepo) Delete(ctx context.Context, key, shareWithId string) error {
+	if m.deleteFunc != nil {
+		return m.deleteFunc(ctx, key, shareWithId)
+	}
+	return nil
 }
 
 func TestShareService_Create_Success(t *testing.T) {
@@ -182,10 +194,66 @@ func TestShareService_Get_Success(t *testing.T) {
 	}
 }
 
-func TestShareService_StubMethods(t *testing.T) {
-	svc := appshare.NewService(&mockAuthRepo{}, &mockGifRepo{}, &mockShareRepo{})
-	// Stubs should not panic
-	svc.Delete()
-	svc.Update()
-	svc.View()
+func TestShareService_Delete_Success(t *testing.T) {
+	deleted := false
+	shareRepo := &mockShareRepo{
+		getOwnerFunc: func(ctx context.Context, user, key string) (string, error) {
+			return "owner-1", nil
+		},
+		deleteFunc: func(ctx context.Context, key, shareWithId string) error {
+			deleted = true
+			return nil
+		},
+	}
+	svc := appshare.NewService(&mockAuthRepo{}, &mockGifRepo{}, shareRepo)
+
+	err := svc.Delete(context.Background(), "owner-1", "gif-1", "user-2")
+	if err != nil {
+		t.Fatalf("expected Delete to succeed, got: %v", err)
+	}
+	if !deleted {
+		t.Fatal("expected share repo Delete to be called")
+	}
+}
+
+func TestShareService_Delete_NotFound(t *testing.T) {
+	shareRepo := &mockShareRepo{
+		getOwnerFunc: func(ctx context.Context, user, key string) (string, error) {
+			return "", sql.ErrNoRows
+		},
+	}
+	svc := appshare.NewService(&mockAuthRepo{}, &mockGifRepo{}, shareRepo)
+
+	err := svc.Delete(context.Background(), "owner-1", "gif-1", "user-2")
+	if !errors.Is(err, domainshare.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got: %v", err)
+	}
+}
+
+func TestShareService_Delete_NotAuthorized(t *testing.T) {
+	shareRepo := &mockShareRepo{
+		getOwnerFunc: func(ctx context.Context, user, key string) (string, error) {
+			return "actual-owner-id", nil
+		},
+	}
+	svc := appshare.NewService(&mockAuthRepo{}, &mockGifRepo{}, shareRepo)
+
+	err := svc.Delete(context.Background(), "attacker-user-id", "gif-1", "user-2")
+	if !errors.Is(err, domainshare.ErrNotAuthorized) {
+		t.Errorf("expected ErrNotAuthorized, got: %v", err)
+	}
+}
+
+func TestShareService_Delete_GetOwnerError(t *testing.T) {
+	shareRepo := &mockShareRepo{
+		getOwnerFunc: func(ctx context.Context, user, key string) (string, error) {
+			return "", errors.New("db connection failure")
+		},
+	}
+	svc := appshare.NewService(&mockAuthRepo{}, &mockGifRepo{}, shareRepo)
+
+	err := svc.Delete(context.Background(), "owner-1", "gif-1", "user-2")
+	if err == nil || errors.Is(err, domainshare.ErrNotFound) {
+		t.Errorf("expected db error, got: %v", err)
+	}
 }

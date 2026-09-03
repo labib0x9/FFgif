@@ -147,6 +147,9 @@ func (m *mockShareRepo) GetOwner(ctx context.Context, sharedWithUserId string, g
 	}
 	return "", sql.ErrNoRows
 }
+func (m *mockShareRepo) Delete(ctx context.Context, key, shareWithId string) error {
+	return nil
+}
 
 type mockLastVideoRepo struct {
 	createFunc       func(ctx context.Context, upload domainmedia.LastUpload) error

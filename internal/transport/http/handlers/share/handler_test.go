@@ -20,6 +20,7 @@ import (
 
 type mockShareService struct {
 	createFunc func(ctx context.Context, sharedBy string, gifKey string, sharedWith string, expiresAt time.Time) error
+	deleteFunc func(ctx context.Context, userId, gifKey, shareWithId string) error
 	getFunc    func(ctx context.Context, user string) ([]domainshare.GifResponse, error)
 }
 
@@ -29,16 +30,18 @@ func (m *mockShareService) Create(ctx context.Context, sharedBy string, gifKey s
 	}
 	return nil
 }
-func (m *mockShareService) Delete()   {}
-func (m *mockShareService) Download() {}
+func (m *mockShareService) Delete(ctx context.Context, userId, gifKey, shareWithId string) error {
+	if m.deleteFunc != nil {
+		return m.deleteFunc(ctx, userId, gifKey, shareWithId)
+	}
+	return nil
+}
 func (m *mockShareService) Get(ctx context.Context, user string) ([]domainshare.GifResponse, error) {
 	if m.getFunc != nil {
 		return m.getFunc(ctx, user)
 	}
 	return []domainshare.GifResponse{}, nil
 }
-func (m *mockShareService) Update() {}
-func (m *mockShareService) View()   {}
 
 func withUserAuth(r *http.Request, userId string) *http.Request {
 	claims := jwtpkg.Payload{
@@ -190,6 +193,116 @@ func TestShareHandler_Get_ServiceError(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	handler.Get(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500 Internal Server Error, got %d", rec.Code)
+	}
+}
+
+func TestShareHandler_Delete_Success(t *testing.T) {
+	mockSvc := &mockShareService{
+		deleteFunc: func(ctx context.Context, userId, gifKey, shareWithId string) error {
+			return nil
+		},
+	}
+	handler := share.NewHandler(mockSvc, nil, validator.New())
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE /gifs/me/{key}/shares/{shareWithId}", handler.Delete)
+
+	req := httptest.NewRequest(http.MethodDelete, "/gifs/me/gif-123/shares/user-456", nil)
+	req = withUserAuth(req, "owner-1")
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200 OK, got %d. Body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestShareHandler_Delete_Unauthenticated(t *testing.T) {
+	handler := share.NewHandler(&mockShareService{}, nil, validator.New())
+
+	req := httptest.NewRequest(http.MethodDelete, "/gifs/me/gif-123/shares/user-456", nil)
+	rec := httptest.NewRecorder()
+
+	handler.Delete(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401 Unauthorized, got %d", rec.Code)
+	}
+}
+
+func TestShareHandler_Delete_MissingKey(t *testing.T) {
+	handler := share.NewHandler(&mockShareService{}, nil, validator.New())
+
+	req := httptest.NewRequest(http.MethodDelete, "/gifs/me//shares/user-456", nil)
+	req = withUserAuth(req, "owner-1")
+	rec := httptest.NewRecorder()
+
+	handler.Delete(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400 Bad Request on missing key, got %d", rec.Code)
+	}
+}
+
+func TestShareHandler_Delete_NotAuthorized(t *testing.T) {
+	mockSvc := &mockShareService{
+		deleteFunc: func(ctx context.Context, userId, gifKey, shareWithId string) error {
+			return domainshare.ErrNotAuthorized
+		},
+	}
+	handler := share.NewHandler(mockSvc, nil, validator.New())
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE /gifs/me/{key}/shares/{shareWithId}", handler.Delete)
+
+	req := httptest.NewRequest(http.MethodDelete, "/gifs/me/gif-123/shares/user-456", nil)
+	req = withUserAuth(req, "attacker")
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401 Unauthorized for unauthorized delete, got %d", rec.Code)
+	}
+}
+
+func TestShareHandler_Delete_NotFound(t *testing.T) {
+	mockSvc := &mockShareService{
+		deleteFunc: func(ctx context.Context, userId, gifKey, shareWithId string) error {
+			return domainshare.ErrNotFound
+		},
+	}
+	handler := share.NewHandler(mockSvc, nil, validator.New())
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE /gifs/me/{key}/shares/{shareWithId}", handler.Delete)
+
+	req := httptest.NewRequest(http.MethodDelete, "/gifs/me/missing-gif/shares/user-456", nil)
+	req = withUserAuth(req, "owner-1")
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected status 404 Not Found, got %d", rec.Code)
+	}
+}
+
+func TestShareHandler_Delete_ServiceError(t *testing.T) {
+	mockSvc := &mockShareService{
+		deleteFunc: func(ctx context.Context, userId, gifKey, shareWithId string) error {
+			return errors.New("db error")
+		},
+	}
+	handler := share.NewHandler(mockSvc, nil, validator.New())
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE /gifs/me/{key}/shares/{shareWithId}", handler.Delete)
+
+	req := httptest.NewRequest(http.MethodDelete, "/gifs/me/gif-123/shares/user-456", nil)
+	req = withUserAuth(req, "owner-1")
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("expected status 500 Internal Server Error, got %d", rec.Code)
 	}
