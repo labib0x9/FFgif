@@ -2,11 +2,7 @@ package media
 
 import "context"
 
-func (s *service) Save(ctx context.Context, key string) error {
-	if err := s.gifRepo.SaveRecent(ctx, key); err != nil {
-		// http.Error(w, "internal server error", http.StatusInternalServerError)
-		// slog.Error("SaveRecent: SaveRecent() failed", "error", err, "key", key)
-		return err
-	}
-	return nil
+func (s *service) Save(ctx context.Context, userId, key string) error {
+	// To-do, validate user
+	return s.gifRepo.SaveRecent(ctx, key)
 }
