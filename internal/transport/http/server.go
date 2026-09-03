@@ -44,7 +44,7 @@ func NewServer(
 
 func (s *Server) Start(rate cache.RateLimiter, cnf *config.Config) {
 
-	rateLimiter := middleware.NewRateLimiter(rate, 5, 10)
+	rateLimiter := middleware.NewRateLimiter(rate, 20, 35)
 
 	manager := middleware.NewManager()
 	manager.Use(
