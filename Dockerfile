@@ -17,6 +17,6 @@ COPY --from=builder /out/ffgif ./ffgif
 COPY --from=builder /out/bootstrap ./bootstrap
 COPY --from=builder /out/worker ./worker
 COPY migrations ./migrations
-COPY static ./static
+COPY dist ./dist
 EXPOSE 8080
 ENTRYPOINT ["/app/ffgif"]
