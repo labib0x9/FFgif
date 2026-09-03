@@ -31,6 +31,15 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager
 		),
 	)
 
+	// key is the gif key
+	mux.Handle(
+		"GET /gifs/me/{key}/thumbnail",
+		manager.With(
+			http.HandlerFunc(h.GetGifThumbnail),
+			h.middlewares.Auth,
+		),
+	)
+
 	mux.Handle(
 		"PATCH /gifs/me/{key}",
 		manager.With(

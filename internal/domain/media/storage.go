@@ -56,4 +56,5 @@ type StorageRepository interface {
 	DownloadLocalRawVideo(ctx context.Context, key, destPath string) error
 	Upload(ctx context.Context, key, filePath, contentType string) error
 	GetStreamURL(ctx context.Context, key string, expiry time.Duration) (*url.URL, error)
+	GetThumbnailURL(ctx context.Context, key string) (*url.URL, error)
 }

@@ -64,7 +64,7 @@ func (s *shareRepo) GetOwner(ctx context.Context, userId string, key string) (st
 	query := `select owner_id from shares where gif_key = $1 and shared_with = $2`
 
 	var ownerId string
-	if err := sqlx.GetContext(ctx, db, &ownerId, query, key); err != nil {
+	if err := sqlx.GetContext(ctx, db, &ownerId, query, key, userId); err != nil {
 		return "", err
 	}
 	return ownerId, nil

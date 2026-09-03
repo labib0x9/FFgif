@@ -33,6 +33,8 @@ type Service interface {
 	ConversionStatus(ctx context.Context, jobId string) (*StatusResult, error)
 	Convert(ctx context.Context, userId string, key string, start float32, end float32, fps int, width int, loop bool) (*ConvertResult, error)
 	SaveMetadata(ctx context.Context, msg queue.SaveVideoMessage) error
+
+	GetGifThumbnail(ctx context.Context, key string) (string, error)
 }
 
 type service struct {

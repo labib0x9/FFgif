@@ -13,6 +13,7 @@ func Cors(next http.Handler) http.Handler {
 			"http://localhost:5173/": true,
 			"http://127.0.0.1:5173/": true,
 			"http://127.0.0.1:8080":  true,
+			"http://localhost:3000":  true,
 		}
 		if allowedOrigins[origin] {
 			w.Header().Set("Access-Control-Allow-Origin", origin)

@@ -42,6 +42,13 @@ func (u *storageRepo) GetStreamURL(ctx context.Context, key string, expiry time.
 	return u.presignedClient.PresignedGetObject(ctx, u.cnf.StorageBucket, key, expiry, values)
 }
 
+func (u *storageRepo) GetThumbnailURL(ctx context.Context, key string) (*url.URL, error) {
+	values := url.Values{}
+	values.Set("response-content-type", "image/jpeg")
+	values.Set("response-cache-control", "public, max-age=604800, immutable")
+	return u.presignedClient.PresignedGetObject(ctx, u.cnf.StorageBucket, key, 30*time.Second, values)
+}
+
 func (u *storageRepo) IsExists(ctx context.Context, key string) (bool, error) {
 	info, err := u.client.StatObject(ctx, u.cnf.StorageBucket, key, minio_go.StatObjectOptions{})
 	if err != nil {
