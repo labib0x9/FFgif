@@ -25,10 +25,11 @@ import (
 // --- Mocks ---
 
 type mockStorageRepo struct {
-	createFunc       func(ctx context.Context, key string, expirey time.Duration) (*url.URL, error)
-	downloadFunc     func(ctx context.Context, key string, expirey time.Duration) (*url.URL, error)
-	getStreamURLFunc func(ctx context.Context, key string, expiry time.Duration) (*url.URL, error)
-	statusFunc       func(ctx context.Context, key string) (domainmedia.Info, error)
+	createFunc          func(ctx context.Context, key string, expirey time.Duration) (*url.URL, error)
+	downloadFunc        func(ctx context.Context, key string, expirey time.Duration) (*url.URL, error)
+	getStreamURLFunc    func(ctx context.Context, key string, expiry time.Duration) (*url.URL, error)
+	getThumbnailURLFunc func(ctx context.Context, key string) (*url.URL, error)
+	statusFunc          func(ctx context.Context, key string) (domainmedia.Info, error)
 }
 
 func (m *mockStorageRepo) Create(ctx context.Context, key string, expirey time.Duration) (*url.URL, error) {
@@ -68,6 +69,13 @@ func (m *mockStorageRepo) GetStreamURL(ctx context.Context, key string, expiry t
 		return m.getStreamURLFunc(ctx, key, expiry)
 	}
 	u, _ := url.Parse("https://storage.local/stream/" + key)
+	return u, nil
+}
+func (m *mockStorageRepo) GetThumbnailURL(ctx context.Context, key string) (*url.URL, error) {
+	if m.getThumbnailURLFunc != nil {
+		return m.getThumbnailURLFunc(ctx, key)
+	}
+	u, _ := url.Parse("https://storage.local/thumbnail/" + key)
 	return u, nil
 }
 
@@ -232,7 +240,9 @@ func (m *mockQueue) PublishVideo(ctx context.Context, msg queue.VideoMessage) er
 	}
 	return nil
 }
-func (m *mockQueue) PublishSaveVideo(ctx context.Context, msg queue.SaveVideoMessage) error { return nil }
+func (m *mockQueue) PublishSaveVideo(ctx context.Context, msg queue.SaveVideoMessage) error {
+	return nil
+}
 func (m *mockQueue) PublishRetrySaveVideo(ctx context.Context, msg queue.SaveVideoMessage) error {
 	if m.publishRetrySaveVideoFunc != nil {
 		return m.publishRetrySaveVideoFunc(ctx, msg)
@@ -980,5 +990,83 @@ func TestMediaService_Delete_OwnerMismatch(t *testing.T) {
 	err := svc.Delete(context.Background(), "user-1", "my-gif.gif")
 	if !errors.Is(err, domainmedia.ErrGifOwnerMismatch) {
 		t.Errorf("expected ErrGifOwnerMismatch, got %v", err)
+	}
+}
+
+func TestMediaService_GetGifThumbnail_Success(t *testing.T) {
+	gifRepo := &mockGifRepo{
+		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+			return domainmedia.GifResponse{
+				Key:          key,
+				ThumbnailUrl: "thumb_" + key + ".jpg",
+			}, nil
+		},
+	}
+	storage := &mockStorageRepo{
+		getThumbnailURLFunc: func(ctx context.Context, key string) (*url.URL, error) {
+			return url.Parse("https://minio.local/thumbnails/" + key)
+		},
+	}
+	svc := newTestMediaService(gifRepo, nil, nil, storage, nil, nil, nil)
+
+	thumbUrl, err := svc.GetGifThumbnail(context.Background(), "sample.gif")
+	if err != nil {
+		t.Fatalf("expected GetGifThumbnail to succeed, got %v", err)
+	}
+	if thumbUrl != "https://minio.local/thumbnails/thumb_sample.gif.jpg" {
+		t.Errorf("unexpected thumbnail URL: %s", thumbUrl)
+	}
+}
+
+func TestMediaService_GetGifThumbnail_NotFound(t *testing.T) {
+	gifRepo := &mockGifRepo{
+		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+			return domainmedia.GifResponse{}, sql.ErrNoRows
+		},
+	}
+	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
+
+	_, err := svc.GetGifThumbnail(context.Background(), "missing.gif")
+	if !errors.Is(err, domainmedia.ErrGifNotFound) {
+		t.Errorf("expected ErrGifNotFound, got %v", err)
+	}
+}
+
+func TestMediaService_GetGifThumbnail_EmptyThumbnailUrl(t *testing.T) {
+	gifRepo := &mockGifRepo{
+		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+			return domainmedia.GifResponse{
+				Key:          key,
+				ThumbnailUrl: "",
+			}, nil
+		},
+	}
+	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
+
+	_, err := svc.GetGifThumbnail(context.Background(), "no-thumb.gif")
+	if !errors.Is(err, domainmedia.ErrThumbnailNotFound) {
+		t.Errorf("expected ErrThumbnailNotFound, got %v", err)
+	}
+}
+
+func TestMediaService_GetGifThumbnail_StorageError(t *testing.T) {
+	gifRepo := &mockGifRepo{
+		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+			return domainmedia.GifResponse{
+				Key:          key,
+				ThumbnailUrl: "thumb.jpg",
+			}, nil
+		},
+	}
+	storage := &mockStorageRepo{
+		getThumbnailURLFunc: func(ctx context.Context, key string) (*url.URL, error) {
+			return nil, errors.New("storage error")
+		},
+	}
+	svc := newTestMediaService(gifRepo, nil, nil, storage, nil, nil, nil)
+
+	_, err := svc.GetGifThumbnail(context.Background(), "error.gif")
+	if err == nil {
+		t.Fatal("expected error on storage failure, got nil")
 	}
 }

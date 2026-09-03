@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -38,6 +39,8 @@ type mockMediaService struct {
 	conversionStatusFunc func(ctx context.Context, jobId string) (*appmedia.StatusResult, error)
 	processFunc          func(ctx context.Context, msg queue.VideoMessage) error
 	saveMetadataFunc     func(ctx context.Context, msg queue.SaveVideoMessage) error
+
+	getGifThumbnailFunc func(ctx context.Context, key string) (string, error)
 }
 
 func (m *mockMediaService) Upload(rctx context.Context, filename string, claims jwtpkg.Payload) (*domainmedia.UploadResult, error) {
@@ -141,6 +144,12 @@ func (m *mockMediaService) SaveMetadata(ctx context.Context, msg queue.SaveVideo
 		return m.saveMetadataFunc(ctx, msg)
 	}
 	return nil
+}
+func (m *mockMediaService) GetGifThumbnail(ctx context.Context, key string) (string, error) {
+	if m.getGifThumbnailFunc != nil {
+		return m.getGifThumbnailFunc(ctx, key)
+	}
+	return "https://storage/thumbnail.jpg", nil
 }
 
 func withUserAuth(r *http.Request, userId string) *http.Request {
@@ -544,5 +553,65 @@ func TestMediaHandler_Delete_OwnerMismatch(t *testing.T) {
 
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("expected status 403 Forbidden, got %d", rec.Code)
+	}
+}
+
+func TestMediaHandler_GetGifThumbnail_Success(t *testing.T) {
+	mockSvc := &mockMediaService{
+		getGifThumbnailFunc: func(ctx context.Context, key string) (string, error) {
+			return "https://minio/thumbnail.jpg", nil
+		},
+	}
+	handler := media.NewHandler(mockSvc, nil, validator.New())
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /gifs/me/{key}/thumbnail", handler.GetGifThumbnail)
+
+	req := httptest.NewRequest(http.MethodGet, "/gifs/me/sample.gif/thumbnail", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200 OK, got %d", rec.Code)
+	}
+}
+
+func TestMediaHandler_GetGifThumbnail_NotFound(t *testing.T) {
+	mockSvc := &mockMediaService{
+		getGifThumbnailFunc: func(ctx context.Context, key string) (string, error) {
+			return "", domainmedia.ErrGifNotFound
+		},
+	}
+	handler := media.NewHandler(mockSvc, nil, validator.New())
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /gifs/me/{key}/thumbnail", handler.GetGifThumbnail)
+
+	req := httptest.NewRequest(http.MethodGet, "/gifs/me/missing.gif/thumbnail", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected status 404 Not Found, got %d", rec.Code)
+	}
+}
+
+func TestMediaHandler_GetGifThumbnail_InternalError(t *testing.T) {
+	mockSvc := &mockMediaService{
+		getGifThumbnailFunc: func(ctx context.Context, key string) (string, error) {
+			return "", errors.New("storage error")
+		},
+	}
+	handler := media.NewHandler(mockSvc, nil, validator.New())
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /gifs/me/{key}/thumbnail", handler.GetGifThumbnail)
+
+	req := httptest.NewRequest(http.MethodGet, "/gifs/me/error.gif/thumbnail", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500 Internal Server Error, got %d", rec.Code)
 	}
 }

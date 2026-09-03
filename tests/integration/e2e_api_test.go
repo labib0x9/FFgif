@@ -303,14 +303,18 @@ func (s *inMemoryStorageRepo) Create(ctx context.Context, key string, expirey ti
 func (s *inMemoryStorageRepo) Download(ctx context.Context, key string, expirey time.Duration) (*url.URL, error) {
 	return url.Parse("https://minio.local/download/" + key)
 }
-func (s *inMemoryStorageRepo) IsExists(ctx context.Context, key string) (bool, error) { return true, nil }
+func (s *inMemoryStorageRepo) IsExists(ctx context.Context, key string) (bool, error) {
+	return true, nil
+}
 func (s *inMemoryStorageRepo) Status(ctx context.Context, key string) (domainmedia.Info, error) {
 	return domainmedia.Info{Size: 1024, ContentType: "video/mp4", UploadedAt: time.Now()}, nil
 }
 func (s *inMemoryStorageRepo) GetObject(ctx context.Context, start, end int64, key string) (domainmedia.Object, error) {
 	return domainmedia.Object{}, nil
 }
-func (s *inMemoryStorageRepo) DownloadLocal(ctx context.Context, key, destPath string) error { return nil }
+func (s *inMemoryStorageRepo) DownloadLocal(ctx context.Context, key, destPath string) error {
+	return nil
+}
 func (s *inMemoryStorageRepo) DownloadLocalRawVideo(ctx context.Context, key, destPath string) error {
 	return nil
 }
@@ -320,6 +324,9 @@ func (s *inMemoryStorageRepo) Upload(ctx context.Context, key, filePath, content
 func (s *inMemoryStorageRepo) Delete(ctx context.Context, key string) error { return nil }
 func (s *inMemoryStorageRepo) GetStreamURL(ctx context.Context, key string, expiry time.Duration) (*url.URL, error) {
 	return url.Parse("https://minio.local/stream/" + key)
+}
+func (s *inMemoryStorageRepo) GetThumbnailURL(ctx context.Context, key string) (*url.URL, error) {
+	return url.Parse("https://minio.local/thumbnails/" + key)
 }
 
 type inMemoryLastVideoRepo struct {
