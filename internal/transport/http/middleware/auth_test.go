@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/labib0x9/ffgif/config"
+	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 	jwtpkg "github.com/labib0x9/ffgif/pkg/jwt"
 )
@@ -43,7 +44,7 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 	nextHandlerCalled := false
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		nextHandlerCalled = true
-		userId := middleware.GetUserId(r)
+		userId := httputil.GetUserId(r.Context())
 		if userId != "user-uuid-1" {
 			t.Errorf("expected userId user-uuid-1 in context, got %s", userId)
 		}

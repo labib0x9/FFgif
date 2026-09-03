@@ -8,16 +8,16 @@ import (
 )
 
 func (h *Handler) GetQuota(w http.ResponseWriter, r *http.Request) {
-	id := getId(r)
+	id := httputil.GetUserId(r.Context())
 	if id == "" {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		slog.Error("GetQuota: id not found")
+		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
+		slog.Error("user handler - GetProfile()", "err", "user_id not found")
 		return
 	}
 	quota, err := h.srv.GetQuota(r.Context(), id)
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		slog.Error("GetQuota: quota not found", "err", err, "id", id)
+		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+		slog.Error("user handler - GetProfile()", "error", err)
 		return
 	}
 

@@ -5,11 +5,10 @@ import (
 	"net/http"
 
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
-	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	id := middleware.GetUserId(r)
+	id := httputil.GetUserId(r.Context())
 	if id == "" {
 		httputil.SendError(w, "unauthenticated", http.StatusUnauthorized)
 		slog.Error("CreateShare: user id not found")

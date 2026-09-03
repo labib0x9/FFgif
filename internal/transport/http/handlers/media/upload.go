@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
-	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
 type uploadRequest struct {
@@ -28,7 +27,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, ok := middleware.GetClaims(r)
+	claims, ok := httputil.GetClaims(r.Context())
 	if !ok {
 		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
 		slog.Warn("Upload: failed to get claims", "Addr", r.RemoteAddr)

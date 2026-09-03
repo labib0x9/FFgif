@@ -1,35 +1,32 @@
 package user
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
+	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
-	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
 func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
-	id := getId(r)
+	id := httputil.GetUserId(r.Context())
 	if id == "" {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		slog.Error("GetProfile: id not found")
+		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
+		slog.Error("user handler - GetProfile()", "err", "user_id not found")
 		return
 	}
 	found, err := h.srv.GetProfile(r.Context(), id)
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		slog.Error("GetProfile: user not found", "err", err, "id", id)
+		switch {
+		case errors.Is(err, auth.ErrUserNotFound):
+			httputil.SendError(w, "user not found", http.StatusNotFound)
+		default:
+			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+		}
+		slog.Error("user handler - GetProfile()", "err", err)
 		return
 	}
 
 	httputil.SendJson(w, found, http.StatusOK)
-}
-
-func getId(r *http.Request) string {
-	claims, ok := middleware.GetClaims(r)
-	if !ok {
-		return ""
-	}
-
-	return claims.RegisteredClaims.Subject
 }

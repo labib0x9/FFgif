@@ -15,7 +15,7 @@ type reqDeletePassword struct {
 }
 
 func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
-	id := getId(r)
+	id := httputil.GetUserId(r.Context())
 	if id == "" {
 		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
 		slog.Error("user handler - DeleteUser()", "err", "user_id not found")

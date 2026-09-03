@@ -17,8 +17,7 @@ type reqLogin struct {
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var req reqLogin
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.SendError(w, "Bad request", http.StatusBadRequest)
 		slog.Warn("Login: bad json body", "error", err)
 		return

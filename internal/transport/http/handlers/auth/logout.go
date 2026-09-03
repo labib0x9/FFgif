@@ -5,18 +5,17 @@ import (
 	"net/http"
 
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
-	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	jwt, ok := middleware.GetAuthorizationHeader(r)
+	jwt, ok := httputil.GetAuthorizationHeader(r.Context())
 	if !ok {
 		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
 		slog.Warn("Logout: failed to get authorized header", "Addr", r.RemoteAddr)
 		return
 	}
 
-	claims, ok := middleware.GetClaims(r)
+	claims, ok := httputil.GetClaims(r.Context())
 	if !ok {
 		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
 		slog.Warn("Logout: failed to get claims", "Addr", r.RemoteAddr)

@@ -5,22 +5,26 @@ import (
 	"net/http"
 
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
-	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
-	id := middleware.GetUserId(r)
+	id := httputil.GetUserId(r.Context())
 	if id == "" {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		slog.Error("UpdateGif: id not found")
+		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
+		slog.Error("Media handler - Update()", "err", "user_id not found")
 		return
 	}
 
 	key := r.PathValue("key")
+	if key == "" {
+		httputil.SendError(w, "gif key is missing", http.StatusBadRequest)
+		slog.Error("Media handler - Update()", "err", "gif_id not found")
+		return
+	}
 
-	if err := h.srv.Update(r.Context(), key); err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		slog.Error("UpdateGif: Update() failed", "error", err, "key", key)
+	if err := h.srv.Update(r.Context(), id, key); err != nil {
+		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+		slog.Error("Media handler - Update()", "error", err, "key", key)
 		return
 	}
 

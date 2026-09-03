@@ -7,11 +7,10 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/media"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
-	middleware "github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
 func (h *Handler) LastVideo(w http.ResponseWriter, r *http.Request) {
-	userId := getId(r)
+	userId := httputil.GetUserId(r.Context())
 	if userId == "" {
 		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
 		slog.Error("Media handler - LastVideo()", "err", "user_id not found")
@@ -31,13 +30,4 @@ func (h *Handler) LastVideo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.SendJson(w, result, http.StatusOK)
-}
-
-func getId(r *http.Request) string {
-	claims, ok := middleware.GetClaims(r)
-	if !ok {
-		return ""
-	}
-
-	return claims.RegisteredClaims.Subject
 }

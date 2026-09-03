@@ -4,22 +4,23 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
+	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
 
 func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
-	id := middleware.GetUserId(r)
+	id := httputil.GetUserId(r.Context())
 	if id == "" {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		slog.Error("SaveRecent: id not found")
+		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
+		slog.Error("Media handler - GetRecents()", "err", "user_id not found")
 		return
 	}
-
 	key := r.PathValue("key")
-	if err := h.srv.Save(r.Context(), key); err != nil {
+	if err := h.srv.Save(r.Context(), id, key); err != nil {
 		switch err {
-
+		default:
+			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
 		}
+		slog.Error("Media handler - GetRecents()", "err", err)
 		return
 	}
 

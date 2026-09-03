@@ -1,21 +1,14 @@
 package middleware
 
 import (
-	"context"
 	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
-	jwtpkg "github.com/labib0x9/ffgif/pkg/jwt"
+	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
-
-type contextKey struct{}
-type authHeaderKey struct{}
-
-var claimKey = contextKey{}
-var jwtKey = authHeaderKey{}
 
 func (m *Middlewares) Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -46,27 +39,7 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), claimKey, data)
-		ctx = context.WithValue(ctx, jwtKey, tokenStr)
+		ctx := httputil.WithAuthContext(r.Context(), data, tokenStr)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
-}
-
-func GetClaims(r *http.Request) (jwtpkg.Payload, bool) {
-	claims, ok := r.Context().Value(claimKey).(jwtpkg.Payload)
-	return claims, ok
-}
-
-func GetAuthorizationHeader(r *http.Request) (string, bool) {
-	token, ok := r.Context().Value(jwtKey).(string)
-	return token, ok
-}
-
-func GetUserId(r *http.Request) string {
-	claims, ok := GetClaims(r)
-	if !ok {
-		return ""
-	}
-
-	return claims.RegisteredClaims.Subject
 }

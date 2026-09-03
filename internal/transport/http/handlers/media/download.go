@@ -7,11 +7,10 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/media"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
-	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
 func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
-	id := middleware.GetUserId(r)
+	id := httputil.GetUserId(r.Context())
 	if id == "" {
 		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
 		slog.Error("Media handler - Download()", "err", "user_id not found")

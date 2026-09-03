@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
-	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
 type convertRequ struct {
@@ -33,7 +32,7 @@ func (h *Handler) Convert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userId := middleware.GetUserId(r)
+	userId := httputil.GetUserId(r.Context())
 	if userId == "" {
 		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
 		slog.Warn("media handler - Convert(): userId is null", "error", "userId is null")

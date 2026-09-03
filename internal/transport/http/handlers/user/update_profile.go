@@ -11,30 +11,32 @@ import (
 
 func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	var req user.ProfileResponse
-	decoder := json.NewDecoder(r.Body)
-	if err := decoder.Decode(&req); err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		slog.Warn("UpdateProfile: bad json body", "error", err)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.SendError(w, "Bad request", http.StatusBadRequest)
+		slog.Warn("user handler: UpdateProfile() bad json body", "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
-		slog.Warn("UpdateProfile: struct validation failed", "error", err)
+		httputil.SendError(w, "invalid credentials", http.StatusUnauthorized)
+		slog.Warn("user handler: UpdateProfile() struct validation failed", "error", err)
 		return
 	}
 
-	id := getId(r)
+	id := httputil.GetUserId(r.Context())
 	if id == "" {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		slog.Error("UpdateProfile: id not found")
+		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
+		slog.Error("user handler - UpdateProfile()", "err", "user_id not found")
 		return
 	}
 
 	updated, err := h.srv.UpdateProfile(r.Context(), req, id)
 	if err != nil {
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
-		slog.Warn("UpdateProfile: update failed", "error", err)
+		switch {
+		default:
+			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+		}
+		slog.Error("user handler - GetProfile()", "err", err)
 		return
 	}
 

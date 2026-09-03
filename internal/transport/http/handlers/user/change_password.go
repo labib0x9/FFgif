@@ -8,7 +8,6 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
-	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
 type reqChangePassword struct {
@@ -18,7 +17,7 @@ type reqChangePassword struct {
 }
 
 func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
-	id := middleware.GetUserId(r)
+	id := httputil.GetUserId(r.Context())
 	if id == "" {
 		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
 		slog.Error("user handler - ChangePassword()", "err", "user_id not found")
