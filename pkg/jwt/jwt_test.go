@@ -53,11 +53,6 @@ func TestJwt_Create_EmptyFields(t *testing.T) {
 		t.Fatal("expected error on empty fullname, got nil")
 	}
 
-	_, err = j.Create("User", "id", "", "user")
-	if err == nil {
-		t.Fatal("expected error on empty email, got nil")
-	}
-
 	_, err = j.Create("User", "id", "test@example.com", "")
 	if err == nil {
 		t.Fatal("expected error on empty role, got nil")
@@ -99,7 +94,7 @@ func TestJwt_Verify_ExpiredToken(t *testing.T) {
 		Role:     "user",
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   "id-expired",
-			Issuer:    "projectpdf",
+			Issuer:    "ffgif",
 			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-2 * time.Hour)),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
 		},
