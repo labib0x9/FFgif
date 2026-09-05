@@ -23,6 +23,8 @@ func (s *shareRepo) Create(ctx context.Context, gif share.Share) error {
 	query := `insert into 
 		shares(gif_key, owner_id, shared_with, expires_at)
 		values(:gif_key, :owner_id, :shared_with, :expires_at)
+		on conflict (gif_key, shared_with) do update
+		set expires_at = EXCLUDED.expires_at
 	`
 
 	_, err := sqlx.NamedExecContext(ctx, db, query, gif)
