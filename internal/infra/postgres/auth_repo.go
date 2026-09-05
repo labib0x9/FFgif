@@ -233,6 +233,8 @@ func (r *reseterRepo) Create(ctx context.Context, reseter auth.Reseter) error {
 	query := `insert into 
 		reseter(user_id, token_hash)
 		values(:user_id, :token_hash)
+		on conflict (user_id) do update
+		set token_hash = EXCLUDED.token_hash
 	`
 
 	_, err := sqlx.NamedExecContext(ctx, db, query, reseter)
