@@ -39,7 +39,7 @@ func (s *shareRepo) Get(ctx context.Context, userID string) ([]share.GifResponse
 		join
 			gifs g on g.key = s.gif_key
 		where
-			s.owner_id = $1 OR s.shared_with = $1
+			s.owner_id = $1 OR s.shared_with = $1 and expires_at > now()
 		`
 
 	var val []share.GifResponse
@@ -61,7 +61,7 @@ func (s *shareRepo) Delete(ctx context.Context, key, shareWithId string) error {
 
 func (s *shareRepo) GetOwner(ctx context.Context, userId string, key string) (string, error) {
 	db := getDBFromCtx(ctx, s.db)
-	query := `select owner_id from shares where gif_key = $1 and shared_with = $2`
+	query := `select owner_id from shares where gif_key = $1 and shared_with = $2 and expires_at > now()`
 
 	var ownerId string
 	if err := sqlx.GetContext(ctx, db, &ownerId, query, key, userId); err != nil {
