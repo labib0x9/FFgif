@@ -36,7 +36,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := h.srv.Delete(r.Context(), id, key, shareWithId); err != nil {
 		switch {
 		case errors.Is(err, share.ErrNotAuthorized):
-			httputil.SendError(w, share.SHARE_FORBIDDEN, "not authorized", http.StatusUnauthorized)
+			httputil.SendError(w, share.SHARE_FORBIDDEN, "forbidden", http.StatusForbidden)
 		case errors.Is(err, share.ErrNotFound):
 			httputil.SendError(w, share.SHARE_NOT_FOUND, "not found", http.StatusNotFound)
 		default:

@@ -20,7 +20,7 @@ func (s *service) ConversionStatus(ctx context.Context, jobId string) (*StatusRe
 	key := "messaage_queue:job_id:" + jobId
 	val, err := s.cache.Get(ctx, key)
 	if err != nil {
-		return nil, media.ErrCacheGetFailed
+		return nil, media.ErrEmptyKey
 	}
 
 	gifKey := "messaage_queue_gif:job_id:" + jobId

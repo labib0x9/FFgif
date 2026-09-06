@@ -31,8 +31,8 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, media.ErrGifNotFound):
 			httputil.SendError(w, media.GIF_NOT_FOUND, "gif not found", http.StatusNotFound)
-		// case errors.Is(err, media.ErrGifOwnerMismatch):
-		// 	httputil.SendError(w, "forbidden", http.StatusForbidden)
+		case errors.Is(err, media.ErrGifOwnerMismatch):
+			httputil.SendError(w, media.GIF_FORBIDDEN, "forbidden", http.StatusForbidden)
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}

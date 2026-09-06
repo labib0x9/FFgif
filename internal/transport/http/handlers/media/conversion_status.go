@@ -1,9 +1,11 @@
 package media
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
+	"github.com/labib0x9/ffgif/internal/domain/media"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
 
@@ -18,7 +20,12 @@ func (h *Handler) ConversionStatus(w http.ResponseWriter, r *http.Request) {
 	result, err := h.srv.ConversionStatus(r.Context(), jobId)
 	if err != nil {
 		slog.Error("media handler - ConversionStatus()", "err", err)
-		httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
+		switch {
+		case errors.Is(err, media.ErrEmptyKey):
+			httputil.SendError(w, media.JOB_NOT_FOUND, "job not found", http.StatusNotFound)
+		default:
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 
