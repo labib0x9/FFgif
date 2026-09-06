@@ -22,7 +22,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		httputil.SendError(w, "invalid credentials", http.StatusUnauthorized)
+		httputil.SendError(w, "Bad request", http.StatusUnprocessableEntity)
 		slog.Warn("Upload: struct validation failed", "error", err)
 		return
 	}

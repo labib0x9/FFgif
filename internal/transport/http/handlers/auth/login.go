@@ -24,7 +24,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		httputil.SendError(w, "invalid credentials", http.StatusUnauthorized)
+		httputil.SendError(w, "Bad request", http.StatusBadRequest)
 		slog.Warn("Login: struct validation failed", "error", err)
 		return
 	}
