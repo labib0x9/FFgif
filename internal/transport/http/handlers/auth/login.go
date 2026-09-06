@@ -37,6 +37,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, auth.ErrInvalidCredential):
 			fallthrough
 		case errors.Is(err, auth.ErrInvalidCredential):
+			w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="invalid credentials"`)
 			httputil.SendError(w, "invalid credentials", http.StatusUnauthorized)
 		default:
 			httputil.SendError(w, "internal server error", http.StatusInternalServerError)

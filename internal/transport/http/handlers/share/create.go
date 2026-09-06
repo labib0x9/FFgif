@@ -17,6 +17,7 @@ type reqCreate struct {
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	id := httputil.GetUserId(r.Context())
 	if id == "" {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
 		httputil.SendError(w, "unauthenticated", http.StatusUnauthorized)
 		slog.Error("CreateShare: user id not found")
 		return

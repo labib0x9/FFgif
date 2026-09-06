@@ -12,6 +12,7 @@ import (
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := httputil.GetUserId(r.Context())
 	if id == "" {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
 		httputil.SendError(w, "unauthenticated", http.StatusUnauthorized)
 		slog.Error("share handler: Delete()", "error", "user id not found")
 		return

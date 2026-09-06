@@ -19,6 +19,7 @@ type reqChangePassword struct {
 func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	id := httputil.GetUserId(r.Context())
 	if id == "" {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
 		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
 		slog.Error("user handler - ChangePassword()", "err", "user_id not found")
 		return
@@ -44,6 +45,7 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, auth.ErrPasswordMismatched):
 			httputil.SendError(w, "password not matched", http.StatusUnprocessableEntity)
 		case errors.Is(err, auth.ErrInvalidCredential):
+			w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="invalid credentials"`)
 			httputil.SendError(w, "forbidden", http.StatusUnauthorized)
 		default:
 			httputil.SendError(w, "internal server error", http.StatusInternalServerError)

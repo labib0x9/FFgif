@@ -17,6 +17,7 @@ type reqDeletePassword struct {
 func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	id := httputil.GetUserId(r.Context())
 	if id == "" {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
 		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
 		slog.Error("user handler - DeleteUser()", "err", "user_id not found")
 		return
@@ -42,7 +43,8 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		// case errors.Is(err, auth.ErrPasswordMismatched):
 		// 	httputil.SendError(w, "password not matched", http.StatusUnprocessableEntity)
 		case errors.Is(err, auth.ErrInvalidCredential):
-			httputil.SendError(w, "forbidden", http.StatusUnauthorized)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="invalid credentials"`)
+			httputil.SendError(w, "invalid credentials", http.StatusUnauthorized)
 		default:
 			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
 		}

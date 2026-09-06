@@ -17,6 +17,7 @@ import (
 func (h *Handler) GetGifs(w http.ResponseWriter, r *http.Request) {
 	id := httputil.GetUserId(r.Context())
 	if id == "" {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
 		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
 		slog.Error("Media handler - Download()", "err", "user_id not found")
 		return

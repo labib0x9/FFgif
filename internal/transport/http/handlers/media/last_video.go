@@ -12,6 +12,7 @@ import (
 func (h *Handler) LastVideo(w http.ResponseWriter, r *http.Request) {
 	userId := httputil.GetUserId(r.Context())
 	if userId == "" {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
 		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
 		slog.Error("Media handler - LastVideo()", "err", "user_id not found")
 		return
