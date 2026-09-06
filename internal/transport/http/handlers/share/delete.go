@@ -47,7 +47,6 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.SendJson(w, map[string]string{
-		"message": "deleted",
+		"msg": "share deleted",
 	}, http.StatusOK)
-
 }

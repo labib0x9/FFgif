@@ -52,5 +52,7 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.SendJson(w, "deleted", http.StatusGone)
+	httputil.SendJson(w, map[string]string{
+		"msg": "user deleted",
+	}, http.StatusOK)
 }

@@ -42,5 +42,5 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	httputil.SendJson(w, map[string]string{
 		"gif_key": key,
 		"status":  "deleted",
-	}, 200)
+	}, http.StatusOK)
 }
