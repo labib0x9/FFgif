@@ -74,7 +74,7 @@ func (h *Handler) RegisterRoutes(
 	)
 
 	mux.Handle(
-		"GET /auth/logout",
+		"POST /auth/logout",
 		manager.With(
 			http.HandlerFunc(h.Logout),
 			h.middlewares.Auth,

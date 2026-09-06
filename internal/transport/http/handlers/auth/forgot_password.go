@@ -43,5 +43,7 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.SendJson(w, "check mail", http.StatusOK)
+	httputil.SendJson(w, map[string]string{
+		"msg": "check mail",
+	}, http.StatusAccepted)
 }
