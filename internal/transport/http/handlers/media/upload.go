@@ -46,5 +46,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Location", "/uploads/"+result.Key)
+
 	httputil.SendJson(w, result, http.StatusCreated)
 }

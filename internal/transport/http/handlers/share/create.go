@@ -43,5 +43,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Location", "/gifs/me/"+gifId+"/shares/"+req.SharedWith)
+
 	httputil.SendJson(w, "shared", http.StatusCreated)
 }

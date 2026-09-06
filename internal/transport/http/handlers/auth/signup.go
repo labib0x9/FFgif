@@ -50,5 +50,7 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Location", "/users/"+"res.Id")
+
 	httputil.SendJson(w, "user created", http.StatusCreated)
 }

@@ -49,8 +49,10 @@ func (h *Handler) Convert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Location", "/jobs/"+result.Id+"/status")
+
 	httputil.SendJson(w, map[string]string{
 		"job_id": result.Id,
 		"status": result.Status,
-	}, http.StatusOK)
+	}, http.StatusAccepted)
 }
