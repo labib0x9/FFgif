@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
 
@@ -18,29 +19,29 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	id := httputil.GetUserId(r.Context())
 	if id == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
-		httputil.SendError(w, "unauthenticated", http.StatusUnauthorized)
-		slog.Error("CreateShare: user id not found")
+		httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "unauthenticated", http.StatusUnauthorized)
+		slog.Error("share handler - Create() = user_id not found", "err", "user_id not found")
 		return
 	}
 
 	gifId := r.PathValue("key")
 	if gifId == "" {
-		httputil.SendError(w, "gif key is missing", http.StatusBadRequest)
-		slog.Error("CreateShare: gif id not found")
+		httputil.SendError(w, httputil.BAD_REQUEST, "gif key is missing", http.StatusBadRequest)
+		slog.Warn("share handler - Create() = gif key missing", "error", "gif key missing")
 		return
 	}
 
 	var req reqCreate
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		slog.Error("CreateShare: json parse failed", "error", err)
+		httputil.SendError(w, httputil.BAD_REQUEST, "bad request", http.StatusBadRequest)
+		slog.Warn("share handler - Create() = bad json body", "error", err)
 		return
 	}
 
 	err := h.srv.Create(r.Context(), id, gifId, req.SharedWith, req.ExpireAt)
 	if err != nil {
-		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
-		slog.Error("CreateShare: CreateShare() failed", "error", err)
+		httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
+		slog.Error("share handler - Create()", "err", err)
 		return
 	}
 

@@ -1,0 +1,6 @@
+package share
+
+var (
+	SHARE_NOT_FOUND = "SHARE_NOT_FOUND"
+	SHARE_FORBIDDEN = "SHARE_FORBIDDEN"
+)

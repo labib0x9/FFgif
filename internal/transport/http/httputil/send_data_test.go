@@ -36,9 +36,10 @@ func TestSendJson(t *testing.T) {
 
 func TestSendError(t *testing.T) {
 	rec := httptest.NewRecorder()
+	errorCode := "NOT_FOUND"
 	errorMsg := "Resource not found"
 
-	jsonio.SendError(rec, errorMsg, http.StatusNotFound)
+	jsonio.SendError(rec, errorCode, errorMsg, http.StatusNotFound)
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected status 404, got %d", rec.Code)

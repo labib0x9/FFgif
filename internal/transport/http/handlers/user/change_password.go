@@ -20,20 +20,20 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	id := httputil.GetUserId(r.Context())
 	if id == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
-		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
-		slog.Error("user handler - ChangePassword()", "err", "user_id not found")
+		httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "user id not found", http.StatusUnauthorized)
+		slog.Error("user handler - ChangePassword() = user_id not found", "err", "user_id not found")
 		return
 	}
 
 	var req reqChangePassword
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.SendError(w, "Bad request", http.StatusBadRequest)
-		slog.Warn("user handler - ChangePassword() = bad json", "error", err)
+		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
+		slog.Warn("user handler - ChangePassword() = bad json body", "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		httputil.SendError(w, "field required", http.StatusUnprocessableEntity)
+		httputil.SendError(w, httputil.VALIDATION_FAILED, "field required", http.StatusUnprocessableEntity)
 		slog.Warn("user handler - ChangePassword() = struct validation failed", "error", err)
 		return
 	}
@@ -41,14 +41,14 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	if err := h.srv.ChangePassword(r.Context(), id, req.CurrentPassword, req.Password, req.ConfirmPassword); err != nil {
 		switch {
 		case errors.Is(err, auth.ErrUserNotFound):
-			httputil.SendError(w, "user not found", http.StatusNotFound)
+			httputil.SendError(w, auth.AUTH_USER_NOT_FOUND, "user not found", http.StatusNotFound)
 		case errors.Is(err, auth.ErrPasswordMismatched):
-			httputil.SendError(w, "password not matched", http.StatusUnprocessableEntity)
+			httputil.SendError(w, httputil.VALIDATION_FAILED, "password not matched", http.StatusUnprocessableEntity)
 		case errors.Is(err, auth.ErrInvalidCredential):
 			w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="invalid credentials"`)
-			httputil.SendError(w, "forbidden", http.StatusUnauthorized)
+			httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "forbidden", http.StatusUnauthorized)
 		default:
-			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
 		slog.Error("user handler - ChangePassword()", "err", err)
 		return

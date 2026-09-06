@@ -10,15 +10,15 @@ import (
 func (h *Handler) ConversionStatus(w http.ResponseWriter, r *http.Request) {
 	jobId := r.PathValue("jobId")
 	if jobId == "" {
-		slog.Warn("ConversionStatus: jobId is missing")
-		httputil.SendError(w, "bad request", http.StatusBadRequest)
+		slog.Warn("media handler - ConversionStatus() = jobId missing", "error", "jobId missing")
+		httputil.SendError(w, httputil.BAD_REQUEST, "bad request", http.StatusBadRequest)
 		return
 	}
 
 	result, err := h.srv.ConversionStatus(r.Context(), jobId)
 	if err != nil {
-		slog.Error("srv.ConversionStatus() failed", "Err", err, "JobId", jobId)
-		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+		slog.Error("media handler - ConversionStatus()", "err", err)
+		httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		return
 	}
 

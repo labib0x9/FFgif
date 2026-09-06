@@ -21,21 +21,21 @@ func (h *Handler) Convert(w http.ResponseWriter, r *http.Request) {
 	var req convertRequ
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&req); err != nil {
-		httputil.SendError(w, "Bad request", http.StatusBadRequest)
-		slog.Warn("media handler - Convert(): bad json body", "error", err)
+		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
+		slog.Warn("media handler - Convert() = bad json body", "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		httputil.SendError(w, "field required", http.StatusUnprocessableEntity)
-		slog.Warn("media handler - Convert(): struct validation failed", "error", err)
+		httputil.SendError(w, httputil.VALIDATION_FAILED, "field required", http.StatusUnprocessableEntity)
+		slog.Warn("media handler - Convert() = struct validation failed", "error", err)
 		return
 	}
 
 	userId := httputil.GetUserId(r.Context())
 	if userId == "" {
-		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
-		slog.Warn("media handler - Convert(): userId is null", "error", "userId is null")
+		httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
+		slog.Error("media handler - Convert() = user_id not found", "err", "user_id not found")
 		return
 	}
 
@@ -43,9 +43,9 @@ func (h *Handler) Convert(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		default:
-			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("media handler - Convert(): srv.Convert() failed", "error", err)
+		slog.Error("media handler - Convert()", "err", err)
 		return
 	}
 

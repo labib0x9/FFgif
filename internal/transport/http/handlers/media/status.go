@@ -11,15 +11,15 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
 
 	if key == "" {
-		slog.Info("Status: key missing")
-		httputil.SendError(w, "bad request", http.StatusBadRequest)
+		slog.Warn("media handler - Status() = key missing", "error", "key missing")
+		httputil.SendError(w, httputil.BAD_REQUEST, "bad request", http.StatusBadRequest)
 		return
 	}
 
 	res, err := h.srv.Status(r.Context(), key)
 	if err != nil {
-		slog.Error("Status: srv.Status() failed", "err", err)
-		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+		slog.Error("media handler - Status()", "err", err)
+		httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		return
 	}
 

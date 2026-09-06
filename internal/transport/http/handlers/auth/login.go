@@ -18,14 +18,14 @@ type reqLogin struct {
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var req reqLogin
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.SendError(w, "Bad request", http.StatusBadRequest)
-		slog.Warn("Login: bad json body", "error", err)
+		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
+		slog.Warn("auth handler - Login() = bad json body", "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		httputil.SendError(w, "Bad request", http.StatusBadRequest)
-		slog.Warn("Login: struct validation failed", "error", err)
+		httputil.SendError(w, httputil.VALIDATION_FAILED, "Bad request", http.StatusUnprocessableEntity)
+		slog.Warn("auth handler - Login() = struct validation failed", "error", err)
 		return
 	}
 
@@ -33,16 +33,16 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrUserNotVerified):
-			httputil.SendError(w, "not verified", http.StatusForbidden)
-		case errors.Is(err, auth.ErrInvalidCredential):
-			fallthrough
+			httputil.SendError(w, auth.AUTH_USER_NOT_VERIFIED, "not verified", http.StatusForbidden)
+		// case errors.Is(err, auth.ErrInvalidCredential):
+		// 	fallthrough
 		case errors.Is(err, auth.ErrInvalidCredential):
 			w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="invalid credentials"`)
-			httputil.SendError(w, "invalid credentials", http.StatusUnauthorized)
+			httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "invalid credentials", http.StatusUnauthorized)
 		default:
-			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Warn("srv.Login(): failed", "error", err)
+		slog.Error("auth handler - Login()", "err", err)
 		return
 	}
 

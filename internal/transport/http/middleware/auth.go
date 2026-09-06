@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
 
@@ -15,8 +16,8 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		h := r.Header.Get("Authorization")
 		if h == "" || !strings.HasPrefix(h, "Bearer ") {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_request"`)
-			httputil.SendError(w, "invalid credentials", http.StatusUnauthorized)
-			slog.Warn("Auth Middleware: Authorization header missing", "Addr", r.RemoteAddr)
+			httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "authorization header missing", http.StatusUnauthorized)
+			slog.Warn("Auth Middleware: authorization header missing", "Addr", r.RemoteAddr)
 			return
 		}
 
@@ -25,12 +26,12 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		if err != nil {
 			if errors.Is(err, jwt.ErrTokenExpired) {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="token expired"`)
-				httputil.SendError(w, "token expired", http.StatusUnauthorized)
+				httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "invalid token", http.StatusUnauthorized)
 				slog.Warn("Auth Middleware: token expired", "Addr", r.RemoteAddr)
 				return
 			}
 			w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="invalid token"`)
-			httputil.SendError(w, "Invalid token", http.StatusUnauthorized)
+			httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "invalid token", http.StatusUnauthorized)
 			slog.Warn("Auth Middleware: invalid token", "Addr", r.RemoteAddr)
 			return
 		}
@@ -38,7 +39,7 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		key := "token_blocklist:" + tokenStr
 		if _, err := m.cache.Get(r.Context(), key); err == nil {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="token on blocklist"`)
-			httputil.SendError(w, "blocklist token", http.StatusUnauthorized)
+			httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "token on blocklist", http.StatusUnauthorized)
 			slog.Warn("Auth Middleware: token on blocklist", "Addr", r.RemoteAddr)
 			return
 		}

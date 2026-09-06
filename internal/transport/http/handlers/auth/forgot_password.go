@@ -16,17 +16,16 @@ type reqForgot struct {
 
 func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	var req reqForgot
-	decoder := json.NewDecoder(r.Body)
 
-	if err := decoder.Decode(&req); err != nil {
-		httputil.SendError(w, "Bad request", http.StatusBadRequest)
-		slog.Warn("ForgotPassword: bad json body", "error", err)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
+		slog.Warn("auth handler - ForgotPassword() = bad json body", "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		httputil.SendError(w, "field required", 422)
-		slog.Warn("ForgotPassword: struct validation failed", "error", err)
+		httputil.SendError(w, httputil.VALIDATION_FAILED, "field required", http.StatusUnprocessableEntity)
+		slog.Warn("auth handler - ForgotPassword() = struct validation failed", "error", err)
 		return
 	}
 
@@ -34,13 +33,13 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	if err != nil && !errors.Is(err, auth.ErrMessageQueueFailed) {
 		switch {
 		case errors.Is(err, auth.ErrUserNotVerified):
-			httputil.SendError(w, "user is not varified", http.StatusForbidden)
+			httputil.SendError(w, auth.AUTH_USER_NOT_VERIFIED, "user is not varified", http.StatusForbidden)
 		case errors.Is(err, auth.ErrUserNotFound):
-			httputil.SendError(w, "user not found", http.StatusNotFound)
+			httputil.SendError(w, auth.AUTH_USER_NOT_FOUND, "user not found", http.StatusNotFound)
 		default:
-			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Warn("srv.ForgotPassword(): failed", "error", err)
+		slog.Warn("auth handler - ForgotPassword() = service failed", "error", err)
 		return
 	}
 

@@ -12,8 +12,8 @@ import (
 func (h *Handler) GetGifThumbnail(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
 	if key == "" {
-		httputil.SendError(w, "gif key is missing", http.StatusBadRequest)
-		slog.Error("Media handler - GetGifThumbnail()", "err", "gif key not found")
+		httputil.SendError(w, httputil.BAD_REQUEST, "gif key is missing", http.StatusBadRequest)
+		slog.Warn("media handler - GetGifThumbnail() = gif key missing", "error", "gif key not found")
 		return
 	}
 
@@ -21,11 +21,11 @@ func (h *Handler) GetGifThumbnail(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, media.ErrGifNotFound):
-			httputil.SendError(w, "gif not found", http.StatusNotFound)
+			httputil.SendError(w, media.GIF_NOT_FOUND, "gif not found", http.StatusNotFound)
 		default:
-			httputil.SendError(w, "failed to get gif thumbnail", http.StatusInternalServerError)
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "failed to get gif thumbnail", http.StatusInternalServerError)
 		}
-		slog.Error("Media handler - GetGifThumbnail()", "err", err)
+		slog.Error("media handler - GetGifThumbnail()", "err", err)
 		return
 	}
 	httputil.SendJson(w, map[string]any{

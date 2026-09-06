@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
 
@@ -11,8 +12,8 @@ func (h *Handler) GetRecents(w http.ResponseWriter, r *http.Request) {
 	id := httputil.GetUserId(r.Context())
 	if id == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
-		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
-		slog.Error("Media handler - GetRecents()", "err", "user_id not found")
+		httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "user id not found", http.StatusUnauthorized)
+		slog.Error("media handler - GetRecents() = user_id not found", "err", "user_id not found")
 		return
 	}
 
@@ -20,9 +21,9 @@ func (h *Handler) GetRecents(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		default:
-			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("Media handler - GetRecents()", "err", err)
+		slog.Error("media handler - GetRecents()", "err", err)
 		return
 	}
 

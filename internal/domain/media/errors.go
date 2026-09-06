@@ -1,0 +1,6 @@
+package media
+
+var (
+	GIF_NOT_FOUND = "GIF_NOT_FOUND"
+	GIF_FORBIDDEN = "GIF_FORBIDDEN"
+)
