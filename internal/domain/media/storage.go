@@ -10,15 +10,14 @@ import (
 )
 
 var (
-	ErrDeleteByKeyFailed = errors.New("")
-
-	ErrStatFetchFailed         = errors.New("")
-	ErrRangeParserFailed       = errors.New("")
-	ErrObjectFetchFailed       = errors.New("")
-	ErrContentLengthMismatched = errors.New("Content length must be 512byte")
+	ErrDeleteByKeyFailed       = errors.New("storage delete by key failed")
+	ErrStatFetchFailed         = errors.New("storage stat fetch failed")
+	ErrRangeParserFailed       = errors.New("storage range parser failed")
+	ErrObjectFetchFailed       = errors.New("storage object fetch failed")
+	ErrContentLengthMismatched = errors.New("content length must be 512 byte")
 	ErrInvalidExt              = errors.New("invalid file type")
 	ErrEmptyKey                = errors.New("key is empty")
-	ErrInvalidFiletype         = errors.New("Invalid file")
+	ErrInvalidFiletype         = errors.New("invalid file")
 )
 
 var (

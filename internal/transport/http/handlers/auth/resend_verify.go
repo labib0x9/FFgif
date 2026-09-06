@@ -8,6 +8,7 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 )
 
 type resendRequest struct {
@@ -31,7 +32,7 @@ func (h *Handler) ResendVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := h.srv.ResendVerify(r.Context(), req.Email)
-	if err != nil && !errors.Is(err, auth.ErrMessageQueueFailed) {
+	if err != nil && !errors.Is(err, apperr.ErrMessageQueueFailed) {
 		switch {
 		case errors.Is(err, auth.ErrUserNotFound):
 			httputil.SendError(w, auth.AUTH_USER_NOT_FOUND, "user not found", http.StatusNotFound)

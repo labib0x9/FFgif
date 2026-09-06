@@ -134,7 +134,7 @@ func TestAuthHandler_Signup_ValidationFailed(t *testing.T) {
 func TestAuthHandler_Signup_Conflict(t *testing.T) {
 	mockSvc := &mockAuthService{
 		signupFunc: func(ctx context.Context, email string, username string, fullname string, password string) (*appauth.SignupResult, error) {
-			return nil, domainauth.ErrUserExits
+			return nil, domainauth.ErrUserExists
 		},
 	}
 	handler := authhandler.NewHandler(mockSvc, nil, validator.New())

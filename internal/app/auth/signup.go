@@ -5,8 +5,9 @@ import (
 	"fmt"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
-	"github.com/labib0x9/ffgif/internal/port/queue"
 	"github.com/labib0x9/ffgif/internal/domain/user"
+	"github.com/labib0x9/ffgif/internal/port/queue"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 	"github.com/labib0x9/ffgif/pkg/token"
 )
 
@@ -17,12 +18,12 @@ func (s *service) Signup(ctx context.Context, email string, username string, ful
 	msg, err := s.tnx.With(ctx, func(ctx context.Context) (any, error) {
 		_, err := s.authRepo.GetByEmail(ctx, email)
 		if err == nil {
-			return nil, auth.ErrUserExits
+			return nil, auth.ErrUserExists
 		}
 
 		passHash, err := s.hasher.GenerateHash(password)
 		if err != nil {
-			return nil, auth.ErrHashGenFailed
+			return nil, apperr.ErrHashGenFailed
 		}
 
 		newUser := auth.User{
@@ -84,7 +85,7 @@ func (s *service) Signup(ctx context.Context, email string, username string, ful
 	}
 
 	if err := s.queue.PublishEmail(ctx, smsg); err != nil {
-		return nil, auth.ErrMessageQueueFailed
+		return nil, apperr.ErrMessageQueueFailed
 	}
 	return &SignupResult{}, nil
 }

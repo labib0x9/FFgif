@@ -8,6 +8,7 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 )
 
 type reqReset struct {
@@ -53,7 +54,7 @@ func (h *Handler) ResetPasswordPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := h.srv.ResetPasswordPost(r.Context(), req.Token, req.Password, req.ConfirmPassword)
-	if err != nil && !errors.Is(err, auth.ErrMessageQueueFailed) {
+	if err != nil && !errors.Is(err, apperr.ErrMessageQueueFailed) {
 		switch {
 		case errors.Is(err, auth.ErrReseterTokenFatchFailed):
 			httputil.SendError(w, auth.AUTH_RESET_TOKEN_INVALID, "invalid or expired token", http.StatusGone)

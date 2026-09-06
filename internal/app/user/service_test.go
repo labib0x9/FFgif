@@ -10,6 +10,7 @@ import (
 	appuser "github.com/labib0x9/ffgif/internal/app/user"
 	domainauth "github.com/labib0x9/ffgif/internal/domain/auth"
 	domainuser "github.com/labib0x9/ffgif/internal/domain/user"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 	"github.com/labib0x9/ffgif/pkg/jwt"
 	"github.com/labib0x9/ffgif/pkg/password"
 )
@@ -269,7 +270,7 @@ func TestUserService_ChangePassword_Mismatch(t *testing.T) {
 	svc := newTestUserService(nil, nil, authRepo, hasher)
 
 	err := svc.ChangePassword(context.Background(), userId.String(), "old", "newPass1", "differentPass2")
-	if !errors.Is(err, domainauth.ErrPasswordMismatched) {
+	if !errors.Is(err, apperr.ErrPasswordMismatched) {
 		t.Errorf("expected ErrPasswordMismatched, got %v", err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 )
 
 type reqSignup struct {
@@ -35,9 +36,9 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err := h.srv.Signup(r.Context(), req.Email, req.Username, req.Fullname, req.Password)
-	if err != nil && !errors.Is(err, auth.ErrMessageQueueFailed) {
+	if err != nil && !errors.Is(err, apperr.ErrMessageQueueFailed) {
 		switch {
-		case errors.Is(err, auth.ErrUserExits):
+		case errors.Is(err, auth.ErrUserExists):
 			httputil.SendError(w, auth.AUTH_USER_EXISTS, "email exists", http.StatusConflict)
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)

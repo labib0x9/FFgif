@@ -7,6 +7,7 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/port/queue"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 	"github.com/labib0x9/ffgif/pkg/token"
 )
 
@@ -49,7 +50,7 @@ func (s *service) ForgotPassword(ctx context.Context, email string) error {
 	}
 
 	if err := s.queue.PublishEmail(ctx, mqMsg); err != nil {
-		return auth.ErrMessageQueueFailed
+		return apperr.ErrMessageQueueFailed
 	}
 	return nil
 }

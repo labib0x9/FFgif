@@ -7,10 +7,10 @@ import (
 )
 
 var (
-	ErrGifNotFound       = errors.New("")
-	ErrGifFetchFailed    = errors.New("")
+	ErrGifNotFound       = errors.New("gif not found")
+	ErrGifFetchFailed    = errors.New("gif fetch failed")
 	ErrGifOwnerMismatch  = errors.New("Gif Owner mismatch")
-	ErrThumbnailNotFound = errors.New("Thumnail not found")
+	ErrThumbnailNotFound = errors.New("thumbnail not found")
 )
 
 type Gif struct {

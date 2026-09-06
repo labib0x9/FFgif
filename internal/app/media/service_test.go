@@ -18,6 +18,7 @@ import (
 	domainuser "github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/internal/port/processor"
 	"github.com/labib0x9/ffgif/internal/port/queue"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 	jwtpkg "github.com/labib0x9/ffgif/pkg/jwt"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -592,7 +593,7 @@ func TestMediaService_Convert_QueueFailure(t *testing.T) {
 	svc := newTestMediaService(nil, nil, nil, nil, queueMock, nil, nil)
 
 	_, err := svc.Convert(context.Background(), "user-1", "test.mp4", 0, 5, 10, 320, true)
-	if !errors.Is(err, domainmedia.ErrMessageQueueFailed) {
+	if !errors.Is(err, apperr.ErrMessageQueueFailed) {
 		t.Errorf("expected ErrMessageQueueFailed, got %v", err)
 	}
 }
@@ -622,7 +623,7 @@ func TestMediaService_ConversionStatus_NotFound(t *testing.T) {
 	svc := newTestMediaService(nil, nil, nil, nil, nil, cache, nil)
 
 	_, err := svc.ConversionStatus(context.Background(), "non-existent-job")
-	if !errors.Is(err, domainmedia.ErrCacheGetFailed) {
+	if !errors.Is(err, apperr.ErrCacheGetFailed) {
 		t.Errorf("expected ErrCacheGetFailed, got %v", err)
 	}
 }

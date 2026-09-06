@@ -13,6 +13,7 @@ import (
 	domainauth "github.com/labib0x9/ffgif/internal/domain/auth"
 	domainuser "github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/internal/port/queue"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 	jwtpkg "github.com/labib0x9/ffgif/pkg/jwt"
 	"github.com/labib0x9/ffgif/pkg/password"
 	tokenpkg "github.com/labib0x9/ffgif/pkg/token"
@@ -333,8 +334,8 @@ func TestAuthService_Signup_UserAlreadyExists(t *testing.T) {
 	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, nil, nil)
 
 	_, err := svc.Signup(context.Background(), "exists@example.com", "u", "fn", "p")
-	if !errors.Is(err, domainauth.ErrUserExits) {
-		t.Errorf("expected ErrUserExits, got %v", err)
+	if !errors.Is(err, domainauth.ErrUserExists) {
+		t.Errorf("expected ErrUserExists, got %v", err)
 	}
 }
 
@@ -356,7 +357,7 @@ func TestAuthService_Signup_QueuePublishFailure(t *testing.T) {
 	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, queueMock, nil)
 
 	_, err := svc.Signup(context.Background(), "user@example.com", "username", "Full Name", "password123")
-	if !errors.Is(err, domainauth.ErrMessageQueueFailed) {
+	if !errors.Is(err, apperr.ErrMessageQueueFailed) {
 		t.Errorf("expected ErrMessageQueueFailed, got %v", err)
 	}
 }

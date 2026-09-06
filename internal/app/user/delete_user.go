@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labib0x9/ffgif/internal/domain/auth"
-	"github.com/labib0x9/ffgif/internal/domain/user"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 )
 
 func (s *service) DeleteUser(ctx context.Context, id string, pass string) error {
@@ -21,7 +21,7 @@ func (s *service) DeleteUser(ctx context.Context, id string, pass string) error 
 	}
 
 	if err := s.authRepo.DeleteById(ctx, uuid); err != nil {
-		return user.ErrTableUpdateFailed
+		return apperr.ErrTableUpdateFailed
 	}
 	return nil
 }

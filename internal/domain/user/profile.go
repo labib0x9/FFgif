@@ -2,16 +2,9 @@ package user
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
-)
-
-var (
-	ErrPasswordMismatched = errors.New("")
-	ErrHashGenFailed      = errors.New("")
-	ErrTableUpdateFailed  = errors.New("")
 )
 
 type Profile struct {

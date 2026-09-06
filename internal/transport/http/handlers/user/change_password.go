@@ -8,6 +8,7 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 )
 
 type reqChangePassword struct {
@@ -42,7 +43,7 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, auth.ErrUserNotFound):
 			httputil.SendError(w, auth.AUTH_USER_NOT_FOUND, "user not found", http.StatusNotFound)
-		case errors.Is(err, auth.ErrPasswordMismatched):
+		case errors.Is(err, apperr.ErrPasswordMismatched):
 			httputil.SendError(w, httputil.VALIDATION_FAILED, "password not matched", http.StatusUnprocessableEntity)
 		case errors.Is(err, auth.ErrInvalidCredential):
 			w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="invalid credentials"`)

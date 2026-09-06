@@ -8,6 +8,7 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 )
 
 type reqForgot struct {
@@ -30,7 +31,7 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := h.srv.ForgotPassword(r.Context(), req.Email)
-	if err != nil && !errors.Is(err, auth.ErrMessageQueueFailed) {
+	if err != nil && !errors.Is(err, apperr.ErrMessageQueueFailed) {
 		switch {
 		case errors.Is(err, auth.ErrUserNotVerified):
 			httputil.SendError(w, auth.AUTH_USER_NOT_VERIFIED, "user is not varified", http.StatusForbidden)

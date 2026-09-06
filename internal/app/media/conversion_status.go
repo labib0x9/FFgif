@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/labib0x9/ffgif/internal/domain/media"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 )
 
 type StatusResult struct {
@@ -20,7 +20,7 @@ func (s *service) ConversionStatus(ctx context.Context, jobId string) (*StatusRe
 	key := "messaage_queue:job_id:" + jobId
 	val, err := s.cache.Get(ctx, key)
 	if err != nil {
-		return nil, media.ErrEmptyKey
+		return nil, apperr.ErrCacheGetFailed
 	}
 
 	gifKey := "messaage_queue_gif:job_id:" + jobId

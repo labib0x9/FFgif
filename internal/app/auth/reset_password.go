@@ -5,6 +5,7 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/port/queue"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 )
 
 func (s *service) ResetPasswordGet(ctx context.Context, token string) (string, error) {
@@ -49,7 +50,7 @@ func (s *service) ResetPasswordPost(ctx context.Context, token string, pass stri
 	}
 
 	if err := s.queue.PublishEmail(ctx, mqMsg); err != nil {
-		return auth.ErrMessageQueueFailed
+		return apperr.ErrMessageQueueFailed
 	}
 	return nil
 }

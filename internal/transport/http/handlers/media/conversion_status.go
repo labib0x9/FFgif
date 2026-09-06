@@ -7,6 +7,7 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/media"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 )
 
 func (h *Handler) ConversionStatus(w http.ResponseWriter, r *http.Request) {
@@ -21,7 +22,7 @@ func (h *Handler) ConversionStatus(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("media handler - ConversionStatus()", "err", err)
 		switch {
-		case errors.Is(err, media.ErrEmptyKey):
+		case errors.Is(err, apperr.ErrCacheGetFailed), errors.Is(err, media.ErrEmptyKey):
 			httputil.SendError(w, media.JOB_NOT_FOUND, "job not found", http.StatusNotFound)
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
