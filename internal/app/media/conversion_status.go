@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/labib0x9/ffgif/pkg/apperr"
@@ -20,7 +21,7 @@ func (s *service) ConversionStatus(ctx context.Context, jobId string) (*StatusRe
 	key := "messaage_queue:job_id:" + jobId
 	val, err := s.cache.Get(ctx, key)
 	if err != nil {
-		return nil, apperr.ErrCacheGetFailed
+		return nil, fmt.Errorf("cache.Get: %w: %w", apperr.ErrCacheGetFailed, err)
 	}
 
 	gifKey := "messaage_queue_gif:job_id:" + jobId

@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/labib0x9/ffgif/internal/domain/media"
 )
@@ -16,7 +17,7 @@ type GifResult struct {
 func (s *service) GetGifs(ctx context.Context, id string, filter string) (*GifResult, error) {
 	gifs, err := s.gifRepo.Get(ctx, id, filter)
 	if err != nil {
-		return nil, media.ErrGifFetchFailed
+		return nil, fmt.Errorf("gifRepo.Get: %w: %w", media.ErrGifFetchFailed, err)
 	}
 
 	return &GifResult{

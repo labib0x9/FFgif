@@ -2,6 +2,7 @@ package share
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
@@ -13,11 +14,11 @@ import (
 func (s *service) Create(ctx context.Context, sharedBy string, gifKey string, sharedWith string, expiresAt time.Time) error {
 	sharedUser, err := s.authRepo.GetByEmail(ctx, sharedWith)
 	if err != nil {
-		return auth.ErrUserNotFound
+		return fmt.Errorf("authRepo.GetByEmail: %w: %w", auth.ErrUserNotFound, err)
 	}
 	_, err = s.gifRepo.GetByKey(ctx, gifKey)
 	if err != nil {
-		return media.ErrGifNotFound
+		return fmt.Errorf("gifRepo.GetByKey: %w: %w", media.ErrGifNotFound, err)
 	}
 
 	share := share.Share{

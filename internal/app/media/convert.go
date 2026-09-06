@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/labib0x9/ffgif/internal/port/queue"
@@ -32,16 +33,16 @@ func (s *service) Convert(ctx context.Context, userId string, key string, start 
 
 	mqkey := "messaage_queue:job_id:" + Id
 	if err := s.cache.Set(ctx, mqkey, status, 5*time.Minute); err != nil {
-		return nil, apperr.ErrCacheSetFailed
+		return nil, fmt.Errorf("cache.Set(job): %w: %w", apperr.ErrCacheSetFailed, err)
 	}
 
 	gifKey := "messaage_queue_gif:job_id:" + Id
 	if err := s.cache.Set(ctx, gifKey, status, 5*time.Minute); err != nil {
-		return nil, apperr.ErrCacheSetFailed
+		return nil, fmt.Errorf("cache.Set(gif): %w: %w", apperr.ErrCacheSetFailed, err)
 	}
 
 	if err := s.queue.PublishVideo(ctx, msg); err != nil {
-		return nil, apperr.ErrMessageQueueFailed
+		return nil, fmt.Errorf("queue.PublishVideo: %w: %w", apperr.ErrMessageQueueFailed, err)
 	}
 
 	return &ConvertResult{

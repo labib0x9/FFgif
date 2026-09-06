@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 
 	"github.com/labib0x9/ffgif/internal/port/mailer"
@@ -43,7 +42,7 @@ func (w *EmailWorker) Run(ctx context.Context, name string, concurrency int) err
 
 		case d, ok := <-msgs:
 			if !ok {
-				return fmt.Errorf("consumer channel closed")
+				return queue.ErrConsumerChannelClosed
 			}
 
 			sem <- struct{}{}
@@ -95,26 +94,16 @@ func (w *EmailWorker) handle(d amqp.Delivery) {
 		)
 
 	default:
-		slog.Error("unknown email job type", "type", msg.Name)
+		slog.Error("unknown email job type", "type", msg.Name, "email", msg.To)
 		d.Nack(false, false)
 		return
 	}
 
 	if err != nil {
-		// retries := retryCount(d)
-		// slog.Error("email job failed", "error", err, "retries", retries)
-
-		// if retries < w.maxRetries {
-		// 	err := d.Nack(false, true)
-		// 	if err != nil {
-		// 		slog.Error("nack retry failed", "error", err)
-		// 	}
-		// 	return
-		// }
-
+		slog.Error("email sending failed", "error", err, "type", msg.Name, "email", msg.To)
 		err := d.Nack(false, false)
 		if err != nil {
-			slog.Error("nack dead-letter failed", "error", err)
+			slog.Error("nack dead-letter failed", "error", err, "email", msg.To)
 		}
 
 		return
@@ -122,7 +111,7 @@ func (w *EmailWorker) handle(d amqp.Delivery) {
 
 	err = d.Ack(false)
 	if err != nil {
-		slog.Error("ack failed", "error", err)
+		slog.Error("ack failed", "error", err, "email", msg.To)
 		return
 	}
 

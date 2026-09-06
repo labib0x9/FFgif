@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/port/queue"
@@ -27,7 +28,7 @@ func (s *service) ResendVerify(ctx context.Context, email string) error {
 	oldVerifier, err := s.verifierRepo.GetById(ctx, user.Id)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			return auth.ErrTokenFetchFailed
+			return fmt.Errorf("verifierRepo.GetById: %w: %w", auth.ErrTokenFetchFailed, err)
 		}
 	} else {
 		if err := s.verifierRepo.Delete(ctx, oldVerifier.Id); err != nil {
@@ -43,7 +44,7 @@ func (s *service) ResendVerify(ctx context.Context, email string) error {
 	}
 
 	if err = s.verifierRepo.Create(ctx, newVerifier); err != nil {
-		return auth.ErrVerifierTokenCreateFailed
+		return fmt.Errorf("verifierRepo.Create: %w: %w", auth.ErrVerifierTokenCreateFailed, err)
 	}
 
 	mqMsg := queue.EmailMessage{
@@ -53,7 +54,7 @@ func (s *service) ResendVerify(ctx context.Context, email string) error {
 	}
 
 	if err := s.queue.PublishEmail(ctx, mqMsg); err != nil {
-		return apperr.ErrMessageQueueFailed
+		return fmt.Errorf("queue.PublishEmail: %w: %w", apperr.ErrMessageQueueFailed, err)
 	}
 
 	return nil

@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/url"
 
@@ -43,7 +42,7 @@ func (w *ProcessingWorker) Run(ctx context.Context, name string, concurrency int
 			return nil
 		case d, ok := <-msgs:
 			if !ok {
-				return fmt.Errorf("consumer channel closed")
+				return queue.ErrConsumerChannelClosed
 			}
 			sem <- struct{}{}
 			go func(d amqp.Delivery) {
@@ -66,7 +65,7 @@ func (w *ProcessingWorker) handle(ctx context.Context, d amqp.Delivery) {
 	}
 
 	if msg.Err != nil || len(msg.Records) == 0 {
-		slog.Error("invalid notification message", "error", err)
+		slog.Error("invalid notification message: empty records or error", "error", msg.Err)
 		d.Nack(false, false)
 		return
 	}
@@ -74,14 +73,16 @@ func (w *ProcessingWorker) handle(ctx context.Context, d amqp.Delivery) {
 	key := msg.Records[0].S3.Object.Key
 	decodedKey, err := url.QueryUnescape(key)
 	if err != nil {
-		slog.Error("Pre Processing Handler() decode key failed", "error", err)
+		slog.Error("decode key failed", "key", key, "error", err)
+		d.Nack(false, false)
 		return
 	}
 	key = decodedKey
 
 	err = w.srv.UpdateUploadingStatus(ctx, key, "processing")
 	if err != nil {
-		slog.Error("UpdateUploadingStatus() failed", "error", err)
+		slog.Error("UpdateUploadingStatus failed", "key", key, "error", err)
+		d.Nack(false, false)
 		return
 	}
 	slog.Info("processing raw video", "key", key)
@@ -92,20 +93,20 @@ func (w *ProcessingWorker) handle(ctx context.Context, d amqp.Delivery) {
 		w.srv.UpdateUploadingStatus(ctx, key, "failed")
 		err := d.Nack(false, false)
 		if err != nil {
-			slog.Error("nack dead-letter failed", "error", err)
+			slog.Error("nack dead-letter failed", "key", key, "error", err)
 		}
 		return
 	}
 
 	err = d.Ack(false)
 	if err != nil {
-		slog.Error("ack failed", "error", err)
+		slog.Error("ack failed", "key", key, "error", err)
 		return
 	}
 
 	err = w.srv.UpdateUploadingStatus(ctx, key, "ok")
 	if err != nil {
-		slog.Error("UpdateUploadingStatus() failed", "error", err)
+		slog.Error("UpdateUploadingStatus failed", "key", key, "error", err)
 		return
 	}
 
