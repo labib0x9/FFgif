@@ -16,32 +16,33 @@ type reqCreate struct {
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	id := httputil.GetUserId(r.Context())
 	if id == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
 		httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "unauthenticated", http.StatusUnauthorized)
-		slog.Error("share handler - Create() = user_id not found", "err", "user_id not found")
+		slog.Error("share handler - Create() = user_id not found", "request_id", reqId, "err", "user_id not found")
 		return
 	}
 
 	gifId := r.PathValue("key")
 	if gifId == "" {
 		httputil.SendError(w, httputil.BAD_REQUEST, "gif key is missing", http.StatusBadRequest)
-		slog.Warn("share handler - Create() = gif key missing", "error", "gif key missing")
+		slog.Warn("share handler - Create() = gif key missing", "request_id", reqId, "error", "gif key missing")
 		return
 	}
 
 	var req reqCreate
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.SendError(w, httputil.BAD_REQUEST, "bad request", http.StatusBadRequest)
-		slog.Warn("share handler - Create() = bad json body", "error", err)
+		slog.Warn("share handler - Create() = bad json body", "request_id", reqId, "error", err)
 		return
 	}
 
 	err := h.srv.Create(r.Context(), id, gifId, req.SharedWith, req.ExpireAt)
 	if err != nil {
 		httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
-		slog.Error("share handler - Create()", "err", err)
+		slog.Error("share handler - Create()", "request_id", reqId, "err", err)
 		return
 	}
 

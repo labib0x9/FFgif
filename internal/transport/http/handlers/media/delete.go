@@ -11,18 +11,19 @@ import (
 )
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	id := httputil.GetUserId(r.Context())
 	if id == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
 		httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "user id not found", http.StatusUnauthorized)
-		slog.Error("media handler - Delete() = user_id not found", "err", "user_id not found")
+		slog.Error("media handler - Delete() = user_id not found", "request_id", reqId, "err", "user_id not found")
 		return
 	}
 
 	key := r.PathValue("key")
 	if key == "" {
 		httputil.SendError(w, httputil.BAD_REQUEST, "gif key is missing", http.StatusBadRequest)
-		slog.Warn("media handler - Delete() = gif key missing", "error", "gif key missing")
+		slog.Warn("media handler - Delete() = gif key missing", "request_id", reqId, "error", "gif key missing")
 		return
 	}
 
@@ -35,7 +36,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("media handler - Delete()", "err", err)
+		slog.Error("media handler - Delete()", "request_id", reqId, "err", err)
 		return
 	}
 

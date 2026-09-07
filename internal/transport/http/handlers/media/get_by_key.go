@@ -12,10 +12,11 @@ import (
 )
 
 func (h *Handler) GetByKey(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	key := r.PathValue("key")
 	if key == "" {
 		httputil.SendError(w, httputil.BAD_REQUEST, "gif key is missing", http.StatusBadRequest)
-		slog.Warn("media handler - GetByKey() = gif key missing", "error", "gif key not found")
+		slog.Warn("media handler - GetByKey() = gif key missing", "request_id", reqId, "error", "gif key not found")
 		return
 	}
 
@@ -29,7 +30,7 @@ func (h *Handler) GetByKey(w http.ResponseWriter, r *http.Request) {
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("media handler - GetByKey()", "err", err)
+		slog.Error("media handler - GetByKey()", "request_id", reqId, "err", err)
 		return
 	}
 

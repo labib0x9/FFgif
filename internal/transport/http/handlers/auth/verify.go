@@ -10,9 +10,10 @@ import (
 )
 
 func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	token := r.URL.Query().Get("token")
 	if token == "" {
-		slog.Warn("auth handler - Verify() = token query param missing", "error", "token is empty")
+		slog.Warn("auth handler - Verify() = token query param missing", "request_id", reqId, "error", "token is empty")
 		httputil.SendError(w, httputil.BAD_REQUEST, "token is empty", http.StatusBadRequest)
 		return
 	}
@@ -24,7 +25,7 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("auth handler - Verify()", "err", err)
+		slog.Error("auth handler - Verify()", "request_id", reqId, "err", err)
 		return
 	}
 

@@ -11,25 +11,26 @@ import (
 )
 
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	id := httputil.GetUserId(r.Context())
 	if id == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
 		httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "unauthenticated", http.StatusUnauthorized)
-		slog.Error("share handler - Delete() = user_id not found", "err", "user_id not found")
+		slog.Error("share handler - Delete() = user_id not found", "request_id", reqId, "err", "user_id not found")
 		return
 	}
 
 	key := r.PathValue("key")
 	if key == "" {
 		httputil.SendError(w, httputil.BAD_REQUEST, "gif key is missing", http.StatusBadRequest)
-		slog.Warn("share handler - Delete() = gif key missing", "error", "gif key not found")
+		slog.Warn("share handler - Delete() = gif key missing", "request_id", reqId, "error", "gif key not found")
 		return
 	}
 
 	shareWithId := r.PathValue("shareWithId")
 	if shareWithId == "" {
 		httputil.SendError(w, httputil.BAD_REQUEST, "share id is missing", http.StatusBadRequest)
-		slog.Warn("share handler - Delete() = share id missing", "error", "shared user id not found")
+		slog.Warn("share handler - Delete() = share id missing", "request_id", reqId, "error", "shared user id not found")
 		return
 	}
 
@@ -42,7 +43,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("share handler - Delete()", "err", err)
+		slog.Error("share handler - Delete()", "request_id", reqId, "err", err)
 		return
 	}
 

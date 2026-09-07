@@ -16,18 +16,19 @@ type resendRequest struct {
 }
 
 func (h *Handler) ResendVerify(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	var req resendRequest
 	decoder := json.NewDecoder(r.Body)
 
 	if err := decoder.Decode(&req); err != nil {
 		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
-		slog.Warn("auth handler - ResendVerify() = bad json body", "error", err)
+		slog.Warn("auth handler - ResendVerify() = bad json body", "request_id", reqId, "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
 		httputil.SendError(w, httputil.VALIDATION_FAILED, "field required", http.StatusUnprocessableEntity)
-		slog.Warn("auth handler - ResendVerify() = struct validation failed", "error", err)
+		slog.Warn("auth handler - ResendVerify() = struct validation failed", "request_id", reqId, "error", err)
 		return
 	}
 
@@ -43,7 +44,7 @@ func (h *Handler) ResendVerify(w http.ResponseWriter, r *http.Request) {
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("auth handler - ResendVerify()", "err", err)
+		slog.Error("auth handler - ResendVerify()", "request_id", reqId, "err", err)
 		return
 	}
 

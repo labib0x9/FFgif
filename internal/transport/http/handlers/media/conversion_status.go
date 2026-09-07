@@ -11,16 +11,17 @@ import (
 )
 
 func (h *Handler) ConversionStatus(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	jobId := r.PathValue("jobId")
 	if jobId == "" {
-		slog.Warn("media handler - ConversionStatus() = jobId missing", "error", "jobId missing")
+		slog.Warn("media handler - ConversionStatus() = jobId missing", "request_id", reqId, "error", "jobId missing")
 		httputil.SendError(w, httputil.BAD_REQUEST, "bad request", http.StatusBadRequest)
 		return
 	}
 
 	result, err := h.srv.ConversionStatus(r.Context(), jobId)
 	if err != nil {
-		slog.Error("media handler - ConversionStatus()", "err", err)
+		slog.Error("media handler - ConversionStatus()", "request_id", reqId, "err", err)
 		switch {
 		case errors.Is(err, apperr.ErrCacheGetFailed), errors.Is(err, media.ErrEmptyKey):
 			httputil.SendError(w, media.JOB_NOT_FOUND, "job not found", http.StatusNotFound)

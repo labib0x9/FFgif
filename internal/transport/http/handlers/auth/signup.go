@@ -20,18 +20,19 @@ type reqSignup struct {
 }
 
 func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	var req reqSignup
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&req); err != nil {
 		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
-		slog.Warn("auth handler - Signup() = bad json body", "error", err)
+		slog.Warn("auth handler - Signup() = bad json body", "request_id", reqId, "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
 		// can we be specific what field caused error ?
 		httputil.SendError(w, httputil.VALIDATION_FAILED, "field required", http.StatusUnprocessableEntity)
-		slog.Warn("auth handler - Signup() = struct validation failed", "error", err)
+		slog.Warn("auth handler - Signup() = struct validation failed", "request_id", reqId, "error", err)
 		return
 	}
 
@@ -43,7 +44,7 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("auth handler - Signup()", "err", err)
+		slog.Error("auth handler - Signup()", "request_id", reqId, "err", err)
 		return
 	}
 

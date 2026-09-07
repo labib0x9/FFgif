@@ -12,38 +12,39 @@ import (
 )
 
 func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	id := httputil.GetUserId(r.Context())
 	if id == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
 		httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "user id not found", http.StatusUnauthorized)
-		slog.Error("media handler - Update() = user_id not found", "err", "user_id not found")
+		slog.Error("media handler - Update() = user_id not found", "request_id", reqId, "err", "user_id not found")
 		return
 	}
 
 	key := r.PathValue("key")
 	if key == "" {
 		httputil.SendError(w, httputil.BAD_REQUEST, "gif key is missing", http.StatusBadRequest)
-		slog.Warn("media handler - Update() = gif key missing", "error", "gif key not found")
+		slog.Warn("media handler - Update() = gif key missing", "request_id", reqId, "error", "gif key not found")
 		return
 	}
 
 	var req media.GifUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
-		slog.Warn("media handler - Update() = bad json body", "error", err)
+		slog.Warn("media handler - Update() = bad json body", "request_id", reqId, "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
 		httputil.SendError(w, httputil.VALIDATION_FAILED, "field required", http.StatusUnprocessableEntity)
-		slog.Warn("media handler - Update() = struct validation failed", "error", err)
+		slog.Warn("media handler - Update() = struct validation failed", "request_id", reqId, "error", err)
 		return
 	}
 
 	ifMatch := r.Header.Get("If-Match")
 	if ifMatch == "" {
 		httputil.SendError(w, httputil.PRECONDITION_FAILED, "If-Match header is empty", http.StatusPreconditionFailed)
-		slog.Warn("media handler - Update() = update condition required", "error", "empty If-Match header")
+		slog.Warn("media handler - Update() = update condition required", "request_id", reqId, "error", "empty If-Match header")
 		return
 	}
 
@@ -59,7 +60,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("media handler - Update()", "err", err)
+		slog.Error("media handler - Update()", "request_id", reqId, "err", err)
 		return
 	}
 

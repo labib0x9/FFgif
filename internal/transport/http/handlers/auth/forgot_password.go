@@ -16,17 +16,17 @@ type reqForgot struct {
 }
 
 func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	var req reqForgot
-
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
-		slog.Warn("auth handler - ForgotPassword() = bad json body", "error", err)
+		slog.Warn("auth handler - ForgotPassword() = bad json body", "request_id", reqId, "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
 		httputil.SendError(w, httputil.VALIDATION_FAILED, "field required", http.StatusUnprocessableEntity)
-		slog.Warn("auth handler - ForgotPassword() = struct validation failed", "error", err)
+		slog.Warn("auth handler - ForgotPassword() = struct validation failed", "request_id", reqId, "error", err)
 		return
 	}
 
@@ -40,7 +40,7 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Warn("auth handler - ForgotPassword() = service failed", "error", err)
+		slog.Warn("auth handler - ForgotPassword() = service failed", "request_id", reqId, "error", err)
 		return
 	}
 

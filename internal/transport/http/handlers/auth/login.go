@@ -16,16 +16,17 @@ type reqLogin struct {
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	var req reqLogin
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
-		slog.Warn("auth handler - Login() = bad json body", "error", err)
+		slog.Warn("auth handler - Login() = bad json body", "request_id", reqId, "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
 		httputil.SendError(w, httputil.VALIDATION_FAILED, "Bad request", http.StatusUnprocessableEntity)
-		slog.Warn("auth handler - Login() = struct validation failed", "error", err)
+		slog.Warn("auth handler - Login() = struct validation failed", "request_id", reqId, "error", err)
 		return
 	}
 
@@ -42,7 +43,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("auth handler - Login()", "err", err)
+		slog.Error("auth handler - Login()", "request_id", reqId, "err", err)
 		return
 	}
 

@@ -18,16 +18,17 @@ type reqReset struct {
 }
 
 func (h *Handler) ResetPasswordGet(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	token := r.URL.Query().Get("token")
 	if token == "" {
-		slog.Warn("auth handler - ResetPasswordGet() = token query param missing", "error", "token not found")
+		slog.Warn("auth handler - ResetPasswordGet() = token query param missing", "request_id", reqId, "error", "token not found")
 		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
 		return
 	}
 
 	token, err := h.srv.ResetPasswordGet(r.Context(), token)
 	if err != nil {
-		slog.Error("auth handler - ResetPasswordGet()", "err", err)
+		slog.Error("auth handler - ResetPasswordGet()", "request_id", reqId, "err", err)
 		httputil.SendError(w, auth.AUTH_RESET_TOKEN_INVALID, "expired or invalid token", http.StatusGone)
 		return
 	}
@@ -38,18 +39,19 @@ func (h *Handler) ResetPasswordGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ResetPasswordPost(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	var req reqReset
 	decoder := json.NewDecoder(r.Body)
 
 	if err := decoder.Decode(&req); err != nil {
 		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
-		slog.Warn("auth handler - ResetPasswordPost() = bad json body", "error", err)
+		slog.Warn("auth handler - ResetPasswordPost() = bad json body", "request_id", reqId, "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
 		httputil.SendError(w, httputil.VALIDATION_FAILED, "field required", http.StatusUnprocessableEntity)
-		slog.Warn("auth handler - ResetPasswordPost() = struct validation failed", "error", err)
+		slog.Warn("auth handler - ResetPasswordPost() = struct validation failed", "request_id", reqId, "error", err)
 		return
 	}
 
@@ -61,7 +63,7 @@ func (h *Handler) ResetPasswordPost(w http.ResponseWriter, r *http.Request) {
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("auth handler - ResetPasswordPost()", "err", err)
+		slog.Error("auth handler - ResetPasswordPost()", "request_id", reqId, "err", err)
 		return
 	}
 
