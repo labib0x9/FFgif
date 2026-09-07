@@ -6,14 +6,14 @@ A video-to-GIF conversion platform. Users upload videos, configure conversion pa
 
 ## Features
 
-- **JWT-based Authentication:** Signup with email verification, login, forgot/reset password flow, and token blocklisting on logout
+- **JWT-based Authentication:** Signup with email verification, login, forgot/reset password flow, and token blocklisting on logout (Redis-backed)
 - **Presigned URL upload and download flow:** Client uploads and downloads directly from MinIO, backend never touches the bytes
 - **Event-driven ingestion:** MinIO bucket notifications trigger RabbitMQ on upload, decoupling ingestion from processing
 - **Async GIF conversion via RabbitMQ worker pool:** FFmpeg processes video locally, result uploaded back to MinIO
-- **GIF management:** list, get, delete, visibility status (public/private), download URL
+- **GIF management:** list, get, delete, visibility status (public/private), download URL, sharing with others users or publicly by email
+- **GIF sharing with access control:** owners can grant time-limited access to another registered user or publicly; shared recipients can download without owning the GIF
 - **Rate Limiter:** Redis token bucket rate limiter implemented via a Lua script for atomic server-side enforcement
-- **Retry & dead-letter handling:** Failed conversion jobs retry with backoff before routing to a dead-letter queue
-- **Mail sending:** Emails are send via smtp
+- **Email delivery** via SMTP (Mailtrap sandbox or SMTP)
 
 ---
 
@@ -182,7 +182,7 @@ sequenceDiagram
 
 | Component        | Technology                               |
 | ---------------- | ---------------------------------------- |
-| Language         | Go 1.25                                  |
+| Language         | Go                                       |
 | HTTP             | `net/http` (stdlib, no framework)        |
 | Database         | PostgreSQL via `sqlx`                    |
 | Migrations       | `golang-migrate`                         |
@@ -334,6 +334,7 @@ services:
   minio       → MinIO
   bootstrap:  → CLI to setup postgres, redis and rabbitmq
   api:        → API backend and frontend
+  worker:     → async job workers
 ```
 
 ### Demo login
@@ -346,16 +347,14 @@ Pass: anonymous@ffgif
 ### Mail send
 
 ```
-Option 1:
-1. use https://mailtrap.io/ sandbox for testing
+Option 1: Mailtrap sandbox (good for local testing)
+→ sign up at https://mailtrap.io/
+→ use mailer.NewMailtrap(cnf)
 
-mailer := mailer.NewMailtrap(cnf)
-
-Option 2:
-1. goto  https://myaccount.google.com/apppasswords
-2. get new password for mail
-
-mailer := mailer.NewSmtpMailer(cnf)
+Option 2: Real SMTP (e.g. Gmail app password)
+→ goto  https://myaccount.google.com/apppasswords
+→ get new password for mail
+→ use mailer.NewSmtpMailer(cnf)
 ```
 
 ---
@@ -397,8 +396,8 @@ GET    /uploads/last             last uploaded video metadata
 ### Convert
 
 ```
-POST   /convert                  enqueue conversion job
-GET    /convert/{jobId}/status   poll job status from Redis
+POST   /jobs                  enqueue conversion job
+GET    /jobs/{jobId}/status   poll job status from Redis
 ```
 
 ### GIFs
@@ -420,6 +419,8 @@ POST   /gifs/me/recents/{key}/save
 POST   /gifs/me/{key}/shares                    (share a GIF with a user by email & expiry)
 GET    /gifs/me/shares                          (list all GIFs shared by / with authenticated user)
 DELETE /gifs/me/{key}/shares/{shareWithId}      (revoke shared access for a user)
+POST /s                                         (share a GIF publicly)
+POST /s/{token}                                 (Get the public share, no auth needed)
 ```
 
 ---
@@ -431,7 +432,16 @@ DELETE /gifs/me/{key}/shares/{shareWithId}      (revoke shared access for a user
 - **`OneTimePerEmail` and `BlockIP` middlewares are stubs**: The rate-limiting middleware for sensitive auth endpoints is not yet implemented (currently pass-through).
 - **No HTTPS / TLS**: Local dev only, no TLS configuration.
 - **Job status stored only in Redis with 5-minute TTL**: If a client polls after expiry, the status is gone. There is no persistent job record in Postgres.
-- **No transaction**: Currently only Auth service is using transaction.
+- **Limited transaction**: Currently only Auth service is using transaction.
+- **PATCH UPDATE**: Setting a non-null value to null is incomplete.
+- **Retry Worker**: Retry logic in workers(from queue) is also incomplete, currently failed messages goes to DLQ, no proper DLQ handling.
+- **Documentation**: No proper API documentation
+- **Misleading Location Header**: 201 and 202 responses, Location header may mislead
+- **REST API**: no userId on gif APIS, only `gifs/me`. need to add `gifs/{userId}`.
+- **Error on streaming**: Currently range streaming is incomplete for a large video.
+- **Database cleanup**: No proper cleanup methods for expired rows.
+- **No public download**: Currently publicly shared gif has no download option.
+- **No quota**: quota is incomplete, currently unlimited quota.
 
 ---
 
@@ -439,8 +449,7 @@ DELETE /gifs/me/{key}/shares/{shareWithId}      (revoke shared access for a user
 
 - Per-user quota tracking (storage bytes, GIF count)
 - Implement frontend (Next.js)
-- Persistent job records in Postgres (replace Redis-only job status)
-- Complete anonymous user flow
 - GIF metadata enrichment: file size, dimensions, duration stored in the gifs table
-- Anonymous user accounts with 24-hour TTL and upgrade-to-registered path
-- Admin endpoints
+- Friendship domain (user can be friends)
+- Gif sharing should be two types, one with friends, other with email (without having shared with account, send as a email)
+- Add monitoring 
