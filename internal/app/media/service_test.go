@@ -298,11 +298,11 @@ func (m *mockAuthRepo) Upgrade(ctx context.Context, id string, user domainauth.U
 
 type mockUserRepo struct{}
 
-func (m *mockUserRepo) GetProfile(ctx context.Context, id string) (domainuser.ProfileResponse, error) {
+func (m *mockUserRepo) GetProfile(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
 	return domainuser.ProfileResponse{}, nil
 }
-func (m *mockUserRepo) UpdateProfile(ctx context.Context, profile domainuser.ProfileResponse, id string) (domainuser.ProfileResponse, error) {
-	return profile, nil
+func (m *mockUserRepo) UpdateProfile(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error) {
+	return domainuser.ProfileResponse{}, nil
 }
 func (m *mockUserRepo) SetProfile(ctx context.Context, profile domainuser.Profile) error { return nil }
 func (m *mockUserRepo) ChangePassword(ctx context.Context, userId string, hash string) error {

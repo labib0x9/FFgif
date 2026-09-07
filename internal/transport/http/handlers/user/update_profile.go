@@ -2,16 +2,18 @@ package user
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
+	"github.com/labib0x9/ffgif/internal/domain/media"
 	"github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
 
 func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
-	var req user.ProfileResponse
+	var req user.ProfileUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
 		slog.Warn("user handler - UpdateProfile() = bad json body", "error", err)
@@ -32,9 +34,18 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.srv.UpdateProfile(r.Context(), req, id)
+	ifMatch := r.Header.Get("If-Match")
+	if ifMatch == "" {
+		httputil.SendError(w, httputil.PRECONDITION_FAILED, "If-Match header is empty", http.StatusPreconditionFailed)
+		slog.Warn("user handler - Update() = update condition required", "error", "empty If-Match header")
+		return
+	}
+
+	updated, err := h.srv.UpdateProfile(r.Context(), req, id, ifMatch)
 	if err != nil {
 		switch {
+		case errors.Is(err, media.ErrETagValidationFailed):
+			httputil.SendError(w, httputil.PRECONDITION_FAILED, "etag not matched", http.StatusPreconditionFailed)
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
@@ -42,5 +53,5 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.SendJson(w, updated, 200)
+	httputil.SendJson(w, updated, http.StatusOK)
 }

@@ -11,7 +11,7 @@ import (
 )
 
 func (s *service) GetProfile(ctx context.Context, id string) (*user.ProfileResponse, error) {
-	profile, err := s.userRepo.GetProfile(ctx, id)
+	profile, err := s.userRepo.GetProfile(ctx, id, false)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, auth.ErrUserNotFound

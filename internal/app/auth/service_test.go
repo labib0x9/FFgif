@@ -135,22 +135,22 @@ func (m *mockVerifierRepo) Delete(ctx context.Context, id int64) error {
 }
 
 type mockProfileRepo struct {
-	getProfileFunc    func(ctx context.Context, id string) (domainuser.ProfileResponse, error)
-	updateProfileFunc func(ctx context.Context, profile domainuser.ProfileResponse, id string) (domainuser.ProfileResponse, error)
+	getProfileFunc    func(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error)
+	updateProfileFunc func(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error)
 	setProfileFunc    func(ctx context.Context, profile domainuser.Profile) error
 }
 
-func (m *mockProfileRepo) GetProfile(ctx context.Context, id string) (domainuser.ProfileResponse, error) {
+func (m *mockProfileRepo) GetProfile(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
 	if m.getProfileFunc != nil {
-		return m.getProfileFunc(ctx, id)
+		return m.getProfileFunc(ctx, id, forUpdate)
 	}
 	return domainuser.ProfileResponse{}, nil
 }
-func (m *mockProfileRepo) UpdateProfile(ctx context.Context, profile domainuser.ProfileResponse, id string) (domainuser.ProfileResponse, error) {
+func (m *mockProfileRepo) UpdateProfile(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error) {
 	if m.updateProfileFunc != nil {
-		return m.updateProfileFunc(ctx, profile, id)
+		return m.updateProfileFunc(ctx, req, id)
 	}
-	return profile, nil
+	return domainuser.ProfileResponse{}, nil
 }
 func (m *mockProfileRepo) SetProfile(ctx context.Context, profile domainuser.Profile) error {
 	if m.setProfileFunc != nil {

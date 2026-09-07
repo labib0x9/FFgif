@@ -184,15 +184,29 @@ type inMemoryProfileRepo struct {
 	authRepo *inMemoryAuthRepo
 }
 
-func (r *inMemoryProfileRepo) GetProfile(ctx context.Context, id string) (domainuser.ProfileResponse, error) {
+func (r *inMemoryProfileRepo) GetProfile(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
 	if p, ok := r.profiles[id]; ok {
 		return p, nil
 	}
-	return domainuser.ProfileResponse{Username: "default", Email: "default@example.com"}, nil
+	return domainuser.ProfileResponse{Username: "default", Email: "default@example.com", UpdatedAt: time.Now()}, nil
 }
-func (r *inMemoryProfileRepo) UpdateProfile(ctx context.Context, profile domainuser.ProfileResponse, id string) (domainuser.ProfileResponse, error) {
-	r.profiles[id] = profile
-	return profile, nil
+func (r *inMemoryProfileRepo) UpdateProfile(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error) {
+	p := r.profiles[id]
+	if req.Username != nil {
+		p.Username = *req.Username
+	}
+	if req.Fullname != nil {
+		p.Fullname = *req.Fullname
+	}
+	if req.Email != nil {
+		p.Email = *req.Email
+	}
+	if req.ProfilePic != nil {
+		p.ProfilePic = *req.ProfilePic
+	}
+	p.UpdatedAt = time.Now()
+	r.profiles[id] = p
+	return p, nil
 }
 func (r *inMemoryProfileRepo) SetProfile(ctx context.Context, profile domainuser.Profile) error {
 	return nil
@@ -437,7 +451,7 @@ func TestE2E_FullUserAndJobLifecycle(t *testing.T) {
 		authRepo, verifierRepo, profileRepo, nil, quotaRepo,
 		cache, queue, *jwtProvider, *hasher, txManager,
 	)
-	userService := userapp.NewService(profileRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
+	userService := userapp.NewService(profileRepo, quotaRepo, authRepo, txManager, *jwtProvider, *hasher)
 	mediaService := mediaapp.NewService(authRepo, profileRepo, quotaRepo, gifRepo, shareRepo, lastVideoRepo, storage, txManager, queue, cache, proc, cnf)
 	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo)
 
@@ -705,7 +719,7 @@ func TestE2E_UnauthorizedAndEdgeCases(t *testing.T) {
 	val := validator.New()
 
 	authRepo := &inMemoryAuthRepo{users: make(map[string]domainauth.User)}
-	userService := userapp.NewService(&inMemoryProfileRepo{}, &inMemoryQuotaRepo{}, authRepo, *jwtProvider, *password.NewHasher("p", 10))
+	userService := userapp.NewService(&inMemoryProfileRepo{}, &inMemoryQuotaRepo{}, authRepo, &inMemoryTx{}, *jwtProvider, *password.NewHasher("p", 10))
 	userH := userhandler.NewHandler(userService, middlewares, val)
 
 	// 1. Unauthenticated Request to Protected Route

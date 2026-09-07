@@ -2,8 +2,10 @@ package user
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
@@ -28,6 +30,9 @@ func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
 		slog.Error("user handler - GetProfile()", "err", err)
 		return
 	}
+
+	etag := fmt.Sprintf(`"%s"`, found.UpdatedAt.Format(time.RFC3339Nano))
+	w.Header().Set("ETag", etag)
 
 	httputil.SendJson(w, found, http.StatusOK)
 }

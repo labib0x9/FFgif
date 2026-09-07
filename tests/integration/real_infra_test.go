@@ -22,6 +22,7 @@ import (
 	userapp "github.com/labib0x9/ffgif/internal/app/user"
 	domainauth "github.com/labib0x9/ffgif/internal/domain/auth"
 	domainmedia "github.com/labib0x9/ffgif/internal/domain/media"
+	domainuser "github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/internal/infra/ffmpeg"
 	minioinfra "github.com/labib0x9/ffgif/internal/infra/minio"
 	postgresinfra "github.com/labib0x9/ffgif/internal/infra/postgres"
@@ -168,7 +169,7 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rmq, *jwtProvider, *hasher, txManager)
 	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, shareRepo, lastUploadRepo, storageRepo, txManager, rmq, cacheRepo, ffmpegProcessor, cfg)
 	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo)
-	userService := userapp.NewService(userRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
+	userService := userapp.NewService(userRepo, quotaRepo, authRepo, txManager, *jwtProvider, *hasher)
 
 	// 8. Real Handlers & Routing
 	authH := authhandler.NewHandler(authService, middlewares, val)
@@ -339,6 +340,12 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 	}
 	t.Log("✓ (9/28) GET /users/profile/me passed")
 
+	var userProf domainuser.ProfileResponse
+	if err := json.Unmarshal(profileRec.Body.Bytes(), &userProf); err != nil {
+		t.Fatalf("failed to decode profile body: %v", err)
+	}
+	userETag := userProf.UpdatedAt.Format(time.RFC3339Nano)
+
 	// Route 10: GET /users/me/quota
 	quotaReq := httptest.NewRequest(http.MethodGet, "/users/me/quota", nil)
 	quotaReq.Header.Set("Authorization", "Bearer "+token)
@@ -350,13 +357,16 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 	t.Log("✓ (10/28) GET /users/me/quota passed")
 
 	// Route 11: PATCH /users/profile/me
-	updateProfBody, _ := json.Marshal(map[string]string{
-		"username":  "alice" + testID,
-		"full_name": "Alice Updated",
-		"email":     aliceEmail,
+	newUName := "alice" + testID
+	newFName := "Alice Updated"
+	updateProfBody, _ := json.Marshal(domainuser.ProfileUpdateRequest{
+		Username: &newUName,
+		Fullname: &newFName,
+		Email:    &aliceEmail,
 	})
 	updateProfReq := httptest.NewRequest(http.MethodPatch, "/users/profile/me", bytes.NewReader(updateProfBody))
 	updateProfReq.Header.Set("Authorization", "Bearer "+token)
+	updateProfReq.Header.Set("If-Match", userETag)
 	updateProfRec := httptest.NewRecorder()
 	wrappedHandler.ServeHTTP(updateProfRec, updateProfReq)
 	if updateProfRec.Code != http.StatusOK {
