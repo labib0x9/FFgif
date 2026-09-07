@@ -311,8 +311,8 @@ func TestAuthHandler_ForgotPassword_Success(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	handler.ForgotPassword(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("expected status 202 Accepted, got %d", rec.Code)
 	}
 }
 
@@ -347,8 +347,8 @@ func TestAuthHandler_ResendVerify_Success(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	handler.ResendVerify(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("expected status 202 Accepted, got %d", rec.Code)
 	}
 }
 

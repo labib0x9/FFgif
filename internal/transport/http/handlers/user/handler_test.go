@@ -270,8 +270,8 @@ func TestUserHandler_DeleteUser_Success(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	handler.DeleteUser(rec, req)
-	if rec.Code != http.StatusGone {
-		t.Errorf("expected status 410 Gone, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200 OK, got %d", rec.Code)
 	}
 }
 

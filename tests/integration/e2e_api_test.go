@@ -232,12 +232,17 @@ func (r *inMemoryGifRepo) Get(ctx context.Context, user_id string, status string
 	}
 	return results, nil
 }
-func (r *inMemoryGifRepo) GetByKey(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+func (r *inMemoryGifRepo) GetByKey(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 	if g, ok := r.gifs[key]; ok {
 		return domainmedia.GifResponse{
 			Key:          g.Key,
+			Name:         g.Name,
+			Status:       g.Status,
+			Persist:      g.Persist,
 			Url:          "https://minio.local/gifs/" + g.Key,
 			ThumbnailUrl: g.ThumbnailUrl,
+			CreatedAt:    g.CreatedAt,
+			UpdatedAt:    g.UpdatedAt,
 		}, nil
 	}
 	return domainmedia.GifResponse{}, sql.ErrNoRows
@@ -249,8 +254,31 @@ func (r *inMemoryGifRepo) Delete(ctx context.Context, key string) error {
 	delete(r.gifs, key)
 	return nil
 }
-func (r *inMemoryGifRepo) Update(ctx context.Context, key string, gif domainmedia.GifResponse) error {
-	return nil
+func (r *inMemoryGifRepo) Update(ctx context.Context, key string, req domainmedia.GifUpdateRequest) (domainmedia.GifResponse, error) {
+	if g, ok := r.gifs[key]; ok {
+		if req.Name != nil {
+			g.Name = *req.Name
+		}
+		if req.Status != nil {
+			g.Status = *req.Status
+		}
+		if req.Persist != nil {
+			g.Persist = *req.Persist
+		}
+		g.UpdatedAt = time.Now()
+		r.gifs[key] = g
+		return domainmedia.GifResponse{
+			Key:          g.Key,
+			Name:         g.Name,
+			Status:       g.Status,
+			Persist:      g.Persist,
+			Url:          "https://minio.local/gifs/" + g.Key,
+			ThumbnailUrl: g.ThumbnailUrl,
+			CreatedAt:    g.CreatedAt,
+			UpdatedAt:    g.UpdatedAt,
+		}, nil
+	}
+	return domainmedia.GifResponse{}, sql.ErrNoRows
 }
 func (r *inMemoryGifRepo) SaveRecent(ctx context.Context, key string) error { return nil }
 func (r *inMemoryGifRepo) GetOwner(ctx context.Context, key string) (string, error) {
@@ -373,6 +401,10 @@ func (t *inMemoryTx) With(ctx context.Context, fn func(ctx context.Context) (any
 	return fn(ctx)
 }
 
+func (t *inMemoryTx) WithRC(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
+	return fn(ctx)
+}
+
 // --- End-to-End Integration Tests ---
 
 func TestE2E_FullUserAndJobLifecycle(t *testing.T) {
@@ -406,7 +438,7 @@ func TestE2E_FullUserAndJobLifecycle(t *testing.T) {
 		cache, queue, *jwtProvider, *hasher, txManager,
 	)
 	userService := userapp.NewService(profileRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
-	mediaService := mediaapp.NewService(authRepo, profileRepo, quotaRepo, gifRepo, shareRepo, lastVideoRepo, storage, queue, cache, proc, cnf)
+	mediaService := mediaapp.NewService(authRepo, profileRepo, quotaRepo, gifRepo, shareRepo, lastVideoRepo, storage, txManager, queue, cache, proc, cnf)
 	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo)
 
 	authH := authhandler.NewHandler(authService, middlewares, val)
@@ -516,7 +548,7 @@ func TestE2E_FullUserAndJobLifecycle(t *testing.T) {
 	convertRec := httptest.NewRecorder()
 	middlewares.Auth(http.HandlerFunc(mediaH.Convert)).ServeHTTP(convertRec, convertReq)
 
-	if convertRec.Code != http.StatusOK {
+	if convertRec.Code != http.StatusAccepted {
 		t.Fatalf("Convert request failed: %d", convertRec.Code)
 	}
 

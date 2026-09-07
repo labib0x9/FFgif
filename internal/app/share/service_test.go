@@ -41,16 +41,16 @@ func (m *mockAuthRepo) Upgrade(ctx context.Context, id string, user domainauth.U
 }
 
 type mockGifRepo struct {
-	getByKeyFunc func(ctx context.Context, key string) (domainmedia.GifResponse, error)
+	getByKeyFunc func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error)
 }
 
 func (m *mockGifRepo) Create(ctx context.Context, gif domainmedia.Gif) error { return nil }
 func (m *mockGifRepo) Get(ctx context.Context, user_id string, status string) ([]domainmedia.GifResponse, error) {
 	return nil, nil
 }
-func (m *mockGifRepo) GetByKey(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+func (m *mockGifRepo) GetByKey(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 	if m.getByKeyFunc != nil {
-		return m.getByKeyFunc(ctx, key)
+		return m.getByKeyFunc(ctx, key, forUpdate)
 	}
 	return domainmedia.GifResponse{Key: key}, nil
 }
@@ -58,8 +58,8 @@ func (m *mockGifRepo) GetRecents(ctx context.Context, user_id string) ([]domainm
 	return nil, nil
 }
 func (m *mockGifRepo) Delete(ctx context.Context, key string) error { return nil }
-func (m *mockGifRepo) Update(ctx context.Context, key string, gif domainmedia.GifResponse) error {
-	return nil
+func (m *mockGifRepo) Update(ctx context.Context, key string, req domainmedia.GifUpdateRequest) (domainmedia.GifResponse, error) {
+	return domainmedia.GifResponse{}, nil
 }
 func (m *mockGifRepo) SaveRecent(ctx context.Context, key string) error { return nil }
 func (m *mockGifRepo) GetOwner(ctx context.Context, key string) (string, error) {
@@ -108,7 +108,7 @@ func TestShareService_Create_Success(t *testing.T) {
 		},
 	}
 	gifRepo := &mockGifRepo{
-		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 			return domainmedia.GifResponse{Key: key}, nil
 		},
 	}
@@ -149,7 +149,7 @@ func TestShareService_Create_RecipientNotFound(t *testing.T) {
 
 func TestShareService_Create_GifNotFound(t *testing.T) {
 	gifRepo := &mockGifRepo{
-		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 			return domainmedia.GifResponse{}, errors.New("not found")
 		},
 	}

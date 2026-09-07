@@ -23,12 +23,20 @@ import (
 // --- Mocks ---
 
 type mockTxManager struct {
-	withFunc func(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error)
+	withFunc   func(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error)
+	withRCFunc func(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error)
 }
 
 func (m *mockTxManager) With(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
 	if m.withFunc != nil {
 		return m.withFunc(ctx, fn)
+	}
+	return fn(ctx)
+}
+
+func (m *mockTxManager) WithRC(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
+	if m.withRCFunc != nil {
+		return m.withRCFunc(ctx, fn)
 	}
 	return fn(ctx)
 }

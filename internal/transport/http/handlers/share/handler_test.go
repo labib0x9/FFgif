@@ -261,8 +261,8 @@ func TestShareHandler_Delete_NotAuthorized(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status 401 Unauthorized for unauthorized delete, got %d", rec.Code)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected status 403 Forbidden for unauthorized delete, got %d", rec.Code)
 	}
 }
 

@@ -166,7 +166,7 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 
 	// 7. Real App Services
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rmq, *jwtProvider, *hasher, txManager)
-	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, shareRepo, lastUploadRepo, storageRepo, rmq, cacheRepo, ffmpegProcessor, cfg)
+	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, shareRepo, lastUploadRepo, storageRepo, txManager, rmq, cacheRepo, ffmpegProcessor, cfg)
 	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo)
 	userService := userapp.NewService(userRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
 
@@ -525,8 +525,16 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 	t.Log("✓ (21/28) POST /gifs/me/recents/{key}/save passed")
 
 	// Route 22: PATCH /gifs/me/{key}
-	updateGifReq := httptest.NewRequest(http.MethodPatch, "/gifs/me/"+generatedGifKey, nil)
+	var fetchedGif domainmedia.GifResponse
+	if err := json.Unmarshal(getByKeyRec.Body.Bytes(), &fetchedGif); err != nil {
+		t.Fatalf("failed to decode fetched gif for etag: %v", err)
+	}
+	gifETag := fetchedGif.UpdatedAt.Format(time.RFC3339Nano)
+	newName := "renamed.gif"
+	updatePayload, _ := json.Marshal(domainmedia.GifUpdateRequest{Name: &newName})
+	updateGifReq := httptest.NewRequest(http.MethodPatch, "/gifs/me/"+generatedGifKey, bytes.NewReader(updatePayload))
 	updateGifReq.Header.Set("Authorization", "Bearer "+token)
+	updateGifReq.Header.Set("If-Match", gifETag)
 	updateGifRec := httptest.NewRecorder()
 	wrappedHandler.ServeHTTP(updateGifRec, updateGifReq)
 	if updateGifRec.Code != http.StatusOK {
