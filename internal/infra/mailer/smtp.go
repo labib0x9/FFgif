@@ -46,3 +46,13 @@ func (m *SmtpMailer) SendResetNotification(email string) error {
 
 	return m.d.DialAndSend(msg)
 }
+
+func (m *SmtpMailer) SendShareNotification(email string, token string) error {
+	msg := gomail.NewMessage()
+	msg.SetHeader("From", m.from)
+	msg.SetHeader("To", email)
+	msg.SetHeader("Subject", "Share gif")
+	msg.SetBody("text/html", sendShareBody(token))
+
+	return m.d.DialAndSend(msg)
+}

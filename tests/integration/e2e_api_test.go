@@ -303,11 +303,19 @@ func (r *inMemoryGifRepo) GetOwner(ctx context.Context, key string) (string, err
 }
 
 type inMemoryShareRepo struct {
-	shares map[string]domainshare.Share
+	shares      map[string]domainshare.Share
+	shareTokens map[string]domainshare.ShareByToken
 }
 
 func (r *inMemoryShareRepo) Create(ctx context.Context, gif domainshare.Share) error {
 	r.shares[gif.GifKey+":"+gif.SharedWith] = gif
+	return nil
+}
+func (r *inMemoryShareRepo) CreateByToken(ctx context.Context, gif domainshare.ShareByToken) error {
+	if r.shareTokens == nil {
+		r.shareTokens = make(map[string]domainshare.ShareByToken)
+	}
+	r.shareTokens[gif.Token] = gif
 	return nil
 }
 func (r *inMemoryShareRepo) Get(ctx context.Context, userID string) ([]domainshare.GifResponse, error) {
@@ -323,6 +331,18 @@ func (r *inMemoryShareRepo) Get(ctx context.Context, userID string) ([]domainsha
 		}
 	}
 	return list, nil
+}
+func (r *inMemoryShareRepo) GetByToken(ctx context.Context, token string) (domainshare.GifTokenResponse, error) {
+	if r.shareTokens != nil {
+		if st, ok := r.shareTokens[token]; ok {
+			return domainshare.GifTokenResponse{
+				GifKey:    st.GifKey,
+				ExpiresAt: st.ExpiresAt,
+				CreatedAt: st.CreatedAt,
+			}, nil
+		}
+	}
+	return domainshare.GifTokenResponse{}, sql.ErrNoRows
 }
 func (r *inMemoryShareRepo) GetOwner(ctx context.Context, user string, key string) (string, error) {
 	for _, s := range r.shares {
@@ -453,7 +473,7 @@ func TestE2E_FullUserAndJobLifecycle(t *testing.T) {
 	)
 	userService := userapp.NewService(profileRepo, quotaRepo, authRepo, txManager, *jwtProvider, *hasher)
 	mediaService := mediaapp.NewService(authRepo, profileRepo, quotaRepo, gifRepo, shareRepo, lastVideoRepo, storage, txManager, queue, cache, proc, cnf)
-	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo)
+	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo, queue)
 
 	authH := authhandler.NewHandler(authService, middlewares, val)
 	userH := userhandler.NewHandler(userService, middlewares, val)

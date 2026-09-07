@@ -168,7 +168,7 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 	// 7. Real App Services
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rmq, *jwtProvider, *hasher, txManager)
 	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, shareRepo, lastUploadRepo, storageRepo, txManager, rmq, cacheRepo, ffmpegProcessor, cfg)
-	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo)
+	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo, rmq)
 	userService := userapp.NewService(userRepo, quotaRepo, authRepo, txManager, *jwtProvider, *hasher)
 
 	// 8. Real Handlers & Routing

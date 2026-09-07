@@ -31,6 +31,19 @@ func (s *shareRepo) Create(ctx context.Context, gif share.Share) error {
 	return err
 }
 
+func (s *shareRepo) CreateByToken(ctx context.Context, gif share.ShareByToken) error {
+	db := getDBFromCtx(ctx, s.db)
+	query := `insert into 
+		share_tokens(gif_key, token, email, expires_at)
+		values(:gif_key, :token, :email, :expires_at)
+		on conflict (gif_key, email) do update
+		set expires_at = EXCLUDED.expires_at
+	`
+
+	_, err := sqlx.NamedExecContext(ctx, db, query, gif)
+	return err
+}
+
 func (s *shareRepo) Get(ctx context.Context, userID string) ([]share.GifResponse, error) {
 	db := getDBFromCtx(ctx, s.db)
 	query := `
@@ -48,6 +61,28 @@ func (s *shareRepo) Get(ctx context.Context, userID string) ([]share.GifResponse
 
 	if err := sqlx.SelectContext(ctx, db, &val, query, userID); err != nil {
 		return []share.GifResponse{}, err
+	}
+
+	return val, nil
+}
+
+func (s *shareRepo) GetByToken(ctx context.Context, token string) (share.GifTokenResponse, error) {
+	db := getDBFromCtx(ctx, s.db)
+	query := `
+		select
+			st.gif_key, g.name, g.url, g.thumbnail_url, st.expires_at, st.created_at
+		from
+			share_tokens st
+		join
+			gifs g on g.key = st.gif_key
+		where
+			st.token = $1 and st.expires_at > now()
+		`
+
+	var val share.GifTokenResponse
+
+	if err := sqlx.GetContext(ctx, db, &val, query, token); err != nil {
+		return share.GifTokenResponse{}, err
 	}
 
 	return val, nil

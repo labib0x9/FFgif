@@ -25,3 +25,14 @@ func sendPasswordResetBody(token string) string {
             <p>This link expires in 15 minutes.</p>
         `, url)
 }
+
+func sendShareBody(token string) string {
+	url := fmt.Sprintf("http://127.0.0.1:8080/s/%s", token)
+	return fmt.Sprintf(`
+			<h1>FFgif Gif Share</h1>
+            <p>Click the link below to download the shared GIF.</p>
+			<button>
+            <a href="%s">GIF</a>
+			</button>
+        `, url)
+}

@@ -157,8 +157,14 @@ type mockShareRepo struct {
 func (m *mockShareRepo) Create(ctx context.Context, gif domainshare.Share) error {
 	return nil
 }
+func (m *mockShareRepo) CreateByToken(ctx context.Context, gif domainshare.ShareByToken) error {
+	return nil
+}
 func (m *mockShareRepo) Get(ctx context.Context, userID string) ([]domainshare.GifResponse, error) {
 	return nil, nil
+}
+func (m *mockShareRepo) GetByToken(ctx context.Context, token string) (domainshare.GifTokenResponse, error) {
+	return domainshare.GifTokenResponse{}, nil
 }
 func (m *mockShareRepo) GetOwner(ctx context.Context, sharedWithUserId string, gifKey string) (string, error) {
 	if m.getOwnerFunc != nil {

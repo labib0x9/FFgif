@@ -12,36 +12,38 @@ import (
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
 
-type reqCreate struct {
-	SharedWith string    `json:"shared_with"`
-	ExpireAt   time.Time `json:"expire_at"`
+type reqCreateByToken struct {
+	GifKey   string    `json:"gif_key" validate:"required"`
+	Email    string    `json:"email" validate:"required,email"`
+	ExpireAt time.Time `json:"expire_at" validate:"required"`
 }
 
-func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) CreateByToken(w http.ResponseWriter, r *http.Request) {
 	reqId := httputil.GetRequestID(r.Context())
 	id := httputil.GetUserId(r.Context())
 	if id == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
 		httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "unauthenticated", http.StatusUnauthorized)
-		slog.Error("share handler - Create() = user_id not found", "request_id", reqId, "err", "user_id not found")
+		slog.Error("share handler - CreateByToken() = user_id not found", "request_id", reqId, "err", "user_id not found")
 		return
 	}
 
-	gifId := r.PathValue("key")
-	if gifId == "" {
-		httputil.SendError(w, httputil.BAD_REQUEST, "gif key is missing", http.StatusBadRequest)
-		slog.Warn("share handler - Create() = gif key missing", "request_id", reqId, "error", "gif key missing")
-		return
-	}
-
-	var req reqCreate
+	var req reqCreateByToken
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.SendError(w, httputil.BAD_REQUEST, "bad request", http.StatusBadRequest)
-		slog.Warn("share handler - Create() = bad json body", "request_id", reqId, "error", err)
+		slog.Warn("share handler - CreateByToken() = bad json body", "request_id", reqId, "error", err)
 		return
 	}
 
-	err := h.srv.Create(r.Context(), id, gifId, req.SharedWith, req.ExpireAt)
+	if h.validate != nil {
+		if err := h.validate.Struct(req); err != nil {
+			httputil.SendError(w, httputil.VALIDATION_FAILED, "bad request", http.StatusUnprocessableEntity)
+			slog.Warn("share handler - CreateByToken() = struct validation failed", "request_id", reqId, "error", err)
+			return
+		}
+	}
+
+	token, err := h.srv.CreateByToken(r.Context(), id, req.GifKey, req.Email, req.ExpireAt)
 	if err != nil {
 		switch {
 		case errors.Is(err, media.ErrGifNotFound):
@@ -51,11 +53,13 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("share handler - Create()", "request_id", reqId, "err", err)
+		slog.Error("share handler - CreateByToken()", "request_id", reqId, "err", err)
 		return
 	}
 
-	w.Header().Set("Location", "/gifs/me/"+gifId+"/shares/"+req.SharedWith)
+	w.Header().Set("Location", "/s/"+token)
 
-	httputil.SendJson(w, "shared", http.StatusCreated)
+	httputil.SendJson(w, map[string]string{
+		"token": token,
+	}, http.StatusCreated)
 }

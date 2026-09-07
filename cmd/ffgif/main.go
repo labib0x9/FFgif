@@ -70,7 +70,7 @@ func main() {
 
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rabbitMq, *jwtProvider, *hasher, tnx)
 	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, shareRepo, lastUploadRepo, storageRepo, tnx, rabbitMq, cacheRepo, ffmpeg, cnf)
-	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo)
+	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo, rabbitMq)
 	userService := userapp.NewService(userRepo, quotaRepo, authRepo, tnx, *jwtProvider, *hasher)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
