@@ -10,7 +10,7 @@ import (
 
 // // key is the gif key
 func (s *service) GetGifThumbnail(ctx context.Context, key string) (string, error) {
-	gif, err := s.gifRepo.GetByKey(ctx, key)
+	gif, err := s.gifRepo.GetByKey(ctx, key, false)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", media.ErrGifNotFound

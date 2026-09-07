@@ -16,7 +16,7 @@ func (s *service) Create(ctx context.Context, sharedBy string, gifKey string, sh
 	if err != nil {
 		return fmt.Errorf("authRepo.GetByEmail: %w: %w", auth.ErrUserNotFound, err)
 	}
-	_, err = s.gifRepo.GetByKey(ctx, gifKey)
+	_, err = s.gifRepo.GetByKey(ctx, gifKey, false)
 	if err != nil {
 		return fmt.Errorf("gifRepo.GetByKey: %w: %w", media.ErrGifNotFound, err)
 	}

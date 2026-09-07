@@ -80,14 +80,24 @@ func (m *mockStorageRepo) GetThumbnailURL(ctx context.Context, key string) (*url
 	return u, nil
 }
 
+type mockTxManager struct{}
+
+func (m *mockTxManager) With(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
+	return fn(ctx)
+}
+
+func (m *mockTxManager) WithRC(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
+	return fn(ctx)
+}
+
 type mockGifRepo struct {
 	getOwnerFunc   func(ctx context.Context, key string) (string, error)
-	getByKeyFunc   func(ctx context.Context, key string) (domainmedia.GifResponse, error)
+	getByKeyFunc   func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error)
 	getRecentsFunc func(ctx context.Context, user_id string) ([]domainmedia.GifResponse, error)
 	getFunc        func(ctx context.Context, user_id string, status string) ([]domainmedia.GifResponse, error)
 	deleteFunc     func(ctx context.Context, key string) error
 	createFunc     func(ctx context.Context, gif domainmedia.Gif) error
-	updateFunc     func(ctx context.Context, key string, gif domainmedia.GifResponse) error
+	updateFunc     func(ctx context.Context, key string, req domainmedia.GifUpdateRequest) (domainmedia.GifResponse, error)
 	saveRecentFunc func(ctx context.Context, key string) error
 }
 
@@ -109,9 +119,9 @@ func (m *mockGifRepo) Get(ctx context.Context, user_id string, status string) ([
 	}
 	return []domainmedia.GifResponse{}, nil
 }
-func (m *mockGifRepo) GetByKey(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+func (m *mockGifRepo) GetByKey(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 	if m.getByKeyFunc != nil {
-		return m.getByKeyFunc(ctx, key)
+		return m.getByKeyFunc(ctx, key, forUpdate)
 	}
 	return domainmedia.GifResponse{Key: key, Url: "https://storage/gif/" + key}, nil
 }
@@ -127,11 +137,11 @@ func (m *mockGifRepo) Delete(ctx context.Context, key string) error {
 	}
 	return nil
 }
-func (m *mockGifRepo) Update(ctx context.Context, key string, gif domainmedia.GifResponse) error {
+func (m *mockGifRepo) Update(ctx context.Context, key string, req domainmedia.GifUpdateRequest) (domainmedia.GifResponse, error) {
 	if m.updateFunc != nil {
-		return m.updateFunc(ctx, key, gif)
+		return m.updateFunc(ctx, key, req)
 	}
-	return nil
+	return domainmedia.GifResponse{Key: key}, nil
 }
 func (m *mockGifRepo) SaveRecent(ctx context.Context, key string) error {
 	if m.saveRecentFunc != nil {
@@ -344,6 +354,7 @@ func newTestMediaService(
 		shareRepo,
 		lastVideoRepo,
 		storage,
+		&mockTxManager{},
 		queueMock,
 		cache,
 		proc,
@@ -737,7 +748,7 @@ func TestMediaService_GetGifs_RepoError(t *testing.T) {
 
 func TestMediaService_GetByKey_Success(t *testing.T) {
 	gifRepo := &mockGifRepo{
-		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 			return domainmedia.GifResponse{Key: key, Url: "https://minio/" + key}, nil
 		},
 	}
@@ -927,17 +938,29 @@ func TestMediaService_Save_Success(t *testing.T) {
 
 func TestMediaService_Update_Success(t *testing.T) {
 	updated := false
+	now := time.Now()
+	etag := now.Format(time.RFC3339Nano)
 	gifRepo := &mockGifRepo{
-		updateFunc: func(ctx context.Context, key string, gif domainmedia.GifResponse) error {
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "user-1", nil
+		},
+		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
+			return domainmedia.GifResponse{Key: key, UpdatedAt: now}, nil
+		},
+		updateFunc: func(ctx context.Context, key string, req domainmedia.GifUpdateRequest) (domainmedia.GifResponse, error) {
 			updated = true
-			return nil
+			return domainmedia.GifResponse{Key: key}, nil
 		},
 	}
 	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
 
-	err := svc.Update(context.Background(), "user-1", "gif-key-1")
+	name := "new_name"
+	res, err := svc.Update(context.Background(), "user-1", "gif-key-1", domainmedia.GifUpdateRequest{Name: &name}, etag)
 	if err != nil {
 		t.Fatalf("expected Update to succeed, got %v", err)
+	}
+	if res == nil || res.Key != "gif-key-1" {
+		t.Errorf("expected returned gif response with key gif-key-1")
 	}
 	if !updated {
 		t.Errorf("expected Update to be called")
@@ -996,7 +1019,7 @@ func TestMediaService_Delete_OwnerMismatch(t *testing.T) {
 
 func TestMediaService_GetGifThumbnail_Success(t *testing.T) {
 	gifRepo := &mockGifRepo{
-		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 			return domainmedia.GifResponse{
 				Key:          key,
 				ThumbnailUrl: "thumb_" + key + ".jpg",
@@ -1021,7 +1044,7 @@ func TestMediaService_GetGifThumbnail_Success(t *testing.T) {
 
 func TestMediaService_GetGifThumbnail_NotFound(t *testing.T) {
 	gifRepo := &mockGifRepo{
-		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 			return domainmedia.GifResponse{}, sql.ErrNoRows
 		},
 	}
@@ -1035,7 +1058,7 @@ func TestMediaService_GetGifThumbnail_NotFound(t *testing.T) {
 
 func TestMediaService_GetGifThumbnail_EmptyThumbnailUrl(t *testing.T) {
 	gifRepo := &mockGifRepo{
-		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 			return domainmedia.GifResponse{
 				Key:          key,
 				ThumbnailUrl: "",
@@ -1052,7 +1075,7 @@ func TestMediaService_GetGifThumbnail_EmptyThumbnailUrl(t *testing.T) {
 
 func TestMediaService_GetGifThumbnail_StorageError(t *testing.T) {
 	gifRepo := &mockGifRepo{
-		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 			return domainmedia.GifResponse{
 				Key:          key,
 				ThumbnailUrl: "thumb.jpg",

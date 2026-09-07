@@ -9,6 +9,7 @@ import (
 	"github.com/labib0x9/ffgif/internal/domain/share"
 	"github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/internal/port/cache"
+	"github.com/labib0x9/ffgif/internal/port/db"
 	"github.com/labib0x9/ffgif/internal/port/processor"
 	"github.com/labib0x9/ffgif/internal/port/queue"
 	"github.com/labib0x9/ffgif/pkg/jwt"
@@ -23,7 +24,7 @@ type Service interface {
 	LastVideo(ctx context.Context, userId string) (media.LastUploadResponse, error)
 	Save(ctx context.Context, userId, key string) error
 	Stream(ctx context.Context, key string) (*media.StreamResult, error)
-	Update(ctx context.Context, userId, key string) error
+	Update(ctx context.Context, userId string, key string, _gif media.GifUpdateRequest, lastUpdatedAt string) (*media.GifResponse, error)
 	Upload(rctx context.Context, filename string, claims jwt.Payload) (*media.UploadResult, error)
 	ProcessAndSave(ctx context.Context, key string) error
 	UpdateUploadingStatus(ctx context.Context, key string, status string) error
@@ -45,6 +46,7 @@ type service struct {
 	shareRepo     share.ShareRepository
 	lastVideoRepo media.LastVideoRepository
 	storage       media.StorageRepository
+	tnx           db.TxManager
 	queue         queue.Queue
 	cache         cache.Cache
 	processor     processor.VideoProcessor
@@ -59,6 +61,7 @@ func NewService(
 	shareRepo share.ShareRepository,
 	lastVideoRepo media.LastVideoRepository,
 	storage media.StorageRepository,
+	tnx db.TxManager,
 	queue queue.Queue,
 	cache cache.Cache,
 	processor processor.VideoProcessor,
@@ -72,6 +75,7 @@ func NewService(
 		shareRepo:     shareRepo,
 		lastVideoRepo: lastVideoRepo,
 		storage:       storage,
+		tnx:           tnx,
 		queue:         queue,
 		cache:         cache,
 		processor:     processor,

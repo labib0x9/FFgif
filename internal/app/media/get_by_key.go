@@ -7,5 +7,5 @@ import (
 )
 
 func (s *service) GetByKey(ctx context.Context, key string) (media.GifResponse, error) {
-	return s.gifRepo.GetByKey(ctx, key)
+	return s.gifRepo.GetByKey(ctx, key, false)
 }

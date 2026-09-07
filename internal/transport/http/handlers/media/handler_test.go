@@ -30,7 +30,7 @@ type mockMediaService struct {
 	deleteFunc                func(ctx context.Context, userId string, key string) error
 	saveFunc                  func(ctx context.Context, userId, key string) error
 	streamFunc                func(ctx context.Context, key string) (*domainmedia.StreamResult, error)
-	updateFunc                func(ctx context.Context, userId, key string) error
+	updateFunc                func(ctx context.Context, userId string, key string, _gif domainmedia.GifUpdateRequest, lastUpdatedAt string) (*domainmedia.GifResponse, error)
 	processAndSaveFunc        func(ctx context.Context, key string) error
 	updateUploadingStatusFunc func(ctx context.Context, key string, status string) error
 	statusFunc                func(ctx context.Context, key string) (string, error)
@@ -97,11 +97,11 @@ func (m *mockMediaService) Stream(ctx context.Context, key string) (*domainmedia
 	}
 	return &domainmedia.StreamResult{PresignedUrl: "https://storage/stream/" + key, ExpireIn: 300}, nil
 }
-func (m *mockMediaService) Update(ctx context.Context, userId, key string) error {
+func (m *mockMediaService) Update(ctx context.Context, userId string, key string, _gif domainmedia.GifUpdateRequest, lastUpdatedAt string) (*domainmedia.GifResponse, error) {
 	if m.updateFunc != nil {
-		return m.updateFunc(ctx, userId, key)
+		return m.updateFunc(ctx, userId, key, _gif, lastUpdatedAt)
 	}
-	return nil
+	return &domainmedia.GifResponse{Key: key}, nil
 }
 func (m *mockMediaService) ProcessAndSave(ctx context.Context, key string) error {
 	if m.processAndSaveFunc != nil {
@@ -240,8 +240,8 @@ func TestMediaHandler_Convert_Success(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.Convert(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d. Body: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("expected status 202 Accepted, got %d. Body: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -421,8 +421,8 @@ func TestMediaHandler_Download_OwnerMismatch(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected status 500 Internal Server Error, got %d", rec.Code)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected status 403 Forbidden, got %d", rec.Code)
 	}
 }
 
@@ -470,8 +470,8 @@ func TestMediaHandler_Save_Success(t *testing.T) {
 
 func TestMediaHandler_Update_Success(t *testing.T) {
 	mockSvc := &mockMediaService{
-		updateFunc: func(ctx context.Context, userId, key string) error {
-			return nil
+		updateFunc: func(ctx context.Context, userId string, key string, _gif domainmedia.GifUpdateRequest, lastUpdatedAt string) (*domainmedia.GifResponse, error) {
+			return &domainmedia.GifResponse{Key: key}, nil
 		},
 	}
 	handler := media.NewHandler(mockSvc, nil, validator.New())
@@ -479,7 +479,10 @@ func TestMediaHandler_Update_Success(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("PATCH /gifs/me/{key}", handler.Update)
 
-	req := httptest.NewRequest(http.MethodPatch, "/gifs/me/key-123", nil)
+	name := "updated_name"
+	body, _ := json.Marshal(domainmedia.GifUpdateRequest{Name: &name})
+	req := httptest.NewRequest(http.MethodPatch, "/gifs/me/key-123", bytes.NewReader(body))
+	req.Header.Set("If-Match", "2026-09-07T12:00:00Z")
 	req = withUserAuth(req, "user-123")
 
 	rec := httptest.NewRecorder()
