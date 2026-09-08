@@ -437,11 +437,12 @@ POST /s/{token}                                 (Get the public share, no auth n
 - **Retry Worker**: Retry logic in workers(from queue) is also incomplete, currently failed messages goes to DLQ, no proper DLQ handling.
 - **Documentation**: No proper API documentation
 - **Misleading Location Header**: 201 and 202 responses, Location header may mislead
-- **REST API**: no userId on gif APIS, only `gifs/me`. need to add `gifs/{userId}`.
+- **REST API**: no userId on gif APIS, only `gifs/me`, `/users/me/profile`. need to add `gifs/{userId}`, `/users/{userId}/profile`.
 - **Error on streaming**: Currently range streaming is incomplete for a large video.
 - **Database cleanup**: No proper cleanup methods for expired rows.
 - **No public download**: Currently publicly shared gif has no download option.
-- **No quota**: quota is incomplete, currently unlimited quota.
+- **No quota**: quota is incomplete, currently unlimited quota.  
+- **Confusion**: Every gif has thumbnailUrl column, but it is thumbnailKey. All gifs are currently private no public gifs.
 
 ---
 
@@ -452,4 +453,8 @@ POST /s/{token}                                 (Get the public share, no auth n
 - GIF metadata enrichment: file size, dimensions, duration stored in the gifs table
 - Friendship domain (user can be friends)
 - Gif sharing should be two types, one with friends, other with email (without having shared with account, send as a email)
-- Add monitoring 
+- Add monitoring
+- Webhook callbacks on job completation
+- WebP or APNG output format alongside GIF
+- GIF-to-MP4 reverse conversion
+- Add subtitle on GIF
