@@ -4,6 +4,14 @@ A video-to-GIF conversion platform. Users upload videos, configure conversion pa
 
 ---
 
+## Project Demo
+
+<p align="center">
+  <img src="./sample.gif" alt="Project Demo" width="700">
+</p>
+
+---
+
 ## Features
 
 - **JWT-based Authentication:** Signup with email verification, login, forgot/reset password flow, and token blocklisting on logout (Redis-backed)
@@ -443,6 +451,7 @@ POST /s/{token}                                 (Get the public share, no auth n
 - **No public download**: Currently publicly shared gif has no download option.
 - **No quota**: quota is incomplete, currently unlimited quota.  
 - **Confusion**: Every gif has thumbnailUrl column, but it is thumbnailKey. All gifs are currently private no public gifs.
+- **Need to Enchange Quality**: GIF quality is not that much..
 
 ---
 
