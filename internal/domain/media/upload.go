@@ -1,3 +1,5 @@
+//go:generate mockgen -package=mocks -destination=mocks/mock_last_video_repo.go github.com/labib0x9/ffgif/internal/domain/media LastVideoRepository
+
 package media
 
 import (

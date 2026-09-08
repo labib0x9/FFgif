@@ -1,3 +1,5 @@
+//go:generate mockgen -package=mocks -destination=mocks/mock_share_repo.go github.com/labib0x9/ffgif/internal/domain/share ShareRepository
+
 package share
 
 import (

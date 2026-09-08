@@ -1,3 +1,5 @@
+//go:generate mockgen -package=mocks -destination=mocks/mock_media_service.go github.com/labib0x9/ffgif/internal/app/media Service
+
 package media
 
 import (

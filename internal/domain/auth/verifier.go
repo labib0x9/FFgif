@@ -1,3 +1,5 @@
+//go:generate mockgen -package=mocks -destination=mocks/mock_verifier_repo.go github.com/labib0x9/ffgif/internal/domain/auth VerifierRepository
+
 package auth
 
 import (

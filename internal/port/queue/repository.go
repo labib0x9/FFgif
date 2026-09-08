@@ -1,3 +1,5 @@
+//go:generate mockgen -package=mocks -destination=mocks/mock_queue.go github.com/labib0x9/ffgif/internal/port/queue Queue
+
 package queue
 
 import (

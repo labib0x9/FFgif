@@ -1,3 +1,5 @@
+//go:generate mockgen -package=mocks -destination=mocks/mock_user_repo.go github.com/labib0x9/ffgif/internal/domain/user UserRepository,AnonUserRepository
+
 package user
 
 import (

@@ -656,3 +656,128 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 
 	t.Log("🎉 100% OF ALL 29 ROUTES COVERED AND VERIFIED AGAINST REAL INFRASTRUCTURE!")
 }
+
+// EXPECTED TO FAIL: Rate limiter burst bug in internal/infra/redis/rate_limiter/rate_limiter.go.
+// A brand-new token bucket key initializes with 'rate' tokens instead of 'capacity' tokens.
+// When capacity=10 and rate=1, the first request on a fresh key should allow burst requests up to capacity (10),
+// but the second immediate request fails because it only started with 1 token.
+func TestRealInfrastructure_RateLimiter_BurstCapacity_Adversarial(t *testing.T) {
+	cfg := getTestConfig()
+	if err := probePort(cfg.Redis.Addr); err != nil {
+		t.Skipf("Skipping Redis rate limiter test: %v", err)
+		return
+	}
+
+	redisClient := redisinfra.Client(cfg.Redis)
+	defer redisClient.Close()
+
+	limiter := ratelimitter.NewRateLimiter(redisClient)
+	ctx := context.Background()
+
+	testKey := fmt.Sprintf("test_ratelimit_burst_%s", uuid.New().String())
+	defer redisClient.Del(ctx, testKey)
+
+	capacity := 5
+	rate := 1
+	now := time.Now().UnixMilli()
+
+	// 1st request should succeed
+	res1, err := limiter.RunScript(ctx, testKey, capacity, rate, now)
+	if err != nil {
+		t.Fatalf("first rate limit call failed: %v", err)
+	}
+
+	// 2nd immediate request (0ms elapsed) should ALSO succeed from burst capacity
+	res2, err := limiter.RunScript(ctx, testKey, capacity, rate, now)
+	if err != nil {
+		t.Fatalf("second rate limit call failed: %v", err)
+	}
+
+	slice2, ok := res2.([]interface{})
+	if !ok || len(slice2) < 3 {
+		t.Fatalf("unexpected lua return format: %+v", res2)
+	}
+
+	allowed, ok := slice2[0].(int64)
+	if !ok || allowed != 1 {
+		t.Errorf("BUG DETECTED: Rate limiter failed on 2nd burst request (allowed=%d, return=%+v). Brand-new key initialized with rate=%d instead of capacity=%d",
+			allowed, slice2, rate, capacity)
+	}
+	_ = res1
+}
+
+// EXPECTED TO FAIL: SaveRecent in internal/infra/postgres/gif_repo.go is a no-op.
+func TestRealInfrastructure_GifRepo_SaveRecent_Adversarial(t *testing.T) {
+	cfg := getTestConfig()
+	pgAddr := net.JoinHostPort(cfg.PostgreSQL.Addr, cfg.PostgreSQL.Port)
+	if err := probePort(pgAddr); err != nil {
+		t.Skipf("Skipping PostgreSQL SaveRecent test: %v", err)
+		return
+	}
+
+	dbConn := postgresinfra.NewPostgresConn(cfg.PostgreSQL)
+	defer dbConn.Close()
+
+	// Ensure table exists for isolated test
+	_, _ = dbConn.Exec(`
+		CREATE TABLE IF NOT EXISTS gifs (
+			key VARCHAR(255) PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			user_id VARCHAR(255) NOT NULL,
+			status VARCHAR(50) DEFAULT 'public',
+			persist BOOLEAN DEFAULT FALSE,
+			download INT DEFAULT 0,
+			url TEXT NOT NULL,
+			thumbnail_url TEXT NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			updated_at TIMESTAMPTZ DEFAULT NOW()
+		);
+	`)
+
+	repo := postgresinfra.NewGifRepository(dbConn)
+	ctx := context.Background()
+
+	testUserId := uuid.New().String()
+	testGifKey := fmt.Sprintf("test_recent_%s.gif", uuid.New().String())
+
+	// Create gif
+	gif := domainmedia.Gif{
+		Key:          testGifKey,
+		Name:         "Recent Test",
+		UserId:       testUserId,
+		Status:       "public",
+		Persist:      false,
+		Url:          "https://storage/" + testGifKey,
+		ThumbnailUrl: "https://storage/thumb.jpg",
+	}
+
+	if err := repo.Create(ctx, gif); err != nil {
+		t.Fatalf("failed to create gif: %v", err)
+	}
+	defer repo.Delete(ctx, testGifKey)
+
+	// Call SaveRecent
+	if err := repo.SaveRecent(ctx, testGifKey); err != nil {
+		t.Fatalf("SaveRecent returned error: %v", err)
+	}
+
+	// Query recents
+	recents, err := repo.GetRecents(ctx, testUserId)
+	if err != nil {
+		t.Fatalf("GetRecents failed: %v", err)
+	}
+
+	found := false
+	for _, r := range recents {
+		if r.Key == testGifKey {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Errorf("BUG DETECTED: SaveRecent is a no-op; gif %s does not appear in recents list (got %d recents)",
+			testGifKey, len(recents))
+	}
+}
+

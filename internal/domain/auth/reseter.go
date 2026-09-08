@@ -1,3 +1,5 @@
+//go:generate mockgen -package=mocks -destination=mocks/mock_reseter_repo.go github.com/labib0x9/ffgif/internal/domain/auth ReseterRepository
+
 package auth
 
 import (

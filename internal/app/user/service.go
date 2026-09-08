@@ -1,3 +1,5 @@
+//go:generate mockgen -package=mocks -destination=mocks/mock_user_service.go github.com/labib0x9/ffgif/internal/app/user Service
+
 package user
 
 import (

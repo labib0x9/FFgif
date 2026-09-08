@@ -8,389 +8,262 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/mock/gomock"
+
 	appshare "github.com/labib0x9/ffgif/internal/app/share"
 	domainauth "github.com/labib0x9/ffgif/internal/domain/auth"
+	authMocks "github.com/labib0x9/ffgif/internal/domain/auth/mocks"
 	domainmedia "github.com/labib0x9/ffgif/internal/domain/media"
+	mediaMocks "github.com/labib0x9/ffgif/internal/domain/media/mocks"
 	domainshare "github.com/labib0x9/ffgif/internal/domain/share"
+	shareMocks "github.com/labib0x9/ffgif/internal/domain/share/mocks"
 	"github.com/labib0x9/ffgif/internal/port/queue"
-	amqp "github.com/rabbitmq/amqp091-go"
+	queueMocks "github.com/labib0x9/ffgif/internal/port/queue/mocks"
 )
 
-type mockAuthRepo struct {
-	getByEmailFunc func(ctx context.Context, email string) (domainauth.User, error)
+type shareTestDeps struct {
+	ctrl      *gomock.Controller
+	authRepo  *authMocks.MockAuthRepository
+	gifRepo   *mediaMocks.MockGifRepository
+	shareRepo *shareMocks.MockShareRepository
+	queue     *queueMocks.MockQueue
+	svc       appshare.Service
 }
 
-func (m *mockAuthRepo) GetByEmail(ctx context.Context, email string) (domainauth.User, error) {
-	if m.getByEmailFunc != nil {
-		return m.getByEmailFunc(ctx, email)
+func newShareTestDeps(t *testing.T) *shareTestDeps {
+	ctrl := gomock.NewController(t)
+	deps := &shareTestDeps{
+		ctrl:      ctrl,
+		authRepo:  authMocks.NewMockAuthRepository(ctrl),
+		gifRepo:   mediaMocks.NewMockGifRepository(ctrl),
+		shareRepo: shareMocks.NewMockShareRepository(ctrl),
+		queue:     queueMocks.NewMockQueue(ctrl),
 	}
-	return domainauth.User{Id: uuid.New(), Email: email}, nil
-}
-func (m *mockAuthRepo) GetById(ctx context.Context, id uuid.UUID) (domainauth.User, error) {
-	return domainauth.User{Id: id}, nil
-}
-func (m *mockAuthRepo) Create(ctx context.Context, user domainauth.User) (domainauth.User, error) {
-	return user, nil
-}
-func (m *mockAuthRepo) DeleteById(ctx context.Context, id uuid.UUID) error    { return nil }
-func (m *mockAuthRepo) DeleteByEmail(ctx context.Context, email string) error { return nil }
-func (m *mockAuthRepo) UpdatePassword(ctx context.Context, id uuid.UUID, passHash string) error {
-	return nil
-}
-func (m *mockAuthRepo) SetVerified(ctx context.Context, userId uuid.UUID) error { return nil }
-func (m *mockAuthRepo) Upgrade(ctx context.Context, id string, user domainauth.User) (domainauth.User, error) {
-	return user, nil
+	deps.svc = appshare.NewService(
+		deps.authRepo,
+		deps.gifRepo,
+		deps.shareRepo,
+		deps.queue,
+	)
+	return deps
 }
 
-type mockGifRepo struct {
-	getByKeyFunc func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error)
-	getOwnerFunc func(ctx context.Context, key string) (string, error)
+func TestShareService_Create(t *testing.T) {
+	t.Run("success: owner shares gif with registered user", func(t *testing.T) {
+		d := newShareTestDeps(t)
+		ctx := context.Background()
+
+		ownerID := uuid.New().String()
+		recipientID := uuid.New()
+		recipientEmail := "friend@example.com"
+		gifKey := "my-gif-key.gif"
+		expiresAt := time.Now().Add(24 * time.Hour)
+
+		d.authRepo.EXPECT().GetByEmail(gomock.Any(), gomock.Eq(recipientEmail)).
+			Return(domainauth.User{Id: recipientID, Email: recipientEmail}, nil).Times(1)
+
+		d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Eq(gifKey)).
+			Return(ownerID, nil).Times(1)
+
+		d.shareRepo.EXPECT().Create(gomock.Any(), gomock.Cond(func(x any) bool {
+			s, ok := x.(domainshare.Share)
+			return ok && s.GifKey == gifKey && s.OwnerID == ownerID && s.SharedWith == recipientID.String() && s.ExpiresAt.Equal(expiresAt)
+		})).Return(nil).Times(1)
+
+		err := d.svc.Create(ctx, ownerID, gifKey, recipientEmail, expiresAt)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("non-owner attempts to share: returns ErrGifOwnerMismatch", func(t *testing.T) {
+		d := newShareTestDeps(t)
+		ctx := context.Background()
+
+		actualOwnerID := uuid.New().String()
+		attackerID := uuid.New().String()
+		recipientID := uuid.New()
+		recipientEmail := "friend@example.com"
+		gifKey := "target-gif.gif"
+		expiresAt := time.Now().Add(24 * time.Hour)
+
+		d.authRepo.EXPECT().GetByEmail(gomock.Any(), gomock.Eq(recipientEmail)).
+			Return(domainauth.User{Id: recipientID, Email: recipientEmail}, nil).Times(1)
+
+		d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Eq(gifKey)).
+			Return(actualOwnerID, nil).Times(1)
+
+		err := d.svc.Create(ctx, attackerID, gifKey, recipientEmail, expiresAt)
+		if !errors.Is(err, domainmedia.ErrGifOwnerMismatch) {
+			t.Fatalf("expected ErrGifOwnerMismatch when non-owner tries to share, got %v", err)
+		}
+	})
+
+	t.Run("recipient email not found: returns ErrUserNotFound", func(t *testing.T) {
+		d := newShareTestDeps(t)
+		ctx := context.Background()
+
+		d.authRepo.EXPECT().GetByEmail(gomock.Any(), "nonexistent@example.com").
+			Return(domainauth.User{}, sql.ErrNoRows).Times(1)
+
+		err := d.svc.Create(ctx, "owner-id", "gif-key", "nonexistent@example.com", time.Now().Add(1*time.Hour))
+		if !errors.Is(err, domainauth.ErrUserNotFound) {
+			t.Fatalf("expected ErrUserNotFound, got %v", err)
+		}
+	})
+
+	t.Run("gif not found: returns ErrGifNotFound", func(t *testing.T) {
+		d := newShareTestDeps(t)
+		ctx := context.Background()
+
+		recipientID := uuid.New()
+		d.authRepo.EXPECT().GetByEmail(gomock.Any(), "friend@example.com").
+			Return(domainauth.User{Id: recipientID, Email: "friend@example.com"}, nil).Times(1)
+
+		d.gifRepo.EXPECT().GetOwner(gomock.Any(), "missing-gif").
+			Return("", sql.ErrNoRows).Times(1)
+
+		err := d.svc.Create(ctx, "owner-id", "missing-gif", "friend@example.com", time.Now().Add(1*time.Hour))
+		if !errors.Is(err, domainmedia.ErrGifNotFound) {
+			t.Fatalf("expected ErrGifNotFound, got %v", err)
+		}
+	})
 }
 
-func (m *mockGifRepo) Create(ctx context.Context, gif domainmedia.Gif) error { return nil }
-func (m *mockGifRepo) Get(ctx context.Context, user_id string, status string) ([]domainmedia.GifResponse, error) {
-	return nil, nil
-}
-func (m *mockGifRepo) GetByKey(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
-	if m.getByKeyFunc != nil {
-		return m.getByKeyFunc(ctx, key, forUpdate)
-	}
-	return domainmedia.GifResponse{Key: key}, nil
-}
-func (m *mockGifRepo) GetRecents(ctx context.Context, user_id string) ([]domainmedia.GifResponse, error) {
-	return nil, nil
-}
-func (m *mockGifRepo) Delete(ctx context.Context, key string) error { return nil }
-func (m *mockGifRepo) Update(ctx context.Context, key string, req domainmedia.GifUpdateRequest) (domainmedia.GifResponse, error) {
-	return domainmedia.GifResponse{}, nil
-}
-func (m *mockGifRepo) SaveRecent(ctx context.Context, key string) error { return nil }
-func (m *mockGifRepo) GetOwner(ctx context.Context, key string) (string, error) {
-	if m.getOwnerFunc != nil {
-		return m.getOwnerFunc(ctx, key)
-	}
-	return "", nil
-}
+func TestShareService_CreateByToken(t *testing.T) {
+	t.Run("success: owner generates public/token share and publishes email", func(t *testing.T) {
+		d := newShareTestDeps(t)
+		ctx := context.Background()
 
-type mockShareRepo struct {
-	createdShare      *domainshare.Share
-	createdTokenShare *domainshare.ShareByToken
-	createFunc        func(ctx context.Context, s domainshare.Share) error
-	createByTokenFunc func(ctx context.Context, gif domainshare.ShareByToken) error
-	getFunc           func(ctx context.Context, user string) ([]domainshare.GifResponse, error)
-	getByTokenFunc    func(ctx context.Context, token string) (domainshare.GifTokenResponse, error)
-	getOwnerFunc      func(ctx context.Context, user string, key string) (string, error)
-	deleteFunc        func(ctx context.Context, key, shareWithId string) error
-}
+		ownerID := uuid.New().String()
+		gifKey := "public-share-gif.gif"
+		email := "guest@example.com"
+		expiresAt := time.Now().Add(48 * time.Hour)
 
-func (m *mockShareRepo) Create(ctx context.Context, s domainshare.Share) error {
-	if m.createFunc != nil {
-		return m.createFunc(ctx, s)
-	}
-	m.createdShare = &s
-	return nil
-}
-func (m *mockShareRepo) CreateByToken(ctx context.Context, gif domainshare.ShareByToken) error {
-	if m.createByTokenFunc != nil {
-		return m.createByTokenFunc(ctx, gif)
-	}
-	m.createdTokenShare = &gif
-	return nil
-}
-func (m *mockShareRepo) Get(ctx context.Context, user string) ([]domainshare.GifResponse, error) {
-	if m.getFunc != nil {
-		return m.getFunc(ctx, user)
-	}
-	return []domainshare.GifResponse{}, nil
-}
-func (m *mockShareRepo) GetByToken(ctx context.Context, token string) (domainshare.GifTokenResponse, error) {
-	if m.getByTokenFunc != nil {
-		return m.getByTokenFunc(ctx, token)
-	}
-	return domainshare.GifTokenResponse{}, nil
-}
-func (m *mockShareRepo) GetOwner(ctx context.Context, user string, key string) (string, error) {
-	if m.getOwnerFunc != nil {
-		return m.getOwnerFunc(ctx, user, key)
-	}
-	return "", nil
-}
-func (m *mockShareRepo) Delete(ctx context.Context, key, shareWithId string) error {
-	if m.deleteFunc != nil {
-		return m.deleteFunc(ctx, key, shareWithId)
-	}
-	return nil
+		d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Eq(gifKey)).
+			Return(ownerID, nil).Times(1)
+
+		d.shareRepo.EXPECT().CreateByToken(gomock.Any(), gomock.Cond(func(x any) bool {
+			s, ok := x.(domainshare.ShareByToken)
+			return ok && s.GifKey == gifKey && s.Email == email && s.Token != "" && s.ExpiresAt.Equal(expiresAt)
+		})).Return(nil).Times(1)
+
+		d.queue.EXPECT().PublishEmail(gomock.Any(), gomock.Cond(func(x any) bool {
+			m, ok := x.(queue.EmailMessage)
+			return ok && m.To == email && m.Name == "share" && m.Token != ""
+		})).Return(nil).Times(1)
+
+		token, err := d.svc.CreateByToken(ctx, ownerID, gifKey, email, expiresAt)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if token == "" {
+			t.Errorf("expected non-empty share token")
+		}
+	})
+
+	t.Run("non-owner attempts public share: returns ErrGifOwnerMismatch", func(t *testing.T) {
+		d := newShareTestDeps(t)
+		ctx := context.Background()
+
+		ownerID := "owner-user"
+		attackerID := "attacker-user"
+
+		d.gifRepo.EXPECT().GetOwner(gomock.Any(), "some-gif.gif").
+			Return(ownerID, nil).Times(1)
+
+		_, err := d.svc.CreateByToken(ctx, attackerID, "some-gif.gif", "guest@example.com", time.Now().Add(1*time.Hour))
+		if !errors.Is(err, domainmedia.ErrGifOwnerMismatch) {
+			t.Fatalf("expected ErrGifOwnerMismatch, got %v", err)
+		}
+	})
 }
 
-type mockQueue struct {
-	publishedEmail   *queue.EmailMessage
-	publishEmailFunc func(ctx context.Context, msg queue.EmailMessage) error
+func TestShareService_Delete(t *testing.T) {
+	t.Run("success: revokes share for user", func(t *testing.T) {
+		d := newShareTestDeps(t)
+		ctx := context.Background()
+
+		ownerID := "owner-id"
+		gifKey := "my-gif.gif"
+		shareWithID := "shared-user-id"
+
+		d.shareRepo.EXPECT().GetOwner(gomock.Any(), gomock.Eq(shareWithID), gomock.Eq(gifKey)).
+			Return(ownerID, nil).Times(1)
+
+		d.shareRepo.EXPECT().Delete(gomock.Any(), gomock.Eq(gifKey), gomock.Eq(shareWithID)).
+			Return(nil).Times(1)
+
+		err := d.svc.Delete(ctx, ownerID, gifKey, shareWithID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("unauthorized: non-owner cannot revoke share", func(t *testing.T) {
+		d := newShareTestDeps(t)
+		ctx := context.Background()
+
+		actualOwnerID := "owner-id"
+		attackerID := "attacker-id"
+		gifKey := "my-gif.gif"
+		shareWithID := "shared-user-id"
+
+		d.shareRepo.EXPECT().GetOwner(gomock.Any(), gomock.Eq(shareWithID), gomock.Eq(gifKey)).
+			Return(actualOwnerID, nil).Times(1)
+
+		err := d.svc.Delete(ctx, attackerID, gifKey, shareWithID)
+		if !errors.Is(err, domainshare.ErrNotAuthorized) {
+			t.Fatalf("expected ErrNotAuthorized, got %v", err)
+		}
+	})
 }
 
-func (m *mockQueue) PublishEmail(ctx context.Context, msg queue.EmailMessage) error {
-	if m.publishEmailFunc != nil {
-		return m.publishEmailFunc(ctx, msg)
-	}
-	m.publishedEmail = &msg
-	return nil
-}
-func (m *mockQueue) PublishVideo(ctx context.Context, msg queue.VideoMessage) error           { return nil }
-func (m *mockQueue) PublishSaveVideo(ctx context.Context, msg queue.SaveVideoMessage) error       { return nil }
-func (m *mockQueue) PublishRetrySaveVideo(ctx context.Context, msg queue.SaveVideoMessage) error  { return nil }
-func (m *mockQueue) ConsumeEmail(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error) {
-	return nil, nil
-}
-func (m *mockQueue) ConsumeSave(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error) {
-	return nil, nil
-}
-func (m *mockQueue) ConsumeVideo(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error) {
-	return nil, nil
-}
-func (m *mockQueue) ConsumeRawVideo(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error) {
-	return nil, nil
-}
-func (m *mockQueue) Close() error                           { return nil }
-func (m *mockQueue) CloseConsumerChannel(name string) error { return nil }
+func TestShareService_Get(t *testing.T) {
+	t.Run("success: lists shared gifs for user", func(t *testing.T) {
+		d := newShareTestDeps(t)
+		ctx := context.Background()
 
-func TestShareService_Create_Success(t *testing.T) {
-	recipientID := uuid.New()
-	authRepo := &mockAuthRepo{
-		getByEmailFunc: func(ctx context.Context, email string) (domainauth.User, error) {
-			return domainauth.User{Id: recipientID, Email: email}, nil
-		},
-	}
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "owner-user-1", nil
-		},
-	}
-	shareRepo := &mockShareRepo{}
-	q := &mockQueue{}
+		userID := "user-123"
+		expected := []domainshare.GifResponse{
+			{ID: "1", GifKey: "key-1", Name: "gif1.gif"},
+			{ID: "2", GifKey: "key-2", Name: "gif2.gif"},
+		}
 
-	svc := appshare.NewService(authRepo, gifRepo, shareRepo, q)
+		d.shareRepo.EXPECT().Get(gomock.Any(), gomock.Eq(userID)).
+			Return(expected, nil).Times(1)
 
-	expiry := time.Now().Add(24 * time.Hour)
-	err := svc.Create(context.Background(), "owner-user-1", "gif-key-123", "friend@example.com", expiry)
-	if err != nil {
-		t.Fatalf("expected Create to succeed, got: %v", err)
-	}
-
-	if shareRepo.createdShare == nil {
-		t.Fatal("expected share record to be created in repository")
-	}
-	if shareRepo.createdShare.OwnerID != "owner-user-1" {
-		t.Errorf("expected ownerID owner-user-1, got %s", shareRepo.createdShare.OwnerID)
-	}
-	if shareRepo.createdShare.SharedWith != recipientID.String() {
-		t.Errorf("expected sharedWith %s, got %s", recipientID.String(), shareRepo.createdShare.SharedWith)
-	}
+		res, err := d.svc.Get(ctx, userID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(res) != 2 {
+			t.Errorf("expected 2 shared gifs, got %d", len(res))
+		}
+	})
 }
 
-func TestShareService_Create_RecipientNotFound(t *testing.T) {
-	authRepo := &mockAuthRepo{
-		getByEmailFunc: func(ctx context.Context, email string) (domainauth.User, error) {
-			return domainauth.User{}, errors.New("user not found")
-		},
-	}
-	svc := appshare.NewService(authRepo, &mockGifRepo{}, &mockShareRepo{}, &mockQueue{})
+func TestShareService_GetByToken(t *testing.T) {
+	t.Run("success: retrieves shared gif by token", func(t *testing.T) {
+		d := newShareTestDeps(t)
+		ctx := context.Background()
 
-	err := svc.Create(context.Background(), "owner-1", "gif-123", "missing@example.com", time.Now())
-	if !errors.Is(err, domainauth.ErrUserNotFound) {
-		t.Errorf("expected ErrUserNotFound, got %v", err)
-	}
+		token := "share-token-xyz"
+		expected := domainshare.GifTokenResponse{
+			GifKey: "shared-key",
+			Name:   "awesome.gif",
+			Url:    "https://storage/shared-key.gif",
+		}
+
+		d.shareRepo.EXPECT().GetByToken(gomock.Any(), gomock.Eq(token)).
+			Return(expected, nil).Times(1)
+
+		res, err := d.svc.GetByToken(ctx, token)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.GifKey != "shared-key" {
+			t.Errorf("expected GifKey 'shared-key', got '%s'", res.GifKey)
+		}
+	})
 }
-
-func TestShareService_Create_GifNotFound(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "", sql.ErrNoRows
-		},
-	}
-	svc := appshare.NewService(&mockAuthRepo{}, gifRepo, &mockShareRepo{}, &mockQueue{})
-
-	err := svc.Create(context.Background(), "owner-1", "missing-gif", "friend@example.com", time.Now())
-	if !errors.Is(err, domainmedia.ErrGifNotFound) {
-		t.Errorf("expected ErrGifNotFound, got %v", err)
-	}
-}
-
-func TestShareService_Create_RepoError(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "owner-1", nil
-		},
-	}
-	shareRepo := &mockShareRepo{
-		createFunc: func(ctx context.Context, s domainshare.Share) error {
-			return errors.New("db insert failure")
-		},
-	}
-	svc := appshare.NewService(&mockAuthRepo{}, gifRepo, shareRepo, &mockQueue{})
-
-	err := svc.Create(context.Background(), "owner-1", "gif-1", "friend@example.com", time.Now())
-	if err == nil {
-		t.Fatal("expected error from share repo, got nil")
-	}
-}
-
-func TestShareService_Get_Success(t *testing.T) {
-	shareRepo := &mockShareRepo{
-		getFunc: func(ctx context.Context, user string) ([]domainshare.GifResponse, error) {
-			return []domainshare.GifResponse{
-				{Name: "Shared Gif 1", GifKey: "key-1", OwnerID: "owner-1"},
-			}, nil
-		},
-	}
-	svc := appshare.NewService(&mockAuthRepo{}, &mockGifRepo{}, shareRepo, &mockQueue{})
-
-	shares, err := svc.Get(context.Background(), "user-1")
-	if err != nil {
-		t.Fatalf("expected Get to succeed, got: %v", err)
-	}
-	if len(shares) != 1 {
-		t.Errorf("expected 1 share, got %d", len(shares))
-	}
-}
-
-func TestShareService_Delete_Success(t *testing.T) {
-	deleted := false
-	shareRepo := &mockShareRepo{
-		getOwnerFunc: func(ctx context.Context, user, key string) (string, error) {
-			return "owner-1", nil
-		},
-		deleteFunc: func(ctx context.Context, key, shareWithId string) error {
-			deleted = true
-			return nil
-		},
-	}
-	svc := appshare.NewService(&mockAuthRepo{}, &mockGifRepo{}, shareRepo, &mockQueue{})
-
-	err := svc.Delete(context.Background(), "owner-1", "gif-1", "user-2")
-	if err != nil {
-		t.Fatalf("expected Delete to succeed, got: %v", err)
-	}
-	if !deleted {
-		t.Fatal("expected share repo Delete to be called")
-	}
-}
-
-func TestShareService_Delete_NotFound(t *testing.T) {
-	shareRepo := &mockShareRepo{
-		getOwnerFunc: func(ctx context.Context, user, key string) (string, error) {
-			return "", sql.ErrNoRows
-		},
-	}
-	svc := appshare.NewService(&mockAuthRepo{}, &mockGifRepo{}, shareRepo, &mockQueue{})
-
-	err := svc.Delete(context.Background(), "owner-1", "gif-1", "user-2")
-	if !errors.Is(err, domainshare.ErrNotFound) {
-		t.Errorf("expected ErrNotFound, got %v", err)
-	}
-}
-
-func TestShareService_Delete_NotAuthorized(t *testing.T) {
-	shareRepo := &mockShareRepo{
-		getOwnerFunc: func(ctx context.Context, user, key string) (string, error) {
-			return "actual-owner-id", nil
-		},
-	}
-	svc := appshare.NewService(&mockAuthRepo{}, &mockGifRepo{}, shareRepo, &mockQueue{})
-
-	err := svc.Delete(context.Background(), "attacker-user-id", "gif-1", "user-2")
-	if !errors.Is(err, domainshare.ErrNotAuthorized) {
-		t.Errorf("expected ErrNotAuthorized, got %v", err)
-	}
-}
-
-func TestShareService_Delete_GetOwnerError(t *testing.T) {
-	shareRepo := &mockShareRepo{
-		getOwnerFunc: func(ctx context.Context, user, key string) (string, error) {
-			return "", errors.New("db connection failure")
-		},
-	}
-	svc := appshare.NewService(&mockAuthRepo{}, &mockGifRepo{}, shareRepo, &mockQueue{})
-
-	err := svc.Delete(context.Background(), "owner-1", "gif-1", "user-2")
-	if err == nil || errors.Is(err, domainshare.ErrNotFound) {
-		t.Errorf("expected db error, got: %v", err)
-	}
-}
-
-func TestShareService_CreateByToken_Success(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "owner-1", nil
-		},
-	}
-	shareRepo := &mockShareRepo{}
-	q := &mockQueue{}
-
-	svc := appshare.NewService(&mockAuthRepo{}, gifRepo, shareRepo, q)
-
-	expiry := time.Now().Add(24 * time.Hour)
-	token, err := svc.CreateByToken(context.Background(), "owner-1", "gif-1", "friend@example.com", expiry)
-	if err != nil {
-		t.Fatalf("expected CreateByToken to succeed, got %v", err)
-	}
-	if token == "" {
-		t.Fatal("expected non-empty token")
-	}
-	if shareRepo.createdTokenShare == nil {
-		t.Fatal("expected token share to be created in repo")
-	}
-	if q.publishedEmail == nil {
-		t.Fatal("expected email to be published")
-	}
-	if q.publishedEmail.To != "friend@example.com" {
-		t.Errorf("expected email To friend@example.com, got %s", q.publishedEmail.To)
-	}
-}
-
-func TestShareService_CreateByToken_GifNotFound(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "", sql.ErrNoRows
-		},
-	}
-	svc := appshare.NewService(&mockAuthRepo{}, gifRepo, &mockShareRepo{}, &mockQueue{})
-
-	_, err := svc.CreateByToken(context.Background(), "owner-1", "missing-gif", "friend@example.com", time.Now())
-	if !errors.Is(err, domainmedia.ErrGifNotFound) {
-		t.Errorf("expected ErrGifNotFound, got %v", err)
-	}
-}
-
-func TestShareService_CreateByToken_OwnerMismatch(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "actual-owner", nil
-		},
-	}
-	svc := appshare.NewService(&mockAuthRepo{}, gifRepo, &mockShareRepo{}, &mockQueue{})
-
-	_, err := svc.CreateByToken(context.Background(), "attacker", "gif-1", "friend@example.com", time.Now())
-	if !errors.Is(err, domainmedia.ErrGifOwnerMismatch) {
-		t.Errorf("expected ErrGifOwnerMismatch, got %v", err)
-	}
-}
-
-func TestShareService_GetByToken_Success(t *testing.T) {
-	shareRepo := &mockShareRepo{
-		getByTokenFunc: func(ctx context.Context, token string) (domainshare.GifTokenResponse, error) {
-			return domainshare.GifTokenResponse{
-				GifKey: "gif-1",
-				Name:   "sample.gif",
-			}, nil
-		},
-	}
-	svc := appshare.NewService(&mockAuthRepo{}, &mockGifRepo{}, shareRepo, &mockQueue{})
-
-	resp, err := svc.GetByToken(context.Background(), "valid-token")
-	if err != nil {
-		t.Fatalf("expected GetByToken to succeed, got %v", err)
-	}
-	if resp.GifKey != "gif-1" {
-		t.Errorf("expected GifKey gif-1, got %s", resp.GifKey)
-	}
-}
-

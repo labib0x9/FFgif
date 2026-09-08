@@ -367,7 +367,51 @@ Option 2: Real SMTP (e.g. Gmail app password)
 
 ---
 
+## Testing
+
+FFGif includes unit tests with `go.uber.org/mock` (gomock), adversarial business-rule contract tests, and full end-to-end integration tests.
+
+### 1. Run Unit & Service Tests
+
+Run all unit tests across domain, application services, handlers, and middlewares:
+
+```bash
+go test ./internal/...
+```
+
+### 2. Run Integration Tests (Real Infrastructure)
+
+Start local infrastructure dependencies before running real integration tests:
+
+```bash
+# Start required databases and brokers
+docker compose up -d postgres redis rabbitmq minio
+
+# Run integration tests
+go test -v ./tests/integration/...
+```
+
+### 3. Run with Race Detector
+
+Check for concurrency issues and data races across workers and services:
+
+```bash
+go test -race ./...
+```
+
+### 4. Regenerate Mocks
+
+If you modify any domain or port repository interfaces, regenerate the gomock mocks using:
+
+```bash
+go generate ./...
+```
+
+---
+
 ## API Reference
+
+> 📖 For full request/response schemas, status codes, parameters, and curl examples, see [API_REFERENCE.md](./API_REFERENCE.md).
 
 ### Auth
 

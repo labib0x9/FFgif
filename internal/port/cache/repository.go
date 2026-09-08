@@ -1,3 +1,5 @@
+//go:generate mockgen -package=mocks -destination=mocks/mock_cache.go github.com/labib0x9/ffgif/internal/port/cache Cache,RateLimiter
+
 package cache
 
 import (
