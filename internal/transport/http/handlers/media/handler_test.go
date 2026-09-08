@@ -21,7 +21,7 @@ import (
 )
 
 type mockMediaService struct {
-	uploadFunc                func(rctx context.Context, filename string, claims jwtpkg.Payload) (*domainmedia.UploadResult, error)
+	uploadFunc                func(rctx context.Context, filename string, claims string) (*domainmedia.UploadResult, error)
 	downloadFunc              func(ctx context.Context, userId, key string) (string, error)
 	getByKeyFunc              func(ctx context.Context, userId string, key string) (*domainmedia.GifResponse, error)
 	getRecentsFunc            func(ctx context.Context, id string) ([]domainmedia.GifResponse, error)
@@ -33,7 +33,7 @@ type mockMediaService struct {
 	updateFunc                func(ctx context.Context, userId string, key string, _gif domainmedia.GifUpdateRequest, lastUpdatedAt string) (*domainmedia.GifResponse, error)
 	processAndSaveFunc        func(ctx context.Context, key string) error
 	updateUploadingStatusFunc func(ctx context.Context, key string, status string) error
-	statusFunc                func(ctx context.Context, key string) (string, error)
+	statusFunc                func(ctx context.Context, userId, key string) (string, string, error)
 
 	convertFunc          func(ctx context.Context, userId string, key string, start float32, end float32, fps int, width int, loop bool) (*appmedia.ConvertResult, error)
 	conversionStatusFunc func(ctx context.Context, jobId string) (*appmedia.StatusResult, error)
@@ -43,7 +43,7 @@ type mockMediaService struct {
 	getGifThumbnailFunc func(ctx context.Context, userId string, key string) (string, error)
 }
 
-func (m *mockMediaService) Upload(rctx context.Context, filename string, claims jwtpkg.Payload) (*domainmedia.UploadResult, error) {
+func (m *mockMediaService) Upload(rctx context.Context, filename string, claims string) (*domainmedia.UploadResult, error) {
 	if m.uploadFunc != nil {
 		return m.uploadFunc(rctx, filename, claims)
 	}
@@ -77,7 +77,8 @@ func (m *mockMediaService) LastVideo(ctx context.Context, userId string) (domain
 	if m.lastVideoFunc != nil {
 		return m.lastVideoFunc(ctx, userId)
 	}
-	return domainmedia.LastUploadResponse{UserID: uuid.MustParse(userId), FileKey: "last.mp4"}, nil
+	uID, _ := uuid.Parse(userId)
+	return domainmedia.LastUploadResponse{UserID: uID, FileKey: "last.mp4"}, nil
 }
 func (m *mockMediaService) Delete(ctx context.Context, userId string, key string) error {
 	if m.deleteFunc != nil {
@@ -115,11 +116,11 @@ func (m *mockMediaService) UpdateUploadingStatus(ctx context.Context, key string
 	}
 	return nil
 }
-func (m *mockMediaService) Status(ctx context.Context, key string) (string, error) {
+func (m *mockMediaService) Status(ctx context.Context, userId, key string) (string, string, error) {
 	if m.statusFunc != nil {
-		return m.statusFunc(ctx, key)
+		return m.statusFunc(ctx, userId, key)
 	}
-	return "ok", nil
+	return "stream-key", "ok", nil
 }
 func (m *mockMediaService) Convert(ctx context.Context, userId string, key string, start float32, end float32, fps int, width int, loop bool) (*appmedia.ConvertResult, error) {
 	if m.convertFunc != nil {
@@ -165,7 +166,7 @@ func withUserAuth(r *http.Request, userId string) *http.Request {
 
 func TestMediaHandler_Upload_Success(t *testing.T) {
 	mockSvc := &mockMediaService{
-		uploadFunc: func(rctx context.Context, filename string, claims jwtpkg.Payload) (*domainmedia.UploadResult, error) {
+		uploadFunc: func(rctx context.Context, filename string, claims string) (*domainmedia.UploadResult, error) {
 			return &domainmedia.UploadResult{
 				Url:      "https://minio.local/presigned-upload",
 				Key:      "user-123:video-uuid.mp4",
@@ -200,8 +201,8 @@ func TestMediaHandler_Upload_BadJSON(t *testing.T) {
 
 func TestMediaHandler_Status_Success(t *testing.T) {
 	mockSvc := &mockMediaService{
-		statusFunc: func(ctx context.Context, key string) (string, error) {
-			return "ok", nil
+		statusFunc: func(ctx context.Context, userId, key string) (string, string, error) {
+			return "stream-test.mp4", "ok", nil
 		},
 	}
 	handler := media.NewHandler(mockSvc, nil, validator.New())
@@ -210,6 +211,7 @@ func TestMediaHandler_Status_Success(t *testing.T) {
 	mux.HandleFunc("GET /uploads/{key}/status", handler.Status)
 
 	req := httptest.NewRequest(http.MethodGet, "/uploads/user-1:test.mp4/status", nil)
+	req = withUserAuth(req, "user-1")
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)

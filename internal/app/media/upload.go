@@ -6,17 +6,16 @@ import (
 	"time"
 
 	"github.com/labib0x9/ffgif/internal/domain/media"
-	"github.com/labib0x9/ffgif/pkg/jwt"
 	"github.com/labib0x9/ffgif/pkg/random"
 )
 
-func (s *service) Upload(rctx context.Context, filename string, claims jwt.Payload) (*media.UploadResult, error) {
-	userId := claims.Subject
+// key = <userId>:<uuid>.<ext>
+func (s *service) Upload(rctx context.Context, filename string, userId string) (*media.UploadResult, error) {
 	ext := filepath.Ext(filename)
 	key := userId + ":" + random.GenerateRandomID().String() + ext
 	expirey := 5 * time.Minute
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(rctx, 30*time.Second)
 	defer cancel()
 
 	url, err := s.storage.Create(ctx, key, expirey)

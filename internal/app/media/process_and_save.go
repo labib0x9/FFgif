@@ -11,6 +11,8 @@ import (
 	"github.com/labib0x9/ffgif/internal/domain/media"
 )
 
+// (storedKey, error)
+// storedKey is the streaming key
 func (s *service) ProcessAndSave(ctx context.Context, key string) error {
 	if key == "" {
 		return media.ErrEmptyKey
@@ -45,7 +47,11 @@ func (s *service) ProcessAndSave(ctx context.Context, key string) error {
 		UploadedAt:   time.Now(),
 	}
 
-	return s.lastVideoRepo.Create(ctx, upload)
+	if err := s.lastVideoRepo.Create(ctx, upload); err != nil {
+		return fmt.Errorf("lastVideoRepo.Create() failed: %w", err)
+	}
+
+	return nil
 }
 
 func seperateUserId(key string) string {

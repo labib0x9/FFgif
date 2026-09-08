@@ -25,7 +25,7 @@ func NewStorageRepository(client *minio.Client, presignedClient *minio.Client, c
 	}
 }
 
-// create url, directly upload
+// create url, directly upload on temporary bucket
 func (u *storageRepo) Create(ctx context.Context, key string, expirey time.Duration) (*url.URL, error) {
 	return u.presignedClient.PresignedPutObject(ctx, u.cnf.TempBucket, key, expirey)
 }
@@ -72,16 +72,6 @@ func (u *storageRepo) Status(ctx context.Context, key string) (media.Info, error
 		ContentType: info.ContentType,
 		UploadedAt:  info.LastModified,
 	}, err
-}
-
-func (u *storageRepo) GetObject(ctx context.Context, start, end int64, key string) (media.Object, error) {
-	opts := minio_go.GetObjectOptions{}
-	if start != -1 || end != -1 {
-		opts.SetRange(start, end)
-	}
-
-	obj, err := u.client.GetObject(ctx, u.cnf.StorageBucket, key, opts)
-	return media.Object{obj}, err
 }
 
 func (u *storageRepo) DownloadLocalRawVideo(ctx context.Context, key, destPath string) error {

@@ -12,7 +12,6 @@ import (
 	"github.com/labib0x9/ffgif/internal/port/db"
 	"github.com/labib0x9/ffgif/internal/port/processor"
 	"github.com/labib0x9/ffgif/internal/port/queue"
-	"github.com/labib0x9/ffgif/pkg/jwt"
 )
 
 type Service interface {
@@ -25,10 +24,10 @@ type Service interface {
 	Save(ctx context.Context, userId, key string) error
 	Stream(ctx context.Context, userId string, key string) (*media.StreamResult, error)
 	Update(ctx context.Context, userId string, key string, _gif media.GifUpdateRequest, lastUpdatedAt string) (*media.GifResponse, error)
-	Upload(rctx context.Context, filename string, claims jwt.Payload) (*media.UploadResult, error)
+	Upload(rctx context.Context, filename string, userId string) (*media.UploadResult, error)
 	ProcessAndSave(ctx context.Context, key string) error
 	UpdateUploadingStatus(ctx context.Context, key string, status string) error
-	Status(ctx context.Context, key string) (string, error)
+	Status(ctx context.Context, userId, key string) (string, string, error)
 
 	Process(ctx context.Context, msg queue.VideoMessage) error
 	ConversionStatus(ctx context.Context, jobId string) (*StatusResult, error)
