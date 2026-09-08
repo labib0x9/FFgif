@@ -408,16 +408,19 @@ Poll video preprocessing / ingestion status.
 - **Auth Required**: **Yes**
 - **Path Parameters**:
   - `key` (string, required): File key returned from `POST /uploads`.
+- **Headers Returned**:
+  - `Location: /uploads/{streamingKey}/stream` *(returned when status is `ok`)*
 
 #### Responses
 - **`200 OK`**
   ```json
   {
-    "file_key": "user-123:video-uuid.mp4",
     "status": "ok"
   }
   ```
   *(Status values: `uploading`, `processing`, `ok`, `failed`)*
+
+  > **Note**: When `status` is `ok`, the `Location` response header is populated with the streaming endpoint path (`/uploads/{streamingKey}/stream`).
 
 ---
 
