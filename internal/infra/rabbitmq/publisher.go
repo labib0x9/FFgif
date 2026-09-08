@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/labib0x9/ffgif/internal/port/queue"
+	"github.com/labib0x9/ffgif/pkg/telemetry"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -30,6 +31,8 @@ func (r *rabbitMQ) publish(ctx context.Context, queue string, payload any) error
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
+	headers := telemetry.InjectAMQPHeaders(ctx, make(amqp.Table))
+
 	err = ch.PublishWithContext(
 		ctx,
 		"", // default exchange
@@ -37,6 +40,7 @@ func (r *rabbitMQ) publish(ctx context.Context, queue string, payload any) error
 		false,
 		false,
 		amqp.Publishing{
+			Headers:      headers,
 			ContentType:  "application/json",
 			DeliveryMode: amqp.Persistent,
 			Timestamp:    time.Now(),
@@ -48,7 +52,8 @@ func (r *rabbitMQ) publish(ctx context.Context, queue string, payload any) error
 		return fmt.Errorf("publish message: %w", err)
 	}
 
-	slog.Info("publish() = message published", "queue", queue)
+	telemetry.RabbitMQPublishedTotal.WithLabelValues(queue).Inc()
+	slog.InfoContext(ctx, "publish() = message published", "queue", queue)
 	return nil
 }
 

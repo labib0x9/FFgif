@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os/signal"
 	"syscall"
 	"time"
@@ -28,10 +29,34 @@ import (
 	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 	"github.com/labib0x9/ffgif/pkg/jwt"
 	"github.com/labib0x9/ffgif/pkg/password"
+	"github.com/labib0x9/ffgif/pkg/telemetry"
 )
 
 func main() {
 	cnf := config.GetConfig()
+
+	// Setup structured telemetry logging
+	telemetry.SetupLogger(cnf.Service, cnf.Telemetry.Environment)
+
+	// Initialize OpenTelemetry tracer provider with OTLP / Jaeger
+	shutdownTracer, err := telemetry.InitTracer(
+		context.Background(),
+		cnf.Service,
+		cnf.Telemetry.OTLPEndpoint,
+		cnf.Telemetry.Environment,
+		cnf.Version,
+	)
+	if err != nil {
+		slog.Error("failed to initialize tracer", "error", err)
+	} else {
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := shutdownTracer(ctx); err != nil {
+				slog.Error("failed to shutdown tracer", "error", err)
+			}
+		}()
+	}
 
 	dbConn := postgres.NewPostgresConn(cnf.PostgreSQL)
 	defer dbConn.Close()

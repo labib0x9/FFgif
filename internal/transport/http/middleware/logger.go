@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/pkg/telemetry"
 )
 
 type statusRecorder struct {
@@ -23,8 +24,12 @@ func Logger(next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: 200}
 		next.ServeHTTP(rec, r)
-		slog.Info("request",
+
+		traceID, spanID := telemetry.GetTraceAndSpanID(r.Context())
+		slog.InfoContext(r.Context(), "request",
 			"request_id", httputil.GetRequestID(r.Context()),
+			"trace_id", traceID,
+			"span_id", spanID,
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,

@@ -15,6 +15,7 @@ import (
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/static"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/user"
 	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Server struct {
@@ -46,8 +47,15 @@ func (s *Server) Start(rate cache.RateLimiter, cnf *config.Config) {
 
 	rateLimiter := middleware.NewRateLimiter(rate, 20, 35)
 
+	serviceName := "ffgif"
+	if cnf != nil && cnf.Service != "" {
+		serviceName = cnf.Service
+	}
+
 	manager := middleware.NewManager()
 	manager.Use(
+		middleware.Trace(serviceName),
+		middleware.Metrics,
 		middleware.RequestId,
 		middleware.Cors,
 		middleware.Preflight,
@@ -56,6 +64,7 @@ func (s *Server) Start(rate cache.RateLimiter, cnf *config.Config) {
 	)
 
 	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", promhttp.Handler())
 	wrappedMux := manager.WrapMux(mux)
 
 	s.AuthHandler.RegisterRoutes(mux, manager)

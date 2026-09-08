@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
+
+	"github.com/labib0x9/ffgif/pkg/telemetry"
 )
 
 var (
@@ -74,12 +77,18 @@ func (f *GifConverter) Run() error {
 	if f.pCmd == nil || f.gCmd == nil {
 		return NilPointerErr
 	}
+	start := time.Now()
 	if err := f.pCmd.Run(); err != nil {
+		telemetry.MediaConversionsTotal.WithLabelValues("palette", "failure").Inc()
 		return fmt.Errorf("palette generation failed: %w", err)
 	}
 	if err := f.gCmd.Run(); err != nil {
+		telemetry.MediaConversionsTotal.WithLabelValues("gif", "failure").Inc()
 		return fmt.Errorf("gif conversion failed: %w", err)
 	}
+	duration := time.Since(start).Seconds()
+	telemetry.MediaConversionDuration.WithLabelValues("gif").Observe(duration)
+	telemetry.MediaConversionsTotal.WithLabelValues("gif", "success").Inc()
 	return nil
 }
 
@@ -133,10 +142,16 @@ func (f *Mp4Converter) Run() error {
 		return NilPointerErr
 	}
 
+	start := time.Now()
 	err := f.cmd.Run()
 	if err != nil {
+		telemetry.MediaConversionsTotal.WithLabelValues("mp4", "failure").Inc()
 		return fmt.Errorf("ffmpeg mp4 converter run failed: %w", err)
 	}
+
+	duration := time.Since(start).Seconds()
+	telemetry.MediaConversionDuration.WithLabelValues("mp4").Observe(duration)
+	telemetry.MediaConversionsTotal.WithLabelValues("mp4", "success").Inc()
 
 	return nil
 }
@@ -191,10 +206,16 @@ func (f *ThumbGenerator) Run() error {
 		return NilPointerErr
 	}
 
+	start := time.Now()
 	err := f.cmd.Run()
 	if err != nil {
+		telemetry.MediaConversionsTotal.WithLabelValues("thumbnail", "failure").Inc()
 		return fmt.Errorf("ffmpeg mp4 converter run failed: %w", err)
 	}
+
+	duration := time.Since(start).Seconds()
+	telemetry.MediaConversionDuration.WithLabelValues("thumbnail").Observe(duration)
+	telemetry.MediaConversionsTotal.WithLabelValues("thumbnail", "success").Inc()
 
 	return nil
 }

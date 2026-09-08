@@ -1,0 +1,24 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "ffgif-api"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["api:8080"]
+    relabel_configs:
+      - target_label: service
+        replacement: ffgif-api
+
+  - job_name: "ffgif-worker"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["worker:8081"]
+    relabel_configs:
+      - target_label: service
+        replacement: ffgif-worker

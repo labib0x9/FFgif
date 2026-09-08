@@ -188,6 +188,8 @@ services:
       - SMTP_PORT=${SMTP_PORT}
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
+      - ENVIRONMENT=production
     depends_on:
       postgres:
         condition: service_healthy
@@ -199,6 +201,8 @@ services:
         condition: service_healthy
       bootstrap:
         condition: service_completed_successfully
+      jaeger:
+        condition: service_started
     networks:
       - backend
     volumes:
@@ -209,6 +213,8 @@ services:
     build: .
     container_name: ffgif-worker
     entrypoint: [ "/app/worker" ]
+    ports:
+      - "8081:8081"
     environment:
       - ADDR=0.0.0.0
       - PORT=${PORT}
@@ -245,6 +251,9 @@ services:
       - SMTP_PORT=${SMTP_PORT}
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
+      - WORKER_METRICS_PORT=8081
+      - ENVIRONMENT=production
     depends_on:
       postgres:
         condition: service_healthy
@@ -256,6 +265,84 @@ services:
         condition: service_healthy
       bootstrap:
         condition: service_completed_successfully
+      jaeger:
+        condition: service_started
+    networks:
+      - backend
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: ffgif-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686" # Jaeger Web UI
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+    networks:
+      - backend
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ffgif-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheusdata:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    networks:
+      - backend
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: ffgif-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - lokidata:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - backend
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: ffgif-promtail
+    volumes:
+      - ./monitoring/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - backend
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ffgif-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafanadata:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+      - jaeger
     networks:
       - backend
     restart: unless-stopped
@@ -270,3 +357,6 @@ volumes:
   rabbitmqdata:
   miniodata:
   apitmp:
+  prometheusdata:
+  lokidata:
+  grafanadata:

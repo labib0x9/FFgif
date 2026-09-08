@@ -2,12 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/labib0x9/ffgif/config"
+	mediaapp "github.com/labib0x9/ffgif/internal/app/media"
 	"github.com/labib0x9/ffgif/internal/infra/ffmpeg"
 	"github.com/labib0x9/ffgif/internal/infra/mailer"
 	"github.com/labib0x9/ffgif/internal/infra/minio"
@@ -16,13 +21,50 @@ import (
 	"github.com/labib0x9/ffgif/internal/infra/redis"
 	"github.com/labib0x9/ffgif/internal/infra/redis/cache"
 	"github.com/labib0x9/ffgif/internal/worker"
-
-	mediaapp "github.com/labib0x9/ffgif/internal/app/media"
+	"github.com/labib0x9/ffgif/pkg/telemetry"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
-
 	cnf := config.GetConfig()
+
+	// Setup structured telemetry logging
+	telemetry.SetupLogger("ffgif-worker", cnf.Telemetry.Environment)
+
+	// Initialize OpenTelemetry tracer provider with OTLP / Jaeger
+	shutdownTracer, err := telemetry.InitTracer(
+		context.Background(),
+		"ffgif-worker",
+		cnf.Telemetry.OTLPEndpoint,
+		cnf.Telemetry.Environment,
+		cnf.Version,
+	)
+	if err != nil {
+		slog.Error("failed to initialize tracer", "error", err)
+	} else {
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := shutdownTracer(ctx); err != nil {
+				slog.Error("failed to shutdown tracer", "error", err)
+			}
+		}()
+	}
+
+	// Start Worker Prometheus metrics endpoint
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("GET /metrics", promhttp.Handler())
+	metricsServer := &http.Server{
+		Addr:    fmt.Sprintf(":%d", cnf.Telemetry.WorkerMetricsPort),
+		Handler: metricsMux,
+	}
+
+	go func() {
+		slog.Info("Worker metrics server listening", "port", cnf.Telemetry.WorkerMetricsPort)
+		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("Worker metrics server error", "error", err)
+		}
+	}()
 
 	mailer := mailer.NewSmtpMailer(cnf)
 
@@ -87,7 +129,12 @@ func main() {
 	<-ctx.Done()
 	slog.Info("shutting down workers...")
 
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+		slog.Error("error shutting down metrics server", "error", err)
+	}
+
 	wg.Wait()
 	slog.Info("all workers exited cleanly")
-
 }

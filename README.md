@@ -431,6 +431,72 @@ POST /s                                         (share a GIF publicly)
 POST /s/{token}                                 (Get the public share, no auth needed)
 ```
 
+### Observability & Metrics
+
+```
+GET    /metrics                                 Prometheus metrics (API: port 8080, Worker: port 8081)
+```
+
+---
+
+## Observability & Monitoring
+
+FFgif includes a production-grade observability stack featuring **Prometheus** for metrics, **Loki** for structured logs, **Jaeger** for distributed tracing, and **Grafana** for unified visualization:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                          Unified Grafana Dashboard                     │
+│                            (http://localhost:3000)                     │
+└───────────────▲───────────────────────▲───────────────────────▲────────┘
+                │                       │                       │
+      PromQL Metrics              LogQL + TraceID          Distributed Traces
+                │                       │                       │
+┌───────────────┴────────┐    ┌─────────┴──────────┐   ┌────────┴─────────┐
+│       Prometheus       │    │     Loki + Promtail│   │      Jaeger      │
+│ (http://localhost:9090)│    │(http://localhost:3100) │(http://localhost:16686)
+└───────────────▲────────┘    └─────────▲──────────┘   └────────▲─────────┘
+                │ Scrape /metrics       │ Collect Container     │ OTLP Export
+                │                       │ JSON Logs             │ (gRPC: 4317)
+┌───────────────┴───────────────────────┴───────────────────────┴─────────┐
+│                       FFgif Microservices (API & Worker)               │
+│  - Trace Context Injection over RabbitMQ                                │
+│  - Structured JSON Logs (slog) with trace_id & span_id                  │
+│  - HTTP & Worker Metrics (latencies, active tasks, conversions)         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1. Prometheus (Metrics)
+- **API Endpoint:** `http://localhost:8080/metrics`
+- **Worker Endpoint:** `http://localhost:8081/metrics`
+- **Prometheus UI:** `http://localhost:9090`
+- **Key Metrics Tracked:**
+  - `ffgif_http_requests_total{method, path, status}`
+  - `ffgif_http_request_duration_seconds{method, path, status}`
+  - `ffgif_http_requests_in_flight`
+  - `ffgif_worker_tasks_total{worker, status}`
+  - `ffgif_worker_task_duration_seconds{worker}`
+  - `ffgif_worker_active_tasks{worker}`
+  - `ffgif_media_conversions_total{type, status}`
+  - `ffgif_media_conversion_duration_seconds{type}`
+  - `ffgif_rabbitmq_messages_published_total{queue}`
+  - `ffgif_rabbitmq_messages_consumed_total{queue, status}`
+
+### 2. Loki & Promtail (Structured Logs)
+- **Loki Server:** `http://localhost:3100`
+- **Promtail:** Automatically tails Docker container JSON logs and ships them to Loki.
+- **Trace Correlation:** All application logs use Go's `log/slog` with automatic extraction of `trace_id` and `span_id` from the active context. Clicking a trace ID in Loki logs links directly to the trace in Jaeger.
+
+### 3. Jaeger (Distributed Tracing)
+- **Jaeger UI:** `http://localhost:16686`
+- **OTLP Receiver:** Port `4317` (gRPC) and `4318` (HTTP).
+- **Asynchronous Propagation:** OpenTelemetry W3C `traceparent` headers are injected into RabbitMQ message headers during publish and extracted in worker consumers, creating linked traces across asynchronous job queues.
+- **Trace ID in HTTP Response:** Incoming HTTP requests return `X-Trace-ID` in the response header for client correlation.
+
+### 4. Grafana (Dashboard & Visualizations)
+- **Grafana UI:** `http://localhost:3000` (Default credentials: `admin` / `admin`)
+- Pre-provisioned datasources for Prometheus, Loki, and Jaeger.
+- Pre-provisioned **"FFgif Telemetry & System Overview"** dashboard featuring HTTP rates, latencies, worker performance, and live Loki logs.
+
 ---
 
 ## Known Limitations
@@ -462,7 +528,6 @@ POST /s/{token}                                 (Get the public share, no auth n
 - GIF metadata enrichment: file size, dimensions, duration stored in the gifs table
 - Friendship domain (user can be friends)
 - Gif sharing should be two types, one with friends, other with email (without having shared with account, send as a email)
-- Add monitoring
 - Webhook callbacks on job completation
 - WebP or APNG output format alongside GIF
 - GIF-to-MP4 reverse conversion

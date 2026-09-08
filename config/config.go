@@ -57,6 +57,12 @@ type SMTP struct {
 	Pass string
 }
 
+type Telemetry struct {
+	OTLPEndpoint     string
+	WorkerMetricsPort int
+	Environment      string
+}
+
 type Config struct {
 	Version    string
 	Addr       string
@@ -72,6 +78,7 @@ type Config struct {
 	SMTP       *SMTP
 	Minio      *Minio
 	RabbitMq   *RabbitMq
+	Telemetry  *Telemetry
 }
 
 var (
@@ -90,6 +97,14 @@ func loadConfig() {
 		value := os.Getenv(name)
 		if value == "" {
 			log.Panic(name)
+		}
+		return value
+	}
+
+	fnOpt := func(name string, def string) string {
+		value := os.Getenv(name)
+		if value == "" {
+			return def
 		}
 		return value
 	}
@@ -118,6 +133,11 @@ func loadConfig() {
 	smtpPort, err := strconv.Atoi(fn("SMTP_PORT"))
 	if err != nil {
 		log.Fatalln(err)
+	}
+
+	workerMetricsPort, err := strconv.Atoi(fnOpt("WORKER_METRICS_PORT", "8081"))
+	if err != nil {
+		workerMetricsPort = 8081
 	}
 
 	configuration = &Config{
@@ -167,6 +187,11 @@ func loadConfig() {
 			Port: smtpPort,
 			User: fn("SMTP_USER"),
 			Pass: fn("SMTP_PASS"),
+		},
+		Telemetry: &Telemetry{
+			OTLPEndpoint:      fnOpt("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
+			WorkerMetricsPort: workerMetricsPort,
+			Environment:       fnOpt("ENVIRONMENT", "development"),
 		},
 	}
 }
