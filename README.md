@@ -200,58 +200,68 @@ sequenceDiagram
 
 ```
 .
-├── cmd/                            → Application entry points
-│   ├── ffgif/                      # Main HTTP API server
-│   ├── worker/                     # Async RabbitMQ background workers
-│   └── bootstrap/                  # DB migrations & infra bootstrap CLI
-├── config/                         → Environment-based configuration loader
-├── dist/                           → Static frontend export
-├── internal/                       → Private application code
-│   ├── app/                        → Application use cases & services
-│   │   ├── auth/                   # Authentication service (signup, login, reset)
-│   │   ├── media/                  # Video upload, processing & GIF service
-│   │   ├── share/                  # GIF sharing & access control service
-│   │   └── user/                   # User profile & quota service
-│   ├── domain/                     → Core domain entities & repository interfaces
-│   │   ├── auth/                   # User, credential & verifier models
-│   │   ├── media/                  # GIF, upload & storage models
-│   │   ├── share/                  # GIF share models
-│   │   └── user/                   # Profile & quota models
-│   ├── port/                       → Port interfaces for external adapters
-│   │   ├── cache/                  # Cache & rate limiter interfaces
-│   │   ├── db/                     # Transaction manager interface
-│   │   ├── mailer/                 # Mailer interface
-│   │   ├── processor/              # Video & GIF processor interface
-│   │   └── queue/                  # Message queue interface
-│   ├── infra/                      → Infrastructure adapters & drivers
-│   │   ├── ffmpeg/                 # FFmpeg/FFprobe CLI wrapper
-│   │   ├── mailer/                 # SMTP / Mailtrap client
-│   │   ├── minio/                  # MinIO S3 object storage adapter
-│   │   ├── postgres/               # PostgreSQL repositories via sqlx
-│   │   ├── rabbitmq/               # RabbitMQ publisher & consumer
-│   │   └── redis/                  # Redis cache & Lua token bucket rate limiter
-│   ├── transport/                  → Transport layer
-│   │   └── http/                   → HTTP server & routing
-│   │       ├── handlers/           # HTTP handlers (auth, media, share, user, static)
-│   │       ├── httputil/           # JSON response & auth context helpers
-│   │       ├── middleware/         # Auth, CORS, rate limiter, logger middlewares
-│   │       └── server.go           # Server startup & routing configuration
-│   └── worker/                     → RabbitMQ consumers (conversion, preprocessing, email)
-├── migrations/                     → PostgreSQL schema migration files
-├── pkg/                            → Shared reusable utility packages
-│   ├── jwt/                        # JWT token generation & verification
-│   ├── password/                   # Bcrypt password hashing with pepper
-│   ├── random/                     # Cryptographic ID generator
-│   └── token/                      # Random token generator
-├── scripts/                        → Automation & deployment scripts
-├── tests/                          → Test suites
-│   └── integration/                # End-to-end and real infra integration tests
-├── .env.example                    # Environment variables template
-├── docker-compose.yml              # Local multi-service orchestrator
-├── Dockerfile                      # Multi-stage Go build container
-├── go.mod                          # Go module dependencies
-├── go.sum                          # Go checksums
-└── README.md                       # Project documentation
+├── cmd/                            # Entry point, dependency wiring
+│   ├── ffgif/                      #
+│   └── bootstrap/                  #
+├── config/                         # Env-based config loading
+├── internal/                       #
+│   ├── app/                        # Application Layer
+│   │   ├── auth/                   #
+│   │   ├── job/                    #
+│   │   ├── media/                  #
+│   │   ├── share/                  #
+│   │   └── user/                   #
+│   ├── domain/                     # Domain Layer
+│   │   ├── auth/                   #
+│   │   ├── cache/                  #
+│   │   ├── db/                     #
+│   │   ├── job/                    #
+│   │   ├── mailer/                 #
+│   │   ├── media/                  #
+│   │   ├── processor/              #
+│   │   ├── queue/                  #
+│   │   ├── share/                  #
+│   │   └── user/                   #
+│   ├── infra/                      # Infra Layer
+│   │   ├── gifprocessor/           #
+│   │   ├── minio/                  #
+│   │   ├── postgres/               #
+│   │   ├── rabbitmq/               #
+│   │   └── redis/                  #
+│   │       ├── cache/              #
+│   │       ├── rate_limiter/       #
+│   ├── transport/                  # Transport Layer
+│   │   └── http/                   #
+│   │       ├── handlers/           #
+│   │       │   ├── admin/          #
+│   │       │   ├── auth/           #
+│   │       │   ├── job/            #
+│   │       │   ├── media/          #
+│   │       │   ├── share/          #
+│   │       │   ├── static/         #
+│   │       │   └── user/           #
+│   │       ├── middleware/         #
+│   │       └── server.go           #
+│   └── worker/                     # RabbitMq worker
+├── migrations/                     # SQL migrations up/down files
+├── pkg/                            # Packages
+│   ├── ffmpeg/                     #
+│   ├── jsonio/                     #
+│   ├── jwt/                        #
+│   ├── mailer/                     #
+│   ├── password/                   #
+│   ├── random/                     #
+│   └── token/                      #
+├── static/                         # Frontend codes (Claude generated)
+├── scripts/                        # Script files
+├── .gitignore
+├── .env.example                    # Environment variables
+├── .dockerignore
+├── docker-compose.yml
+├── Dockerfile
+├── go.mod
+├── go.sum
+└── README.md                       #
 ```
 
 ---
@@ -407,7 +417,6 @@ GET    /gifs/me
 GET    /gifs/me/recents
 GET    /gifs/me/{key}
 GET    /gifs/me/{key}/download
-GET    /gifs/me/{key}/thumbnail        (get presigned MinIO URL for GIF thumbnail)
 PATCH  /gifs/me/{key}
 DELETE /gifs/me/{key}
 POST   /gifs/me/recents/{key}/save
@@ -416,21 +425,25 @@ POST   /gifs/me/recents/{key}/save
 ### Shares
 
 ```
-POST   /gifs/me/{key}/shares                    (share a GIF with a user by email & expiry)
-GET    /gifs/me/shares                          (list all GIFs shared by / with authenticated user)
-DELETE /gifs/me/{key}/shares/{shareWithId}      (revoke shared access for a user)
-POST /s                                         (share a GIF publicly)
-POST /s/{token}                                 (Get the public share, no auth needed)
+POST   /gifs/me/{id}/shares
+GET    /gifs/me/{id}/shares
+PATCH  /gifs/me/{id}/shares/{shareId}
+DELETE /gifs/me/{id}/shares/{shareId}
+GET    /s/{token}                public view (no auth)
+GET    /s/{token}/download       public download (no auth)
 ```
 
 ---
 
 ## Known Limitations
 
-- **Limited frontend**: minimal frontend is built for testing using claude.
+- **Limited frontend**: minimal frontend is build to test using claude.
+- **Share handlers are stubs**: Routes are registered and the schema is migrated, but handler logic is commented out pending design decisions.
 - **Anonymous user flow is incomplete**: The demo/guest account path exists in the schema and some repo code but is commented out at the handler layer.
+- **No input validation on convert parameters**: Start/end time, FPS, and width are passed to FFmpeg without range validation — a malformed request can produce an unhelpful FFmpeg error rather than a clean 400.
 - **`OneTimePerEmail` and `BlockIP` middlewares are stubs**: The rate-limiting middleware for sensitive auth endpoints is not yet implemented (currently pass-through).
 - **No HTTPS / TLS**: Local dev only, no TLS configuration.
+- **No integration or unit tests**: Test coverage is zero.
 - **Job status stored only in Redis with 5-minute TTL**: If a client polls after expiry, the status is gone. There is no persistent job record in Postgres.
 - **Limited transaction**: Currently only Auth service is using transaction.
 - **PATCH UPDATE**: Setting a non-null value to null is incomplete.
@@ -450,6 +463,8 @@ POST /s/{token}                                 (Get the public share, no auth n
 
 - Per-user quota tracking (storage bytes, GIF count)
 - Implement frontend (Next.js)
+- Persistent job records in Postgres (replace Redis-only job status)
+- Complete anonymous user flow
 - GIF metadata enrichment: file size, dimensions, duration stored in the gifs table
 - Friendship domain (user can be friends)
 - Gif sharing should be two types, one with friends, other with email (without having shared with account, send as a email)
