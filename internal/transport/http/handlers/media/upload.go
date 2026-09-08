@@ -28,20 +28,18 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, ok := httputil.GetClaims(r.Context())
-	if !ok {
+	userId := httputil.GetUserId(r.Context())
+	if userId == "" {
 		httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
-		slog.Error("media handler - Upload() = failed to get claims", "request_id", reqId, "err", "claims missing")
+		slog.Error("media handler - Upload() = failed to get userId", "request_id", reqId, "err", "userId missing")
 		return
 	}
 
-	result, err := h.srv.Upload(r.Context(), req.Filename, claims)
+	result, err := h.srv.Upload(r.Context(), req.Filename, userId)
 	if err != nil {
 		switch err {
 		default:
-			{
-				httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
-			}
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
 		slog.Error("media handler - Upload()", "request_id", reqId, "err", err)
 		return

@@ -191,7 +191,8 @@ func (m *mockLastVideoRepo) GetLastVideo(ctx context.Context, user_id string) (d
 	if m.getLastVideoFunc != nil {
 		return m.getLastVideoFunc(ctx, user_id)
 	}
-	return domainmedia.LastUploadResponse{UserID: uuid.MustParse(user_id), FileKey: "last-video.mp4"}, nil
+	uID, _ := uuid.Parse(user_id)
+	return domainmedia.LastUploadResponse{UserID: uID, FileKey: "last-video.mp4"}, nil
 }
 
 type mockProcessor struct {
@@ -386,7 +387,7 @@ func TestMediaService_Upload_Success(t *testing.T) {
 		},
 	}
 
-	result, err := svc.Upload(context.Background(), "sample.mp4", claims)
+	result, err := svc.Upload(context.Background(), "sample.mp4", claims.Subject)
 	if err != nil {
 		t.Fatalf("expected Upload to succeed, got error: %v", err)
 	}
@@ -408,7 +409,7 @@ func TestMediaService_Upload_StorageError(t *testing.T) {
 	svc := newTestMediaService(nil, nil, nil, storage, nil, nil, nil)
 
 	claims := jwtpkg.Payload{RegisteredClaims: jwt.RegisteredClaims{Subject: "user-123"}}
-	_, err := svc.Upload(context.Background(), "video.mp4", claims)
+	_, err := svc.Upload(context.Background(), "video.mp4", claims.Subject)
 	if err == nil {
 		t.Fatal("expected error on storage failure, got nil")
 	}
@@ -416,16 +417,25 @@ func TestMediaService_Upload_StorageError(t *testing.T) {
 
 func TestMediaService_Status_Success(t *testing.T) {
 	cache := newMockCache()
-	cache.Set(context.Background(), "uploading:test-key.mp4", "completed", time.Minute)
+	cache.Set(context.Background(), "uploading:test-key.mp4", "ok", time.Minute)
+	userId := uuid.New().String()
+	lastVideoRepo := &mockLastVideoRepo{
+		getLastVideoFunc: func(ctx context.Context, uId string) (domainmedia.LastUploadResponse, error) {
+			return domainmedia.LastUploadResponse{FileKey: "last-video.mp4"}, nil
+		},
+	}
 
-	svc := newTestMediaService(nil, nil, nil, nil, nil, cache, nil)
+	svc := newTestMediaService(nil, nil, lastVideoRepo, nil, nil, cache, nil)
 
-	status, err := svc.Status(context.Background(), "test-key.mp4")
+	fileKey, status, err := svc.Status(context.Background(), userId, "test-key.mp4")
 	if err != nil {
 		t.Fatalf("expected Status to succeed, got %v", err)
 	}
-	if status != "completed" {
-		t.Errorf("expected completed status, got %s", status)
+	if status != "ok" {
+		t.Errorf("expected ok status, got %s", status)
+	}
+	if fileKey != "last-video.mp4" {
+		t.Errorf("expected last-video.mp4, got %s", fileKey)
 	}
 }
 
@@ -435,7 +445,7 @@ func TestMediaService_Status_CacheEmptyDefaultsFailed(t *testing.T) {
 
 	svc := newTestMediaService(nil, nil, nil, nil, nil, cache, nil)
 
-	status, err := svc.Status(context.Background(), "test-key.mp4")
+	_, status, err := svc.Status(context.Background(), "user-123", "test-key.mp4")
 	if err != nil {
 		t.Fatalf("expected Status to succeed, got %v", err)
 	}

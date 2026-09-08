@@ -25,7 +25,7 @@ func NewStorageRepository(client *minio.Client, presignedClient *minio.Client, c
 	}
 }
 
-// create url, directly upload
+// create url, directly upload on temporary bucket
 func (u *storageRepo) Create(ctx context.Context, key string, expirey time.Duration) (*url.URL, error) {
 	return u.presignedClient.PresignedPutObject(ctx, u.cnf.TempBucket, key, expirey)
 }

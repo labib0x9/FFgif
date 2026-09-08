@@ -32,5 +32,7 @@ func (h *Handler) LastVideo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Location", "/uploads/"+result.FileKey+"/stream")
+
 	httputil.SendJson(w, result, http.StatusOK)
 }
