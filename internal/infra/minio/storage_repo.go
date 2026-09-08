@@ -74,16 +74,6 @@ func (u *storageRepo) Status(ctx context.Context, key string) (media.Info, error
 	}, err
 }
 
-func (u *storageRepo) GetObject(ctx context.Context, start, end int64, key string) (media.Object, error) {
-	opts := minio_go.GetObjectOptions{}
-	if start != -1 || end != -1 {
-		opts.SetRange(start, end)
-	}
-
-	obj, err := u.client.GetObject(ctx, u.cnf.StorageBucket, key, opts)
-	return media.Object{obj}, err
-}
-
 func (u *storageRepo) DownloadLocalRawVideo(ctx context.Context, key, destPath string) error {
 	return u.client.FGetObject(ctx, u.cnf.TempBucket, key, destPath, minio_go.GetObjectOptions{})
 }

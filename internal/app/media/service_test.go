@@ -54,9 +54,9 @@ func (m *mockStorageRepo) Status(ctx context.Context, key string) (domainmedia.I
 	}
 	return domainmedia.Info{Size: 1024, ContentType: "video/mp4", UploadedAt: time.Now()}, nil
 }
-func (m *mockStorageRepo) GetObject(ctx context.Context, start, end int64, key string) (domainmedia.Object, error) {
-	return domainmedia.Object{}, nil
-}
+// func (m *mockStorageRepo) GetObject(ctx context.Context, start, end int64, key string) (domainmedia.Object, error) {
+// 	return domainmedia.Object{}, nil
+// }
 func (m *mockStorageRepo) DownloadLocal(ctx context.Context, key, destPath string) error { return nil }
 func (m *mockStorageRepo) DownloadLocalRawVideo(ctx context.Context, key, destPath string) error {
 	return nil

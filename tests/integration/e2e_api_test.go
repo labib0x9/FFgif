@@ -371,9 +371,10 @@ func (s *inMemoryStorageRepo) IsExists(ctx context.Context, key string) (bool, e
 func (s *inMemoryStorageRepo) Status(ctx context.Context, key string) (domainmedia.Info, error) {
 	return domainmedia.Info{Size: 1024, ContentType: "video/mp4", UploadedAt: time.Now()}, nil
 }
-func (s *inMemoryStorageRepo) GetObject(ctx context.Context, start, end int64, key string) (domainmedia.Object, error) {
-	return domainmedia.Object{}, nil
-}
+
+//	func (s *inMemoryStorageRepo) GetObject(ctx context.Context, start, end int64, key string) (domainmedia.Object, error) {
+//		return domainmedia.Object{}, nil
+//	}
 func (s *inMemoryStorageRepo) DownloadLocal(ctx context.Context, key, destPath string) error {
 	return nil
 }
