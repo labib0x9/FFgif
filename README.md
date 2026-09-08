@@ -462,8 +462,11 @@ GET    /s/{token}/download       public download (no auth)
 ## Planned / Future Work
 
 - Per-user quota tracking (storage bytes, GIF count)
-- Implement frontend (Next.js)
+- Implement frontend (React + Vite)
 - Persistent job records in Postgres (replace Redis-only job status)
+- Input validation for conversion parameters (start < end, FPS/width bounds)
+- Unit and integration tests (repository layer, use cases)
+- Complete share handler implementation
 - Complete anonymous user flow
 - GIF metadata enrichment: file size, dimensions, duration stored in the gifs table
 - Friendship domain (user can be friends)
