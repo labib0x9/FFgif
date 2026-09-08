@@ -20,7 +20,14 @@ func (h *Handler) GetByKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.srv.GetByKey(r.Context(), key)
+	userId := httputil.GetUserId(r.Context())
+	if userId == "" {
+		httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
+		slog.Error("media handler - Convert() = user_id not found", "request_id", reqId, "err", "user_id not found")
+		return
+	}
+
+	resp, err := h.srv.GetByKey(r.Context(), userId, key)
 	if err != nil {
 		switch {
 		case errors.Is(err, media.ErrGifNotFound):

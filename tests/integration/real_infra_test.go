@@ -151,7 +151,7 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 	reseterRepo := postgresinfra.NewReseterRepo(dbConn)
 	quotaRepo := postgresinfra.NewQuotaRepository(dbConn)
 	lastUploadRepo := postgresinfra.NewLastVideoRepository(dbConn)
-	gifRepo := postgresinfra.NewGifRepository(dbConn, cfg.Minio)
+	gifRepo := postgresinfra.NewGifRepository(dbConn)
 	shareRepo := postgresinfra.NewShareRepository(dbConn)
 	txManager := postgresinfra.NewTxManager(dbConn)
 

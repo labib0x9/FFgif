@@ -18,12 +18,12 @@ import (
 type Service interface {
 	Delete(ctx context.Context, userId string, key string) error
 	Download(ctx context.Context, userId, key string) (string, error)
-	GetByKey(ctx context.Context, key string) (media.GifResponse, error)
-	GetRecents(ctx context.Context, id string) ([]media.GifResponse, error)
-	GetGifs(ctx context.Context, id string, filter string) (*GifResult, error)
+	GetByKey(ctx context.Context, userId string, key string) (*media.GifResponse, error)
+	GetRecents(ctx context.Context, userId string) ([]media.GifResponse, error)
+	GetGifs(ctx context.Context, userId string, filter string) (*GifResult, error)
 	LastVideo(ctx context.Context, userId string) (media.LastUploadResponse, error)
 	Save(ctx context.Context, userId, key string) error
-	Stream(ctx context.Context, key string) (*media.StreamResult, error)
+	Stream(ctx context.Context, userId string, key string) (*media.StreamResult, error)
 	Update(ctx context.Context, userId string, key string, _gif media.GifUpdateRequest, lastUpdatedAt string) (*media.GifResponse, error)
 	Upload(rctx context.Context, filename string, claims jwt.Payload) (*media.UploadResult, error)
 	ProcessAndSave(ctx context.Context, key string) error
@@ -35,7 +35,7 @@ type Service interface {
 	Convert(ctx context.Context, userId string, key string, start float32, end float32, fps int, width int, loop bool) (*ConvertResult, error)
 	SaveMetadata(ctx context.Context, msg queue.SaveVideoMessage) error
 
-	GetGifThumbnail(ctx context.Context, key string) (string, error)
+	GetGifThumbnail(ctx context.Context, userId string, key string) (string, error)
 }
 
 type service struct {
@@ -82,36 +82,3 @@ func NewService(
 		cnf:           cnf,
 	}
 }
-
-// type Service interface {
-// 	Convert(ctx context.Context, userId string, key string, start float32, end float32, fps int, width int, loop bool) (*ConvertResult, error)
-// 	Status(ctx context.Context, jobId string) (*StatusResult, error)
-// 	Process(ctx context.Context, msg queue.VideoMessage) error
-// 	SaveMetadata(ctx context.Context, msg queue.SaveVideoMessage) error
-// }
-
-// type service struct {
-// 	processor     processor.VideoProcessor
-// 	gifRepo       media.GifRepository
-// 	lastVideoRepo media.LastVideoRepository
-// 	minioRepo     media.StorageRepository
-// 	cache         cache.Cache
-// 	queue         queue.Queue
-// }
-
-// func NewService(
-// 	processor processor.VideoProcessor,
-// 	gifRepo media.GifRepository,
-// 	lastVideoRepo media.LastVideoRepository,
-// 	cache cache.Cache,
-// 	queue queue.Queue,
-// ) Service {
-// 	return &service{
-// 		processor:     processor,
-// 		gifRepo:       gifRepo,
-// 		lastVideoRepo: lastVideoRepo,
-// 		minioRepo:     minioRepo,
-// 		cache:         cache,
-// 		queue:         queue,
-// 	}
-// }

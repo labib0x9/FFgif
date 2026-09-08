@@ -754,18 +754,49 @@ func TestMediaService_GetGifs_RepoError(t *testing.T) {
 
 func TestMediaService_GetByKey_Success(t *testing.T) {
 	gifRepo := &mockGifRepo{
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "user-1", nil
+		},
 		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 			return domainmedia.GifResponse{Key: key, Url: "https://minio/" + key}, nil
 		},
 	}
 	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
 
-	gif, err := svc.GetByKey(context.Background(), "my-gif.gif")
+	gif, err := svc.GetByKey(context.Background(), "user-1", "my-gif.gif")
 	if err != nil {
 		t.Fatalf("expected GetByKey to succeed, got %v", err)
 	}
 	if gif.Key != "my-gif.gif" {
 		t.Errorf("expected key my-gif.gif, got %s", gif.Key)
+	}
+}
+
+func TestMediaService_GetByKey_NotFound(t *testing.T) {
+	gifRepo := &mockGifRepo{
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "", sql.ErrNoRows
+		},
+	}
+	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
+
+	_, err := svc.GetByKey(context.Background(), "user-1", "missing.gif")
+	if !errors.Is(err, domainmedia.ErrGifNotFound) {
+		t.Errorf("expected ErrGifNotFound, got %v", err)
+	}
+}
+
+func TestMediaService_GetByKey_OwnerMismatch(t *testing.T) {
+	gifRepo := &mockGifRepo{
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "other-user", nil
+		},
+	}
+	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
+
+	_, err := svc.GetByKey(context.Background(), "user-1", "my-gif.gif")
+	if !errors.Is(err, domainmedia.ErrGifOwnerMismatch) {
+		t.Errorf("expected ErrGifOwnerMismatch, got %v", err)
 	}
 }
 
@@ -783,6 +814,20 @@ func TestMediaService_GetRecents_Success(t *testing.T) {
 	}
 	if len(recents) != 1 {
 		t.Errorf("expected 1 recent gif, got %d", len(recents))
+	}
+}
+
+func TestMediaService_GetRecents_RepoError(t *testing.T) {
+	gifRepo := &mockGifRepo{
+		getRecentsFunc: func(ctx context.Context, user_id string) ([]domainmedia.GifResponse, error) {
+			return nil, errors.New("db error")
+		},
+	}
+	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
+
+	_, err := svc.GetRecents(context.Background(), "user-1")
+	if !errors.Is(err, domainmedia.ErrGifFetchFailed) {
+		t.Errorf("expected ErrGifFetchFailed, got %v", err)
 	}
 }
 
@@ -907,14 +952,19 @@ func TestMediaService_Download_OwnerMismatch(t *testing.T) {
 }
 
 func TestMediaService_Stream_Success(t *testing.T) {
+	gifRepo := &mockGifRepo{
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "user-1", nil
+		},
+	}
 	storage := &mockStorageRepo{
 		getStreamURLFunc: func(ctx context.Context, key string, expiry time.Duration) (*url.URL, error) {
 			return url.Parse("https://minio.stream/" + key)
 		},
 	}
-	svc := newTestMediaService(nil, nil, nil, storage, nil, nil, nil)
+	svc := newTestMediaService(gifRepo, nil, nil, storage, nil, nil, nil)
 
-	res, err := svc.Stream(context.Background(), "video.mp4")
+	res, err := svc.Stream(context.Background(), "user-1", "video.mp4")
 	if err != nil {
 		t.Fatalf("expected Stream to succeed, got %v", err)
 	}
@@ -1025,6 +1075,9 @@ func TestMediaService_Delete_OwnerMismatch(t *testing.T) {
 
 func TestMediaService_GetGifThumbnail_Success(t *testing.T) {
 	gifRepo := &mockGifRepo{
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "user-1", nil
+		},
 		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 			return domainmedia.GifResponse{
 				Key:          key,
@@ -1039,7 +1092,7 @@ func TestMediaService_GetGifThumbnail_Success(t *testing.T) {
 	}
 	svc := newTestMediaService(gifRepo, nil, nil, storage, nil, nil, nil)
 
-	thumbUrl, err := svc.GetGifThumbnail(context.Background(), "sample.gif")
+	thumbUrl, err := svc.GetGifThumbnail(context.Background(), "user-1", "sample.gif")
 	if err != nil {
 		t.Fatalf("expected GetGifThumbnail to succeed, got %v", err)
 	}
@@ -1050,13 +1103,13 @@ func TestMediaService_GetGifThumbnail_Success(t *testing.T) {
 
 func TestMediaService_GetGifThumbnail_NotFound(t *testing.T) {
 	gifRepo := &mockGifRepo{
-		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
-			return domainmedia.GifResponse{}, sql.ErrNoRows
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "", sql.ErrNoRows
 		},
 	}
 	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
 
-	_, err := svc.GetGifThumbnail(context.Background(), "missing.gif")
+	_, err := svc.GetGifThumbnail(context.Background(), "user-1", "missing.gif")
 	if !errors.Is(err, domainmedia.ErrGifNotFound) {
 		t.Errorf("expected ErrGifNotFound, got %v", err)
 	}
@@ -1064,6 +1117,9 @@ func TestMediaService_GetGifThumbnail_NotFound(t *testing.T) {
 
 func TestMediaService_GetGifThumbnail_EmptyThumbnailUrl(t *testing.T) {
 	gifRepo := &mockGifRepo{
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "user-1", nil
+		},
 		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 			return domainmedia.GifResponse{
 				Key:          key,
@@ -1073,7 +1129,7 @@ func TestMediaService_GetGifThumbnail_EmptyThumbnailUrl(t *testing.T) {
 	}
 	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
 
-	_, err := svc.GetGifThumbnail(context.Background(), "no-thumb.gif")
+	_, err := svc.GetGifThumbnail(context.Background(), "user-1", "no-thumb.gif")
 	if !errors.Is(err, domainmedia.ErrThumbnailNotFound) {
 		t.Errorf("expected ErrThumbnailNotFound, got %v", err)
 	}
@@ -1081,6 +1137,9 @@ func TestMediaService_GetGifThumbnail_EmptyThumbnailUrl(t *testing.T) {
 
 func TestMediaService_GetGifThumbnail_StorageError(t *testing.T) {
 	gifRepo := &mockGifRepo{
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "user-1", nil
+		},
 		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 			return domainmedia.GifResponse{
 				Key:          key,
@@ -1095,7 +1154,7 @@ func TestMediaService_GetGifThumbnail_StorageError(t *testing.T) {
 	}
 	svc := newTestMediaService(gifRepo, nil, nil, storage, nil, nil, nil)
 
-	_, err := svc.GetGifThumbnail(context.Background(), "error.gif")
+	_, err := svc.GetGifThumbnail(context.Background(), "user-1", "error.gif")
 	if err == nil {
 		t.Fatal("expected error on storage failure, got nil")
 	}

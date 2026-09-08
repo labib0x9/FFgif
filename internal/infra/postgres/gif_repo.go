@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/labib0x9/ffgif/config"
 	"github.com/labib0x9/ffgif/internal/domain/media"
 )
 
@@ -13,7 +12,7 @@ type gifRepo struct {
 	db *sqlx.DB
 }
 
-func NewGifRepository(db *sqlx.DB, cnf *config.Minio) media.GifRepository {
+func NewGifRepository(db *sqlx.DB) media.GifRepository {
 	return &gifRepo{
 		db: db,
 	}
@@ -144,9 +143,9 @@ func (l *lastVideoRepo) Create(ctx context.Context, upload media.LastUpload) err
 	db := getDBFromCtx(ctx, l.db)
 	query := `
         INSERT INTO last_upload
-            (user_id, file_key, file_name, content_type, size_bytes, uploaded_at, updated_at)
+            (user_id, file_key, file_name, content_type, size_bytes, duration_sec, thumbnail_url, uploaded_at, updated_at)
         VALUES
-            (:user_id, :file_key, :file_name, :content_type, :size_bytes, :uploaded_at, NOW())
+            (:user_id, :file_key, :file_name, :content_type, :size_bytes, :duration_sec, :thumbnail_url, :uploaded_at, NOW())
         ON CONFLICT (user_id) DO UPDATE SET
             file_key     = EXCLUDED.file_key,
             file_name    = EXCLUDED.file_name,

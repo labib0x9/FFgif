@@ -23,13 +23,13 @@ import (
 type mockMediaService struct {
 	uploadFunc                func(rctx context.Context, filename string, claims jwtpkg.Payload) (*domainmedia.UploadResult, error)
 	downloadFunc              func(ctx context.Context, userId, key string) (string, error)
-	getByKeyFunc              func(ctx context.Context, key string) (domainmedia.GifResponse, error)
+	getByKeyFunc              func(ctx context.Context, userId string, key string) (*domainmedia.GifResponse, error)
 	getRecentsFunc            func(ctx context.Context, id string) ([]domainmedia.GifResponse, error)
 	getGifsFunc               func(ctx context.Context, id string, filter string) (*appmedia.GifResult, error)
 	lastVideoFunc             func(ctx context.Context, userId string) (domainmedia.LastUploadResponse, error)
 	deleteFunc                func(ctx context.Context, userId string, key string) error
 	saveFunc                  func(ctx context.Context, userId, key string) error
-	streamFunc                func(ctx context.Context, key string) (*domainmedia.StreamResult, error)
+	streamFunc                func(ctx context.Context, userId string, key string) (*domainmedia.StreamResult, error)
 	updateFunc                func(ctx context.Context, userId string, key string, _gif domainmedia.GifUpdateRequest, lastUpdatedAt string) (*domainmedia.GifResponse, error)
 	processAndSaveFunc        func(ctx context.Context, key string) error
 	updateUploadingStatusFunc func(ctx context.Context, key string, status string) error
@@ -40,7 +40,7 @@ type mockMediaService struct {
 	processFunc          func(ctx context.Context, msg queue.VideoMessage) error
 	saveMetadataFunc     func(ctx context.Context, msg queue.SaveVideoMessage) error
 
-	getGifThumbnailFunc func(ctx context.Context, key string) (string, error)
+	getGifThumbnailFunc func(ctx context.Context, userId string, key string) (string, error)
 }
 
 func (m *mockMediaService) Upload(rctx context.Context, filename string, claims jwtpkg.Payload) (*domainmedia.UploadResult, error) {
@@ -55,11 +55,11 @@ func (m *mockMediaService) Download(ctx context.Context, userId, key string) (st
 	}
 	return "https://storage/presigned-get", nil
 }
-func (m *mockMediaService) GetByKey(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+func (m *mockMediaService) GetByKey(ctx context.Context, userId string, key string) (*domainmedia.GifResponse, error) {
 	if m.getByKeyFunc != nil {
-		return m.getByKeyFunc(ctx, key)
+		return m.getByKeyFunc(ctx, userId, key)
 	}
-	return domainmedia.GifResponse{Key: key, Url: "https://storage/" + key}, nil
+	return &domainmedia.GifResponse{Key: key, Url: "https://storage/" + key}, nil
 }
 func (m *mockMediaService) GetRecents(ctx context.Context, id string) ([]domainmedia.GifResponse, error) {
 	if m.getRecentsFunc != nil {
@@ -91,9 +91,9 @@ func (m *mockMediaService) Save(ctx context.Context, userId, key string) error {
 	}
 	return nil
 }
-func (m *mockMediaService) Stream(ctx context.Context, key string) (*domainmedia.StreamResult, error) {
+func (m *mockMediaService) Stream(ctx context.Context, userId string, key string) (*domainmedia.StreamResult, error) {
 	if m.streamFunc != nil {
-		return m.streamFunc(ctx, key)
+		return m.streamFunc(ctx, userId, key)
 	}
 	return &domainmedia.StreamResult{PresignedUrl: "https://storage/stream/" + key, ExpireIn: 300}, nil
 }
@@ -145,9 +145,9 @@ func (m *mockMediaService) SaveMetadata(ctx context.Context, msg queue.SaveVideo
 	}
 	return nil
 }
-func (m *mockMediaService) GetGifThumbnail(ctx context.Context, key string) (string, error) {
+func (m *mockMediaService) GetGifThumbnail(ctx context.Context, userId string, key string) (string, error) {
 	if m.getGifThumbnailFunc != nil {
-		return m.getGifThumbnailFunc(ctx, key)
+		return m.getGifThumbnailFunc(ctx, userId, key)
 	}
 	return "https://storage/thumbnail.jpg", nil
 }
@@ -302,8 +302,8 @@ func TestMediaHandler_GetGifs_Success(t *testing.T) {
 
 func TestMediaHandler_GetByKey_Success(t *testing.T) {
 	mockSvc := &mockMediaService{
-		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
-			return domainmedia.GifResponse{Key: key}, nil
+		getByKeyFunc: func(ctx context.Context, userId string, key string) (*domainmedia.GifResponse, error) {
+			return &domainmedia.GifResponse{Key: key}, nil
 		},
 	}
 	handler := media.NewHandler(mockSvc, nil, validator.New())
@@ -428,7 +428,7 @@ func TestMediaHandler_Download_OwnerMismatch(t *testing.T) {
 
 func TestMediaHandler_Stream_Success(t *testing.T) {
 	mockSvc := &mockMediaService{
-		streamFunc: func(ctx context.Context, key string) (*domainmedia.StreamResult, error) {
+		streamFunc: func(ctx context.Context, userId string, key string) (*domainmedia.StreamResult, error) {
 			return &domainmedia.StreamResult{PresignedUrl: "https://minio/stream/v.mp4"}, nil
 		},
 	}
@@ -438,6 +438,7 @@ func TestMediaHandler_Stream_Success(t *testing.T) {
 	mux.HandleFunc("GET /uploads/{key}/stream", handler.Stream)
 
 	req := httptest.NewRequest(http.MethodGet, "/uploads/user-1:v.mp4/stream", nil)
+	req = withUserAuth(req, "user-1")
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
@@ -561,7 +562,7 @@ func TestMediaHandler_Delete_OwnerMismatch(t *testing.T) {
 
 func TestMediaHandler_GetGifThumbnail_Success(t *testing.T) {
 	mockSvc := &mockMediaService{
-		getGifThumbnailFunc: func(ctx context.Context, key string) (string, error) {
+		getGifThumbnailFunc: func(ctx context.Context, userId string, key string) (string, error) {
 			return "https://minio/thumbnail.jpg", nil
 		},
 	}
@@ -571,6 +572,7 @@ func TestMediaHandler_GetGifThumbnail_Success(t *testing.T) {
 	mux.HandleFunc("GET /gifs/me/{key}/thumbnail", handler.GetGifThumbnail)
 
 	req := httptest.NewRequest(http.MethodGet, "/gifs/me/sample.gif/thumbnail", nil)
+	req = withUserAuth(req, "user-123")
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
@@ -581,7 +583,7 @@ func TestMediaHandler_GetGifThumbnail_Success(t *testing.T) {
 
 func TestMediaHandler_GetGifThumbnail_NotFound(t *testing.T) {
 	mockSvc := &mockMediaService{
-		getGifThumbnailFunc: func(ctx context.Context, key string) (string, error) {
+		getGifThumbnailFunc: func(ctx context.Context, userId string, key string) (string, error) {
 			return "", domainmedia.ErrGifNotFound
 		},
 	}
@@ -591,6 +593,7 @@ func TestMediaHandler_GetGifThumbnail_NotFound(t *testing.T) {
 	mux.HandleFunc("GET /gifs/me/{key}/thumbnail", handler.GetGifThumbnail)
 
 	req := httptest.NewRequest(http.MethodGet, "/gifs/me/missing.gif/thumbnail", nil)
+	req = withUserAuth(req, "user-123")
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
@@ -601,7 +604,7 @@ func TestMediaHandler_GetGifThumbnail_NotFound(t *testing.T) {
 
 func TestMediaHandler_GetGifThumbnail_InternalError(t *testing.T) {
 	mockSvc := &mockMediaService{
-		getGifThumbnailFunc: func(ctx context.Context, key string) (string, error) {
+		getGifThumbnailFunc: func(ctx context.Context, userId string, key string) (string, error) {
 			return "", errors.New("storage error")
 		},
 	}
@@ -611,6 +614,7 @@ func TestMediaHandler_GetGifThumbnail_InternalError(t *testing.T) {
 	mux.HandleFunc("GET /gifs/me/{key}/thumbnail", handler.GetGifThumbnail)
 
 	req := httptest.NewRequest(http.MethodGet, "/gifs/me/error.gif/thumbnail", nil)
+	req = withUserAuth(req, "user-123")
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)

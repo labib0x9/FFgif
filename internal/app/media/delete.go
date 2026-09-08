@@ -13,9 +13,9 @@ func (s *service) Delete(ctx context.Context, userId string, key string) error {
 	ownerId, err := s.gifRepo.GetOwner(ctx, key)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return media.ErrGifNotFound
+			return fmt.Errorf("gifRepo.GetOwner: %w: %w", media.ErrGifNotFound, err)
 		}
-		return err
+		return fmt.Errorf("gifRepo.GetOwner: %w", err)
 	}
 	if ownerId != userId {
 		return media.ErrGifOwnerMismatch

@@ -27,7 +27,7 @@ func (s *service) ConversionStatus(ctx context.Context, jobId string) (*StatusRe
 	gifKey := "messaage_queue_gif:job_id:" + jobId
 	gif, err := s.cache.Get(ctx, gifKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cache.Get: %w: %w", apperr.ErrCacheGetFailed, err)
 	}
 
 	return &StatusResult{

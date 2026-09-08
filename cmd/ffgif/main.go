@@ -57,7 +57,7 @@ func main() {
 	quotaRepo := postgres.NewQuotaRepository(dbConn)
 
 	lastUploadRepo := postgres.NewLastVideoRepository(dbConn)
-	gifRepo := postgres.NewGifRepository(dbConn, cnf.Minio) // ?? db + bucket
+	gifRepo := postgres.NewGifRepository(dbConn) // ?? db + bucket
 	shareRepo := postgres.NewShareRepository(dbConn)
 
 	jwtProvider := jwt.NewJwt(cnf.JwtSecret)

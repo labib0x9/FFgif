@@ -48,7 +48,7 @@ func main() {
 	shareRepo := postgres.NewShareRepository(dbConn)
 
 	lastUploadRepo := postgres.NewLastVideoRepository(dbConn)
-	gifRepo := postgres.NewGifRepository(dbConn, cnf.Minio)
+	gifRepo := postgres.NewGifRepository(dbConn)
 
 	ffmpeg := ffmpeg.NewFmeg(storageRepo)
 	tnx := postgres.NewTxManager(dbConn)

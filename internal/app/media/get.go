@@ -14,8 +14,8 @@ type GifResult struct {
 	Limit int                 `json:"limit"`
 }
 
-func (s *service) GetGifs(ctx context.Context, id string, filter string) (*GifResult, error) {
-	gifs, err := s.gifRepo.Get(ctx, id, filter)
+func (s *service) GetGifs(ctx context.Context, userId string, filter string) (*GifResult, error) {
+	gifs, err := s.gifRepo.Get(ctx, userId, filter)
 	if err != nil {
 		return nil, fmt.Errorf("gifRepo.Get: %w: %w", media.ErrGifFetchFailed, err)
 	}
