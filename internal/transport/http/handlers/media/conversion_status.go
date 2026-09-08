@@ -1,24 +1,33 @@
 package media
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
+	"github.com/labib0x9/ffgif/internal/domain/media"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 )
 
 func (h *Handler) ConversionStatus(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	jobId := r.PathValue("jobId")
 	if jobId == "" {
-		slog.Warn("ConversionStatus: jobId is missing")
-		httputil.SendError(w, "bad request", http.StatusBadRequest)
+		slog.Warn("media handler - ConversionStatus() = jobId missing", "request_id", reqId, "error", "jobId missing")
+		httputil.SendError(w, httputil.BAD_REQUEST, "bad request", http.StatusBadRequest)
 		return
 	}
 
 	result, err := h.srv.ConversionStatus(r.Context(), jobId)
 	if err != nil {
-		slog.Error("srv.ConversionStatus() failed", "Err", err, "JobId", jobId)
-		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+		slog.Error("media handler - ConversionStatus()", "request_id", reqId, "err", err)
+		switch {
+		case errors.Is(err, apperr.ErrCacheGetFailed), errors.Is(err, media.ErrEmptyKey):
+			httputil.SendError(w, media.JOB_NOT_FOUND, "job not found", http.StatusNotFound)
+		default:
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 

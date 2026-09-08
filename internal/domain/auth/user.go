@@ -12,8 +12,7 @@ var (
 	ErrUserNotFound      = errors.New("user not found")
 	ErrInvalidCredential = errors.New("invalid credential")
 	ErrUserNotVerified   = errors.New("user not verified")
-	ErrUserExits         = errors.New("user exits")
-	ErrHashGenFailed     = errors.New("hash generation failed")
+	ErrUserExists        = errors.New("user already exists")
 	ErrUserCreateFailed  = errors.New("user create failed")
 )
 

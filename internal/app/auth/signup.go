@@ -5,8 +5,9 @@ import (
 	"fmt"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
-	"github.com/labib0x9/ffgif/internal/port/queue"
 	"github.com/labib0x9/ffgif/internal/domain/user"
+	"github.com/labib0x9/ffgif/internal/port/queue"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 	"github.com/labib0x9/ffgif/pkg/token"
 )
 
@@ -17,12 +18,12 @@ func (s *service) Signup(ctx context.Context, email string, username string, ful
 	msg, err := s.tnx.With(ctx, func(ctx context.Context) (any, error) {
 		_, err := s.authRepo.GetByEmail(ctx, email)
 		if err == nil {
-			return nil, auth.ErrUserExits
+			return nil, auth.ErrUserExists
 		}
 
 		passHash, err := s.hasher.GenerateHash(password)
 		if err != nil {
-			return nil, auth.ErrHashGenFailed
+			return nil, fmt.Errorf("hasher.GenerateHash: %w: %w", apperr.ErrHashGenFailed, err)
 		}
 
 		newUser := auth.User{
@@ -36,7 +37,7 @@ func (s *service) Signup(ctx context.Context, email string, username string, ful
 
 		createdUser, err := s.authRepo.Create(ctx, newUser)
 		if err != nil {
-			return nil, auth.ErrUserCreateFailed
+			return nil, fmt.Errorf("authRepo.Create: %w: %w", auth.ErrUserCreateFailed, err)
 		}
 
 		verifyToken, verifyTokenHash := token.GenerateToken()
@@ -47,7 +48,7 @@ func (s *service) Signup(ctx context.Context, email string, username string, ful
 		}
 
 		if err = s.verifierRepo.Create(ctx, newVerifier); err != nil {
-			return nil, auth.ErrVerifierTokenCreateFailed
+			return nil, fmt.Errorf("verifierRepo.Create: %w: %w", auth.ErrVerifierTokenCreateFailed, err)
 		}
 
 		profile := user.Profile{
@@ -56,7 +57,7 @@ func (s *service) Signup(ctx context.Context, email string, username string, ful
 		}
 
 		if err = s.profileRepo.SetProfile(ctx, profile); err != nil {
-			return nil, auth.ErrSetProfileFailed
+			return nil, fmt.Errorf("profileRepo.SetProfile: %w: %w", auth.ErrSetProfileFailed, err)
 		}
 
 		quota := user.Quota{
@@ -64,7 +65,7 @@ func (s *service) Signup(ctx context.Context, email string, username string, ful
 		}
 
 		if err := s.quotaRepo.Create(ctx, quota); err != nil {
-			return nil, auth.ErrQuotaCreateFailed
+			return nil, fmt.Errorf("quotaRepo.Create: %w: %w", auth.ErrQuotaCreateFailed, err)
 		}
 
 		return queue.EmailMessage{
@@ -84,7 +85,7 @@ func (s *service) Signup(ctx context.Context, email string, username string, ful
 	}
 
 	if err := s.queue.PublishEmail(ctx, smsg); err != nil {
-		return nil, auth.ErrMessageQueueFailed
+		return nil, fmt.Errorf("queue.PublishEmail: %w: %w", apperr.ErrMessageQueueFailed, err)
 	}
 	return &SignupResult{}, nil
 }

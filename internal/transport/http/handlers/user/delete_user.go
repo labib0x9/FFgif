@@ -15,40 +15,45 @@ type reqDeletePassword struct {
 }
 
 func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	id := httputil.GetUserId(r.Context())
 	if id == "" {
-		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
-		slog.Error("user handler - DeleteUser()", "err", "user_id not found")
+		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
+		httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "user id not found", http.StatusUnauthorized)
+		slog.Error("user handler - DeleteUser() = user_id not found", "request_id", reqId, "err", "user_id not found")
 		return
 	}
 
 	var req reqDeletePassword
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.SendError(w, "Bad request", http.StatusBadRequest)
-		slog.Warn("user handler - DeleteUser() = bad json", "error", err)
+		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
+		slog.Warn("user handler - DeleteUser() = bad json body", "request_id", reqId, "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		httputil.SendError(w, "field required", http.StatusUnprocessableEntity)
-		slog.Warn("user handler - DeleteUser() = struct validation failed", "error", err)
+		httputil.SendError(w, httputil.VALIDATION_FAILED, "field required", http.StatusUnprocessableEntity)
+		slog.Warn("user handler - DeleteUser() = struct validation failed", "request_id", reqId, "error", err)
 		return
 	}
 
 	if err := h.srv.DeleteUser(r.Context(), id, req.Password); err != nil {
 		switch {
 		case errors.Is(err, auth.ErrUserNotFound):
-			httputil.SendError(w, "user not found", http.StatusNotFound)
+			httputil.SendError(w, auth.AUTH_USER_NOT_FOUND, "user not found", http.StatusNotFound)
 		// case errors.Is(err, auth.ErrPasswordMismatched):
 		// 	httputil.SendError(w, "password not matched", http.StatusUnprocessableEntity)
 		case errors.Is(err, auth.ErrInvalidCredential):
-			httputil.SendError(w, "forbidden", http.StatusUnauthorized)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="invalid credentials"`)
+			httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "invalid credentials", http.StatusUnauthorized)
 		default:
-			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("user handler - DeleteUser()", "err", err)
+		slog.Error("user handler - DeleteUser()", "request_id", reqId, "err", err)
 		return
 	}
 
-	httputil.SendJson(w, "deleted", http.StatusGone)
+	httputil.SendJson(w, map[string]string{
+		"msg": "user deleted",
+	}, http.StatusOK)
 }

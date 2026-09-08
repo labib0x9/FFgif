@@ -8,6 +8,7 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 )
 
 type reqSignup struct {
@@ -19,36 +20,35 @@ type reqSignup struct {
 }
 
 func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	var req reqSignup
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&req); err != nil {
-		httputil.SendError(w, "Bad request", http.StatusBadRequest)
-		slog.Error("Signup: bad json body", "error", err)
+		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
+		slog.Warn("auth handler - Signup() = bad json body", "request_id", reqId, "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
 		// can we be specific what field caused error ?
-		httputil.SendError(w, "field required", 422)
-		slog.Error("Signup: struct validation failed", "error", err)
+		httputil.SendError(w, httputil.VALIDATION_FAILED, "field required", http.StatusUnprocessableEntity)
+		slog.Warn("auth handler - Signup() = struct validation failed", "request_id", reqId, "error", err)
 		return
 	}
 
 	_, err := h.srv.Signup(r.Context(), req.Email, req.Username, req.Fullname, req.Password)
-	if err != nil && !errors.Is(err, auth.ErrMessageQueueFailed) {
+	if err != nil && !errors.Is(err, apperr.ErrMessageQueueFailed) {
 		switch {
-		case errors.Is(err, auth.ErrUserExits):
-			{
-				httputil.SendError(w, "email exists", http.StatusConflict)
-			}
+		case errors.Is(err, auth.ErrUserExists):
+			httputil.SendError(w, auth.AUTH_USER_EXISTS, "email exists", http.StatusConflict)
 		default:
-			{
-				httputil.SendError(w, "internal server error", http.StatusInternalServerError)
-			}
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("srv.Signup() failed", "error", err)
+		slog.Error("auth handler - Signup()", "request_id", reqId, "err", err)
 		return
 	}
+
+	w.Header().Set("Location", "/users/"+"res.Id")
 
 	httputil.SendJson(w, "user created", http.StatusCreated)
 }

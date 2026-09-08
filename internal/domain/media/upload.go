@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
-var ErrLastVideoNotFound = errors.New("")
+var ErrLastVideoNotFound = errors.New("last video not found")
 
 // name
 // url

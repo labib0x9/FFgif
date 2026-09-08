@@ -5,35 +5,48 @@ import (
 	"database/sql"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	appuser "github.com/labib0x9/ffgif/internal/app/user"
 	domainauth "github.com/labib0x9/ffgif/internal/domain/auth"
+	domainmedia "github.com/labib0x9/ffgif/internal/domain/media"
 	domainuser "github.com/labib0x9/ffgif/internal/domain/user"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 	"github.com/labib0x9/ffgif/pkg/jwt"
 	"github.com/labib0x9/ffgif/pkg/password"
 )
 
 // --- Mocks ---
 
+type mockTxManager struct{}
+
+func (m *mockTxManager) With(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
+	return fn(ctx)
+}
+
+func (m *mockTxManager) WithRC(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
+	return fn(ctx)
+}
+
 type mockUserRepo struct {
-	getProfileFunc     func(ctx context.Context, id string) (domainuser.ProfileResponse, error)
-	updateProfileFunc  func(ctx context.Context, profile domainuser.ProfileResponse, id string) (domainuser.ProfileResponse, error)
+	getProfileFunc     func(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error)
+	updateProfileFunc  func(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error)
 	setProfileFunc     func(ctx context.Context, profile domainuser.Profile) error
 	changePasswordFunc func(ctx context.Context, userId string, hash string) error
 }
 
-func (m *mockUserRepo) GetProfile(ctx context.Context, id string) (domainuser.ProfileResponse, error) {
+func (m *mockUserRepo) GetProfile(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
 	if m.getProfileFunc != nil {
-		return m.getProfileFunc(ctx, id)
+		return m.getProfileFunc(ctx, id, forUpdate)
 	}
 	return domainuser.ProfileResponse{}, nil
 }
-func (m *mockUserRepo) UpdateProfile(ctx context.Context, profile domainuser.ProfileResponse, id string) (domainuser.ProfileResponse, error) {
+func (m *mockUserRepo) UpdateProfile(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error) {
 	if m.updateProfileFunc != nil {
-		return m.updateProfileFunc(ctx, profile, id)
+		return m.updateProfileFunc(ctx, req, id)
 	}
-	return profile, nil
+	return domainuser.ProfileResponse{}, nil
 }
 func (m *mockUserRepo) SetProfile(ctx context.Context, profile domainuser.Profile) error {
 	if m.setProfileFunc != nil {
@@ -111,7 +124,7 @@ func newTestUserService(userRepo *mockUserRepo, quotaRepo *mockQuotaRepo, authRe
 		hasher = h
 	}
 	jwtProvider := jwt.NewJwt([]byte("test-user-secret"))
-	return appuser.NewService(userRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
+	return appuser.NewService(userRepo, quotaRepo, authRepo, &mockTxManager{}, *jwtProvider, *hasher)
 }
 
 // --- Tests ---
@@ -124,7 +137,7 @@ func TestUserService_GetProfile_Success(t *testing.T) {
 	}
 
 	userRepo := &mockUserRepo{
-		getProfileFunc: func(ctx context.Context, id string) (domainuser.ProfileResponse, error) {
+		getProfileFunc: func(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
 			return expectedProfile, nil
 		},
 	}
@@ -143,7 +156,7 @@ func TestUserService_GetProfile_Success(t *testing.T) {
 
 func TestUserService_GetProfile_NotFound(t *testing.T) {
 	userRepo := &mockUserRepo{
-		getProfileFunc: func(ctx context.Context, id string) (domainuser.ProfileResponse, error) {
+		getProfileFunc: func(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
 			return domainuser.ProfileResponse{}, sql.ErrNoRows
 		},
 	}
@@ -157,25 +170,56 @@ func TestUserService_GetProfile_NotFound(t *testing.T) {
 }
 
 func TestUserService_UpdateProfile_Success(t *testing.T) {
-	inputProfile := domainuser.ProfileResponse{
-		Username: "updated_john",
-		Fullname: "John Updated",
+	now := time.Now()
+	etag := now.Format(time.RFC3339Nano)
+	newName := "updated_john"
+	newFullname := "John Updated"
+
+	inputReq := domainuser.ProfileUpdateRequest{
+		Username: &newName,
+		Fullname: &newFullname,
 	}
 
 	userRepo := &mockUserRepo{
-		updateProfileFunc: func(ctx context.Context, profile domainuser.ProfileResponse, id string) (domainuser.ProfileResponse, error) {
-			return profile, nil
+		getProfileFunc: func(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
+			return domainuser.ProfileResponse{Username: "john", Fullname: "John", UpdatedAt: now}, nil
+		},
+		updateProfileFunc: func(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error) {
+			return domainuser.ProfileResponse{Username: *req.Username, Fullname: *req.Fullname, UpdatedAt: time.Now()}, nil
 		},
 	}
 
 	svc := newTestUserService(userRepo, nil, nil, nil)
 
-	updated, err := svc.UpdateProfile(context.Background(), inputProfile, "user-123")
+	updated, err := svc.UpdateProfile(context.Background(), inputReq, "user-123", etag)
 	if err != nil {
 		t.Fatalf("expected UpdateProfile to succeed, got %v", err)
 	}
 	if updated.Username != "updated_john" {
 		t.Errorf("expected updated_john, got %s", updated.Username)
+	}
+}
+
+func TestUserService_UpdateProfile_ETagMismatch(t *testing.T) {
+	now := time.Now()
+	outdatedETag := now.Add(-time.Hour).Format(time.RFC3339Nano)
+	newName := "updated_john"
+
+	inputReq := domainuser.ProfileUpdateRequest{
+		Username: &newName,
+	}
+
+	userRepo := &mockUserRepo{
+		getProfileFunc: func(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
+			return domainuser.ProfileResponse{Username: "john", UpdatedAt: now}, nil
+		},
+	}
+
+	svc := newTestUserService(userRepo, nil, nil, nil)
+
+	_, err := svc.UpdateProfile(context.Background(), inputReq, "user-123", outdatedETag)
+	if !errors.Is(err, domainmedia.ErrETagValidationFailed) {
+		t.Errorf("expected ErrETagValidationFailed, got %v", err)
 	}
 }
 
@@ -269,7 +313,7 @@ func TestUserService_ChangePassword_Mismatch(t *testing.T) {
 	svc := newTestUserService(nil, nil, authRepo, hasher)
 
 	err := svc.ChangePassword(context.Background(), userId.String(), "old", "newPass1", "differentPass2")
-	if !errors.Is(err, domainauth.ErrPasswordMismatched) {
+	if !errors.Is(err, apperr.ErrPasswordMismatched) {
 		t.Errorf("expected ErrPasswordMismatched, got %v", err)
 	}
 }

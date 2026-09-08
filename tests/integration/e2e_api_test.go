@@ -184,15 +184,29 @@ type inMemoryProfileRepo struct {
 	authRepo *inMemoryAuthRepo
 }
 
-func (r *inMemoryProfileRepo) GetProfile(ctx context.Context, id string) (domainuser.ProfileResponse, error) {
+func (r *inMemoryProfileRepo) GetProfile(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
 	if p, ok := r.profiles[id]; ok {
 		return p, nil
 	}
-	return domainuser.ProfileResponse{Username: "default", Email: "default@example.com"}, nil
+	return domainuser.ProfileResponse{Username: "default", Email: "default@example.com", UpdatedAt: time.Now()}, nil
 }
-func (r *inMemoryProfileRepo) UpdateProfile(ctx context.Context, profile domainuser.ProfileResponse, id string) (domainuser.ProfileResponse, error) {
-	r.profiles[id] = profile
-	return profile, nil
+func (r *inMemoryProfileRepo) UpdateProfile(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error) {
+	p := r.profiles[id]
+	if req.Username != nil {
+		p.Username = *req.Username
+	}
+	if req.Fullname != nil {
+		p.Fullname = *req.Fullname
+	}
+	if req.Email != nil {
+		p.Email = *req.Email
+	}
+	if req.ProfilePic != nil {
+		p.ProfilePic = *req.ProfilePic
+	}
+	p.UpdatedAt = time.Now()
+	r.profiles[id] = p
+	return p, nil
 }
 func (r *inMemoryProfileRepo) SetProfile(ctx context.Context, profile domainuser.Profile) error {
 	return nil
@@ -232,12 +246,17 @@ func (r *inMemoryGifRepo) Get(ctx context.Context, user_id string, status string
 	}
 	return results, nil
 }
-func (r *inMemoryGifRepo) GetByKey(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+func (r *inMemoryGifRepo) GetByKey(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 	if g, ok := r.gifs[key]; ok {
 		return domainmedia.GifResponse{
 			Key:          g.Key,
+			Name:         g.Name,
+			Status:       g.Status,
+			Persist:      g.Persist,
 			Url:          "https://minio.local/gifs/" + g.Key,
 			ThumbnailUrl: g.ThumbnailUrl,
+			CreatedAt:    g.CreatedAt,
+			UpdatedAt:    g.UpdatedAt,
 		}, nil
 	}
 	return domainmedia.GifResponse{}, sql.ErrNoRows
@@ -249,8 +268,31 @@ func (r *inMemoryGifRepo) Delete(ctx context.Context, key string) error {
 	delete(r.gifs, key)
 	return nil
 }
-func (r *inMemoryGifRepo) Update(ctx context.Context, key string, gif domainmedia.GifResponse) error {
-	return nil
+func (r *inMemoryGifRepo) Update(ctx context.Context, key string, req domainmedia.GifUpdateRequest) (domainmedia.GifResponse, error) {
+	if g, ok := r.gifs[key]; ok {
+		if req.Name != nil {
+			g.Name = *req.Name
+		}
+		if req.Status != nil {
+			g.Status = *req.Status
+		}
+		if req.Persist != nil {
+			g.Persist = *req.Persist
+		}
+		g.UpdatedAt = time.Now()
+		r.gifs[key] = g
+		return domainmedia.GifResponse{
+			Key:          g.Key,
+			Name:         g.Name,
+			Status:       g.Status,
+			Persist:      g.Persist,
+			Url:          "https://minio.local/gifs/" + g.Key,
+			ThumbnailUrl: g.ThumbnailUrl,
+			CreatedAt:    g.CreatedAt,
+			UpdatedAt:    g.UpdatedAt,
+		}, nil
+	}
+	return domainmedia.GifResponse{}, sql.ErrNoRows
 }
 func (r *inMemoryGifRepo) SaveRecent(ctx context.Context, key string) error { return nil }
 func (r *inMemoryGifRepo) GetOwner(ctx context.Context, key string) (string, error) {
@@ -261,11 +303,19 @@ func (r *inMemoryGifRepo) GetOwner(ctx context.Context, key string) (string, err
 }
 
 type inMemoryShareRepo struct {
-	shares map[string]domainshare.Share
+	shares      map[string]domainshare.Share
+	shareTokens map[string]domainshare.ShareByToken
 }
 
 func (r *inMemoryShareRepo) Create(ctx context.Context, gif domainshare.Share) error {
 	r.shares[gif.GifKey+":"+gif.SharedWith] = gif
+	return nil
+}
+func (r *inMemoryShareRepo) CreateByToken(ctx context.Context, gif domainshare.ShareByToken) error {
+	if r.shareTokens == nil {
+		r.shareTokens = make(map[string]domainshare.ShareByToken)
+	}
+	r.shareTokens[gif.Token] = gif
 	return nil
 }
 func (r *inMemoryShareRepo) Get(ctx context.Context, userID string) ([]domainshare.GifResponse, error) {
@@ -281,6 +331,18 @@ func (r *inMemoryShareRepo) Get(ctx context.Context, userID string) ([]domainsha
 		}
 	}
 	return list, nil
+}
+func (r *inMemoryShareRepo) GetByToken(ctx context.Context, token string) (domainshare.GifTokenResponse, error) {
+	if r.shareTokens != nil {
+		if st, ok := r.shareTokens[token]; ok {
+			return domainshare.GifTokenResponse{
+				GifKey:    st.GifKey,
+				ExpiresAt: st.ExpiresAt,
+				CreatedAt: st.CreatedAt,
+			}, nil
+		}
+	}
+	return domainshare.GifTokenResponse{}, sql.ErrNoRows
 }
 func (r *inMemoryShareRepo) GetOwner(ctx context.Context, user string, key string) (string, error) {
 	for _, s := range r.shares {
@@ -373,6 +435,10 @@ func (t *inMemoryTx) With(ctx context.Context, fn func(ctx context.Context) (any
 	return fn(ctx)
 }
 
+func (t *inMemoryTx) WithRC(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
+	return fn(ctx)
+}
+
 // --- End-to-End Integration Tests ---
 
 func TestE2E_FullUserAndJobLifecycle(t *testing.T) {
@@ -405,9 +471,9 @@ func TestE2E_FullUserAndJobLifecycle(t *testing.T) {
 		authRepo, verifierRepo, profileRepo, nil, quotaRepo,
 		cache, queue, *jwtProvider, *hasher, txManager,
 	)
-	userService := userapp.NewService(profileRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
-	mediaService := mediaapp.NewService(authRepo, profileRepo, quotaRepo, gifRepo, shareRepo, lastVideoRepo, storage, queue, cache, proc, cnf)
-	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo)
+	userService := userapp.NewService(profileRepo, quotaRepo, authRepo, txManager, *jwtProvider, *hasher)
+	mediaService := mediaapp.NewService(authRepo, profileRepo, quotaRepo, gifRepo, shareRepo, lastVideoRepo, storage, txManager, queue, cache, proc, cnf)
+	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo, queue)
 
 	authH := authhandler.NewHandler(authService, middlewares, val)
 	userH := userhandler.NewHandler(userService, middlewares, val)
@@ -516,7 +582,7 @@ func TestE2E_FullUserAndJobLifecycle(t *testing.T) {
 	convertRec := httptest.NewRecorder()
 	middlewares.Auth(http.HandlerFunc(mediaH.Convert)).ServeHTTP(convertRec, convertReq)
 
-	if convertRec.Code != http.StatusOK {
+	if convertRec.Code != http.StatusAccepted {
 		t.Fatalf("Convert request failed: %d", convertRec.Code)
 	}
 
@@ -673,7 +739,7 @@ func TestE2E_UnauthorizedAndEdgeCases(t *testing.T) {
 	val := validator.New()
 
 	authRepo := &inMemoryAuthRepo{users: make(map[string]domainauth.User)}
-	userService := userapp.NewService(&inMemoryProfileRepo{}, &inMemoryQuotaRepo{}, authRepo, *jwtProvider, *password.NewHasher("p", 10))
+	userService := userapp.NewService(&inMemoryProfileRepo{}, &inMemoryQuotaRepo{}, authRepo, &inMemoryTx{}, *jwtProvider, *password.NewHasher("p", 10))
 	userH := userhandler.NewHandler(userService, middlewares, val)
 
 	// 1. Unauthenticated Request to Protected Route

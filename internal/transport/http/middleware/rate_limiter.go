@@ -41,13 +41,13 @@ func (rl *RateLimiter) Limit() Middleware {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip, err := getIp(r.RemoteAddr)
 			if err != nil {
-				httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+				httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 				return
 			}
 			key := "rate_limit:ip:" + ip
 			res, err := rl.setLimit(r.Context(), key)
 			if err != nil {
-				httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+				httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 				return
 			}
 
@@ -58,7 +58,7 @@ func (rl *RateLimiter) Limit() Middleware {
 			if !res.allowed {
 				retryAfterSecs := res.wait_ms / 1000
 				w.Header().Set("Retry-After", strconv.FormatInt(retryAfterSecs, 10))
-				httputil.SendError(w, "too many request", http.StatusTooManyRequests)
+				httputil.SendError(w, httputil.RATE_LIMITED, "too many request", http.StatusTooManyRequests)
 				return
 			}
 			next.ServeHTTP(w, r)

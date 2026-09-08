@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/port/queue"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 	"github.com/labib0x9/ffgif/pkg/token"
 )
 
@@ -26,7 +28,7 @@ func (s *service) ForgotPassword(ctx context.Context, email string) error {
 	var reseter auth.Reseter
 	oldToken, err := s.reseterRepo.GetById(ctx, user.Id)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return auth.ErrTokenFetchFailed
+		return fmt.Errorf("reseterRepo.GetById: %w: %w", auth.ErrTokenFetchFailed, err)
 	}
 
 	if err == nil {
@@ -38,7 +40,7 @@ func (s *service) ForgotPassword(ctx context.Context, email string) error {
 			UserId: user.Id,
 		}
 		if err := s.reseterRepo.Create(ctx, reseter); err != nil {
-			return auth.ErrCreateResetTokenFailed
+			return fmt.Errorf("reseterRepo.Create: %w: %w", auth.ErrCreateResetTokenFailed, err)
 		}
 	}
 
@@ -49,7 +51,7 @@ func (s *service) ForgotPassword(ctx context.Context, email string) error {
 	}
 
 	if err := s.queue.PublishEmail(ctx, mqMsg); err != nil {
-		return auth.ErrMessageQueueFailed
+		return fmt.Errorf("queue.PublishEmail: %w: %w", apperr.ErrMessageQueueFailed, err)
 	}
 	return nil
 }

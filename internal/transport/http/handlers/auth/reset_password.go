@@ -8,6 +8,7 @@ import (
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 )
 
 type reqReset struct {
@@ -17,17 +18,18 @@ type reqReset struct {
 }
 
 func (h *Handler) ResetPasswordGet(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	token := r.URL.Query().Get("token")
 	if token == "" {
-		slog.Warn("ResetPasswordGet: token not found")
-		httputil.SendError(w, "Bad request", http.StatusBadRequest)
+		slog.Warn("auth handler - ResetPasswordGet() = token query param missing", "request_id", reqId, "error", "token not found")
+		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
 		return
 	}
 
 	token, err := h.srv.ResetPasswordGet(r.Context(), token)
 	if err != nil {
-		slog.Warn("srv.ResetPasswordGet() failed:", "error", err)
-		httputil.SendError(w, "expired or invalid token", http.StatusGone)
+		slog.Error("auth handler - ResetPasswordGet()", "request_id", reqId, "err", err)
+		httputil.SendError(w, auth.AUTH_RESET_TOKEN_INVALID, "expired or invalid token", http.StatusGone)
 		return
 	}
 
@@ -37,30 +39,31 @@ func (h *Handler) ResetPasswordGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ResetPasswordPost(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	var req reqReset
 	decoder := json.NewDecoder(r.Body)
 
 	if err := decoder.Decode(&req); err != nil {
-		httputil.SendError(w, "Bad request", http.StatusBadRequest)
-		slog.Warn("ResetPasswordPost: bad json body", "error", err)
+		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
+		slog.Warn("auth handler - ResetPasswordPost() = bad json body", "request_id", reqId, "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		httputil.SendError(w, "field required", http.StatusUnprocessableEntity)
-		slog.Warn("ResetPasswordPost: struct validation failed", "error", err)
+		httputil.SendError(w, httputil.VALIDATION_FAILED, "field required", http.StatusUnprocessableEntity)
+		slog.Warn("auth handler - ResetPasswordPost() = struct validation failed", "request_id", reqId, "error", err)
 		return
 	}
 
 	err := h.srv.ResetPasswordPost(r.Context(), req.Token, req.Password, req.ConfirmPassword)
-	if err != nil && !errors.Is(err, auth.ErrMessageQueueFailed) {
+	if err != nil && !errors.Is(err, apperr.ErrMessageQueueFailed) {
 		switch {
 		case errors.Is(err, auth.ErrReseterTokenFatchFailed):
-			httputil.SendError(w, "invalid or expired token", http.StatusGone)
+			httputil.SendError(w, auth.AUTH_RESET_TOKEN_INVALID, "invalid or expired token", http.StatusGone)
 		default:
-			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Warn("srv.ResetPasswordPost(): failed", "error", err)
+		slog.Error("auth handler - ResetPasswordPost()", "request_id", reqId, "err", err)
 		return
 	}
 

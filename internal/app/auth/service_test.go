@@ -13,6 +13,7 @@ import (
 	domainauth "github.com/labib0x9/ffgif/internal/domain/auth"
 	domainuser "github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/internal/port/queue"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 	jwtpkg "github.com/labib0x9/ffgif/pkg/jwt"
 	"github.com/labib0x9/ffgif/pkg/password"
 	tokenpkg "github.com/labib0x9/ffgif/pkg/token"
@@ -22,12 +23,20 @@ import (
 // --- Mocks ---
 
 type mockTxManager struct {
-	withFunc func(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error)
+	withFunc   func(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error)
+	withRCFunc func(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error)
 }
 
 func (m *mockTxManager) With(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
 	if m.withFunc != nil {
 		return m.withFunc(ctx, fn)
+	}
+	return fn(ctx)
+}
+
+func (m *mockTxManager) WithRC(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
+	if m.withRCFunc != nil {
+		return m.withRCFunc(ctx, fn)
 	}
 	return fn(ctx)
 }
@@ -126,22 +135,22 @@ func (m *mockVerifierRepo) Delete(ctx context.Context, id int64) error {
 }
 
 type mockProfileRepo struct {
-	getProfileFunc    func(ctx context.Context, id string) (domainuser.ProfileResponse, error)
-	updateProfileFunc func(ctx context.Context, profile domainuser.ProfileResponse, id string) (domainuser.ProfileResponse, error)
+	getProfileFunc    func(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error)
+	updateProfileFunc func(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error)
 	setProfileFunc    func(ctx context.Context, profile domainuser.Profile) error
 }
 
-func (m *mockProfileRepo) GetProfile(ctx context.Context, id string) (domainuser.ProfileResponse, error) {
+func (m *mockProfileRepo) GetProfile(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
 	if m.getProfileFunc != nil {
-		return m.getProfileFunc(ctx, id)
+		return m.getProfileFunc(ctx, id, forUpdate)
 	}
 	return domainuser.ProfileResponse{}, nil
 }
-func (m *mockProfileRepo) UpdateProfile(ctx context.Context, profile domainuser.ProfileResponse, id string) (domainuser.ProfileResponse, error) {
+func (m *mockProfileRepo) UpdateProfile(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error) {
 	if m.updateProfileFunc != nil {
-		return m.updateProfileFunc(ctx, profile, id)
+		return m.updateProfileFunc(ctx, req, id)
 	}
-	return profile, nil
+	return domainuser.ProfileResponse{}, nil
 }
 func (m *mockProfileRepo) SetProfile(ctx context.Context, profile domainuser.Profile) error {
 	if m.setProfileFunc != nil {
@@ -333,8 +342,8 @@ func TestAuthService_Signup_UserAlreadyExists(t *testing.T) {
 	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, nil, nil)
 
 	_, err := svc.Signup(context.Background(), "exists@example.com", "u", "fn", "p")
-	if !errors.Is(err, domainauth.ErrUserExits) {
-		t.Errorf("expected ErrUserExits, got %v", err)
+	if !errors.Is(err, domainauth.ErrUserExists) {
+		t.Errorf("expected ErrUserExists, got %v", err)
 	}
 }
 
@@ -356,7 +365,7 @@ func TestAuthService_Signup_QueuePublishFailure(t *testing.T) {
 	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, queueMock, nil)
 
 	_, err := svc.Signup(context.Background(), "user@example.com", "username", "Full Name", "password123")
-	if !errors.Is(err, domainauth.ErrMessageQueueFailed) {
+	if !errors.Is(err, apperr.ErrMessageQueueFailed) {
 		t.Errorf("expected ErrMessageQueueFailed, got %v", err)
 	}
 }

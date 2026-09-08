@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 
 	"github.com/labib0x9/ffgif/internal/app/media"
@@ -43,7 +42,7 @@ func (w *SaveVideoWorker) Run(ctx context.Context, name string, concurrency int)
 			return nil
 		case d, ok := <-msgs:
 			if !ok {
-				return fmt.Errorf("consumer closed")
+				return queue.ErrConsumerChannelClosed
 			}
 			sem <- struct{}{}
 			go func(d amqp.Delivery) {
@@ -68,32 +67,22 @@ func (w *SaveVideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 	err = w.srv.SaveMetadata(ctx, msg)
 	if err != nil {
 		switch {
-		case errors.Is(jobdomain.ErrInvalidUserID, err):
-			{
-				slog.Error("invalid user id", "user_id", msg.UserID)
-				d.Nack(false, false)
-				return
-			}
+		case errors.Is(err, jobdomain.ErrInvalidUserID):
+			slog.Error("invalid user id", "user_id", msg.UserID, "key", msg.Key)
+			d.Nack(false, false)
+			return
 		default:
-			{
-				// if msg.Retries < w.maxRetries {
-				// 	msg.Retries++
-				// 	d.Nack(false, true)
-				// 	slog.Error("Create retry", "error", err)
-				// 	return
-				// }
-				slog.Error("Create error", "error", err)
-				d.Nack(false, false)
-				return
-			}
+			slog.Error("save video metadata failed", "error", err, "key", msg.Key, "user_id", msg.UserID)
+			d.Nack(false, false)
+			return
 		}
 	}
 
 	err = d.Ack(false)
 	if err != nil {
-		slog.Error("ack failed", "error", err)
+		slog.Error("ack failed", "error", err, "key", msg.Key)
 		return
 	}
 
-	slog.Info("video metadata saved", "key", msg.Key)
+	slog.Info("video metadata saved", "key", msg.Key, "user_id", msg.UserID)
 }

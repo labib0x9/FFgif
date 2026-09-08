@@ -57,7 +57,7 @@ func main() {
 	quotaRepo := postgres.NewQuotaRepository(dbConn)
 
 	lastUploadRepo := postgres.NewLastVideoRepository(dbConn)
-	gifRepo := postgres.NewGifRepository(dbConn, cnf.Minio) // ?? db + bucket
+	gifRepo := postgres.NewGifRepository(dbConn) // ?? db + bucket
 	shareRepo := postgres.NewShareRepository(dbConn)
 
 	jwtProvider := jwt.NewJwt(cnf.JwtSecret)
@@ -69,9 +69,9 @@ func main() {
 	tnx := postgres.NewTxManager(dbConn)
 
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rabbitMq, *jwtProvider, *hasher, tnx)
-	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, shareRepo, lastUploadRepo, storageRepo, rabbitMq, cacheRepo, ffmpeg, cnf)
-	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo)
-	userService := userapp.NewService(userRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
+	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, shareRepo, lastUploadRepo, storageRepo, tnx, rabbitMq, cacheRepo, ffmpeg, cnf)
+	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo, rabbitMq)
+	userService := userapp.NewService(userRepo, quotaRepo, authRepo, tnx, *jwtProvider, *hasher)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

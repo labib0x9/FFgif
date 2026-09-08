@@ -13,8 +13,8 @@ func GetTokenHash(token string) string {
 	return hash
 }
 
-func GenerateToken() (string, string) {
-	token := uuid.NewString()
-	hash := GetTokenHash(token)
-	return token, hash
+func GenerateToken() (token string, tokenHash string) {
+	token = uuid.NewString()
+	tokenHash = GetTokenHash(token)
+	return
 }

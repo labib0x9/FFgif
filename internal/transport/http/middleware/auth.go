@@ -7,15 +7,18 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
 
 func (m *Middlewares) Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqId := httputil.GetRequestID(r.Context())
 		h := r.Header.Get("Authorization")
 		if h == "" || !strings.HasPrefix(h, "Bearer ") {
-			http.Error(w, "invalid credentials", http.StatusUnauthorized)
-			slog.Warn("Auth Middleware: Authorization header missing", "Addr", r.RemoteAddr)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_request"`)
+			httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "authorization header missing", http.StatusUnauthorized)
+			slog.Warn("Auth Middleware: authorization header missing", "request_id", reqId, "Addr", r.RemoteAddr)
 			return
 		}
 
@@ -23,19 +26,22 @@ func (m *Middlewares) Auth(next http.Handler) http.Handler {
 		data, err := m.jwt.Verify(tokenStr)
 		if err != nil {
 			if errors.Is(err, jwt.ErrTokenExpired) {
-				http.Error(w, "token expired", http.StatusUnauthorized)
-				slog.Warn("Auth Middleware: token expired", "Addr", r.RemoteAddr)
+				w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="token expired"`)
+				httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "invalid token", http.StatusUnauthorized)
+				slog.Warn("Auth Middleware: token expired", "request_id", reqId, "Addr", r.RemoteAddr)
 				return
 			}
-			http.Error(w, "Invalid token", http.StatusUnauthorized)
-			slog.Warn("Auth Middleware: invalid token", "Addr", r.RemoteAddr)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="invalid token"`)
+			httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "invalid token", http.StatusUnauthorized)
+			slog.Warn("Auth Middleware: invalid token", "request_id", reqId, "Addr", r.RemoteAddr)
 			return
 		}
 
 		key := "token_blocklist:" + tokenStr
 		if _, err := m.cache.Get(r.Context(), key); err == nil {
-			http.Error(w, "blocklist token", http.StatusUnauthorized)
-			slog.Warn("Auth Middleware: token on blocklist", "Addr", r.RemoteAddr)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="token on blocklist"`)
+			httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "token on blocklist", http.StatusUnauthorized)
+			slog.Warn("Auth Middleware: token on blocklist", "request_id", reqId, "Addr", r.RemoteAddr)
 			return
 		}
 

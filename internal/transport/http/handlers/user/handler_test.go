@@ -12,6 +12,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	domainauth "github.com/labib0x9/ffgif/internal/domain/auth"
+	domainmedia "github.com/labib0x9/ffgif/internal/domain/media"
 	domainuser "github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/user"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
@@ -20,7 +21,7 @@ import (
 
 type mockUserService struct {
 	getProfileFunc     func(ctx context.Context, id string) (*domainuser.ProfileResponse, error)
-	updateProfileFunc  func(ctx context.Context, profile domainuser.ProfileResponse, id string) (domainuser.ProfileResponse, error)
+	updateProfileFunc  func(ctx context.Context, profile domainuser.ProfileUpdateRequest, id string, lastUpdatedAt string) (*domainuser.ProfileResponse, error)
 	changePasswordFunc func(ctx context.Context, id string, currentPass string, pass string, confirmPass string) error
 	deleteUserFunc     func(ctx context.Context, id string, pass string) error
 	getQuotaFunc       func(ctx context.Context, id string) (*domainuser.Quota, error)
@@ -32,11 +33,11 @@ func (m *mockUserService) GetProfile(ctx context.Context, id string) (*domainuse
 	}
 	return &domainuser.ProfileResponse{Username: "testuser", Email: "test@example.com"}, nil
 }
-func (m *mockUserService) UpdateProfile(ctx context.Context, profile domainuser.ProfileResponse, id string) (domainuser.ProfileResponse, error) {
+func (m *mockUserService) UpdateProfile(ctx context.Context, profile domainuser.ProfileUpdateRequest, id string, lastUpdatedAt string) (*domainuser.ProfileResponse, error) {
 	if m.updateProfileFunc != nil {
-		return m.updateProfileFunc(ctx, profile, id)
+		return m.updateProfileFunc(ctx, profile, id, lastUpdatedAt)
 	}
-	return profile, nil
+	return &domainuser.ProfileResponse{}, nil
 }
 func (m *mockUserService) ChangePassword(ctx context.Context, id string, currentPass string, pass string, confirmPass string) error {
 	if m.changePasswordFunc != nil {
@@ -123,23 +124,66 @@ func TestUserHandler_GetProfile_NotFound(t *testing.T) {
 
 func TestUserHandler_UpdateProfile_Success(t *testing.T) {
 	mockSvc := &mockUserService{
-		updateProfileFunc: func(ctx context.Context, profile domainuser.ProfileResponse, id string) (domainuser.ProfileResponse, error) {
-			return profile, nil
+		updateProfileFunc: func(ctx context.Context, profile domainuser.ProfileUpdateRequest, id string, lastUpdatedAt string) (*domainuser.ProfileResponse, error) {
+			return &domainuser.ProfileResponse{
+				Username: *profile.Username,
+			}, nil
 		},
 	}
 	handler := user.NewHandler(mockSvc, nil, validator.New())
 
-	body, _ := json.Marshal(map[string]string{
-		"username":  "janedoe_new",
-		"full_name": "Jane New",
+	username := "janedoe_new"
+	body, _ := json.Marshal(domainuser.ProfileUpdateRequest{
+		Username: &username,
 	})
 	req := httptest.NewRequest(http.MethodPatch, "/users/profile/me", bytes.NewReader(body))
+	req.Header.Set("If-Match", "2026-09-07T12:00:00Z")
 	req = withUserAuth(req, "user-uuid-1")
 	rec := httptest.NewRecorder()
 
 	handler.UpdateProfile(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected status 200 OK, got %d", rec.Code)
+	}
+}
+
+func TestUserHandler_UpdateProfile_MissingIfMatch(t *testing.T) {
+	handler := user.NewHandler(&mockUserService{}, nil, validator.New())
+
+	username := "janedoe_new"
+	body, _ := json.Marshal(domainuser.ProfileUpdateRequest{
+		Username: &username,
+	})
+	req := httptest.NewRequest(http.MethodPatch, "/users/profile/me", bytes.NewReader(body))
+	req = withUserAuth(req, "user-uuid-1")
+	rec := httptest.NewRecorder()
+
+	handler.UpdateProfile(rec, req)
+	if rec.Code != http.StatusPreconditionFailed {
+		t.Errorf("expected status 412 Precondition Failed, got %d", rec.Code)
+	}
+}
+
+func TestUserHandler_UpdateProfile_ETagMismatch(t *testing.T) {
+	mockSvc := &mockUserService{
+		updateProfileFunc: func(ctx context.Context, profile domainuser.ProfileUpdateRequest, id string, lastUpdatedAt string) (*domainuser.ProfileResponse, error) {
+			return nil, domainmedia.ErrETagValidationFailed
+		},
+	}
+	handler := user.NewHandler(mockSvc, nil, validator.New())
+
+	username := "janedoe_new"
+	body, _ := json.Marshal(domainuser.ProfileUpdateRequest{
+		Username: &username,
+	})
+	req := httptest.NewRequest(http.MethodPatch, "/users/profile/me", bytes.NewReader(body))
+	req.Header.Set("If-Match", "outdated-etag")
+	req = withUserAuth(req, "user-uuid-1")
+	rec := httptest.NewRecorder()
+
+	handler.UpdateProfile(rec, req)
+	if rec.Code != http.StatusPreconditionFailed {
+		t.Errorf("expected status 412 Precondition Failed, got %d", rec.Code)
 	}
 }
 
@@ -270,8 +314,8 @@ func TestUserHandler_DeleteUser_Success(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	handler.DeleteUser(rec, req)
-	if rec.Code != http.StatusGone {
-		t.Errorf("expected status 410 Gone, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200 OK, got %d", rec.Code)
 	}
 }
 

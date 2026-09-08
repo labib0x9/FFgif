@@ -5,22 +5,25 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/domain/media"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
 
 func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	id := httputil.GetUserId(r.Context())
 	if id == "" {
-		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
-		slog.Error("Media handler - Download()", "err", "user_id not found")
+		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
+		httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "user id not found", http.StatusUnauthorized)
+		slog.Error("media handler - Download() = user_id not found", "request_id", reqId, "err", "user_id not found")
 		return
 	}
 
 	key := r.PathValue("key")
 	if key == "" {
-		httputil.SendError(w, "gif key is missing", http.StatusBadRequest)
-		slog.Error("Media handler - Download()", "err", "gif_id not found")
+		httputil.SendError(w, httputil.BAD_REQUEST, "gif key is missing", http.StatusBadRequest)
+		slog.Warn("media handler - Download() = gif key missing", "request_id", reqId, "error", "gif key missing")
 		return
 	}
 
@@ -28,13 +31,13 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, media.ErrGifNotFound):
-			httputil.SendError(w, "gif not found", http.StatusNotFound)
-		// case errors.Is(err, media.ErrGifOwnerMismatch):
-		// 	httputil.SendError(w, "forbidden", http.StatusForbidden)
+			httputil.SendError(w, media.GIF_NOT_FOUND, "gif not found", http.StatusNotFound)
+		case errors.Is(err, media.ErrGifOwnerMismatch):
+			httputil.SendError(w, media.GIF_FORBIDDEN, "forbidden", http.StatusForbidden)
 		default:
-			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("Media handler - Download()", "err", err)
+		slog.Error("media handler - Download()", "request_id", reqId, "err", err)
 		return
 	}
 

@@ -48,6 +48,7 @@ func (s *Server) Start(rate cache.RateLimiter, cnf *config.Config) {
 
 	manager := middleware.NewManager()
 	manager.Use(
+		middleware.RequestId,
 		middleware.Cors,
 		middleware.Preflight,
 		middleware.Logger,

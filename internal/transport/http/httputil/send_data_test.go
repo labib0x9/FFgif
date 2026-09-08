@@ -36,9 +36,10 @@ func TestSendJson(t *testing.T) {
 
 func TestSendError(t *testing.T) {
 	rec := httptest.NewRecorder()
+	errorCode := "NOT_FOUND"
 	errorMsg := "Resource not found"
 
-	jsonio.SendError(rec, errorMsg, http.StatusNotFound)
+	jsonio.SendError(rec, errorCode, errorMsg, http.StatusNotFound)
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("expected status 404, got %d", rec.Code)
@@ -54,10 +55,13 @@ func TestSendError(t *testing.T) {
 		t.Fatalf("failed to decode response body: %v", err)
 	}
 
-	if response["error"] != errorMsg {
-		t.Errorf("expected error %s, got %v", errorMsg, response["error"])
+	if response["error_code"] != errorCode {
+		t.Errorf("expected error_code %s, got %v", errorCode, response["error_code"])
 	}
-	if response["code"] != float64(http.StatusNotFound) {
-		t.Errorf("expected code %d, got %v", http.StatusNotFound, response["code"])
+	if response["message"] != errorMsg {
+		t.Errorf("expected message %s, got %v", errorMsg, response["message"])
+	}
+	if response["status"] != float64(http.StatusNotFound) {
+		t.Errorf("expected status %d, got %v", http.StatusNotFound, response["status"])
 	}
 }

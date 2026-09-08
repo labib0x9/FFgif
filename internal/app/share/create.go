@@ -2,6 +2,9 @@ package share
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
@@ -13,11 +16,19 @@ import (
 func (s *service) Create(ctx context.Context, sharedBy string, gifKey string, sharedWith string, expiresAt time.Time) error {
 	sharedUser, err := s.authRepo.GetByEmail(ctx, sharedWith)
 	if err != nil {
-		return auth.ErrUserNotFound
+		return fmt.Errorf("authRepo.GetByEmail: %w: %w", auth.ErrUserNotFound, err)
 	}
-	_, err = s.gifRepo.GetByKey(ctx, gifKey)
+
+	owner, err := s.gifRepo.GetOwner(ctx, gifKey)
 	if err != nil {
-		return media.ErrGifNotFound
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("gifRepo.GetOwner: %w: %w", media.ErrGifNotFound, err)
+		}
+		return fmt.Errorf("gifRepo.GetOwner: %w", err)
+	}
+
+	if owner != sharedBy {
+		return media.ErrGifOwnerMismatch
 	}
 
 	share := share.Share{

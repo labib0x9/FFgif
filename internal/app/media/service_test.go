@@ -18,6 +18,7 @@ import (
 	domainuser "github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/internal/port/processor"
 	"github.com/labib0x9/ffgif/internal/port/queue"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 	jwtpkg "github.com/labib0x9/ffgif/pkg/jwt"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -79,14 +80,24 @@ func (m *mockStorageRepo) GetThumbnailURL(ctx context.Context, key string) (*url
 	return u, nil
 }
 
+type mockTxManager struct{}
+
+func (m *mockTxManager) With(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
+	return fn(ctx)
+}
+
+func (m *mockTxManager) WithRC(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
+	return fn(ctx)
+}
+
 type mockGifRepo struct {
 	getOwnerFunc   func(ctx context.Context, key string) (string, error)
-	getByKeyFunc   func(ctx context.Context, key string) (domainmedia.GifResponse, error)
+	getByKeyFunc   func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error)
 	getRecentsFunc func(ctx context.Context, user_id string) ([]domainmedia.GifResponse, error)
 	getFunc        func(ctx context.Context, user_id string, status string) ([]domainmedia.GifResponse, error)
 	deleteFunc     func(ctx context.Context, key string) error
 	createFunc     func(ctx context.Context, gif domainmedia.Gif) error
-	updateFunc     func(ctx context.Context, key string, gif domainmedia.GifResponse) error
+	updateFunc     func(ctx context.Context, key string, req domainmedia.GifUpdateRequest) (domainmedia.GifResponse, error)
 	saveRecentFunc func(ctx context.Context, key string) error
 }
 
@@ -108,9 +119,9 @@ func (m *mockGifRepo) Get(ctx context.Context, user_id string, status string) ([
 	}
 	return []domainmedia.GifResponse{}, nil
 }
-func (m *mockGifRepo) GetByKey(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+func (m *mockGifRepo) GetByKey(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 	if m.getByKeyFunc != nil {
-		return m.getByKeyFunc(ctx, key)
+		return m.getByKeyFunc(ctx, key, forUpdate)
 	}
 	return domainmedia.GifResponse{Key: key, Url: "https://storage/gif/" + key}, nil
 }
@@ -126,11 +137,11 @@ func (m *mockGifRepo) Delete(ctx context.Context, key string) error {
 	}
 	return nil
 }
-func (m *mockGifRepo) Update(ctx context.Context, key string, gif domainmedia.GifResponse) error {
+func (m *mockGifRepo) Update(ctx context.Context, key string, req domainmedia.GifUpdateRequest) (domainmedia.GifResponse, error) {
 	if m.updateFunc != nil {
-		return m.updateFunc(ctx, key, gif)
+		return m.updateFunc(ctx, key, req)
 	}
-	return nil
+	return domainmedia.GifResponse{Key: key}, nil
 }
 func (m *mockGifRepo) SaveRecent(ctx context.Context, key string) error {
 	if m.saveRecentFunc != nil {
@@ -146,8 +157,14 @@ type mockShareRepo struct {
 func (m *mockShareRepo) Create(ctx context.Context, gif domainshare.Share) error {
 	return nil
 }
+func (m *mockShareRepo) CreateByToken(ctx context.Context, gif domainshare.ShareByToken) error {
+	return nil
+}
 func (m *mockShareRepo) Get(ctx context.Context, userID string) ([]domainshare.GifResponse, error) {
 	return nil, nil
+}
+func (m *mockShareRepo) GetByToken(ctx context.Context, token string) (domainshare.GifTokenResponse, error) {
+	return domainshare.GifTokenResponse{}, nil
 }
 func (m *mockShareRepo) GetOwner(ctx context.Context, sharedWithUserId string, gifKey string) (string, error) {
 	if m.getOwnerFunc != nil {
@@ -287,11 +304,11 @@ func (m *mockAuthRepo) Upgrade(ctx context.Context, id string, user domainauth.U
 
 type mockUserRepo struct{}
 
-func (m *mockUserRepo) GetProfile(ctx context.Context, id string) (domainuser.ProfileResponse, error) {
+func (m *mockUserRepo) GetProfile(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
 	return domainuser.ProfileResponse{}, nil
 }
-func (m *mockUserRepo) UpdateProfile(ctx context.Context, profile domainuser.ProfileResponse, id string) (domainuser.ProfileResponse, error) {
-	return profile, nil
+func (m *mockUserRepo) UpdateProfile(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error) {
+	return domainuser.ProfileResponse{}, nil
 }
 func (m *mockUserRepo) SetProfile(ctx context.Context, profile domainuser.Profile) error { return nil }
 func (m *mockUserRepo) ChangePassword(ctx context.Context, userId string, hash string) error {
@@ -343,6 +360,7 @@ func newTestMediaService(
 		shareRepo,
 		lastVideoRepo,
 		storage,
+		&mockTxManager{},
 		queueMock,
 		cache,
 		proc,
@@ -592,7 +610,7 @@ func TestMediaService_Convert_QueueFailure(t *testing.T) {
 	svc := newTestMediaService(nil, nil, nil, nil, queueMock, nil, nil)
 
 	_, err := svc.Convert(context.Background(), "user-1", "test.mp4", 0, 5, 10, 320, true)
-	if !errors.Is(err, domainmedia.ErrMessageQueueFailed) {
+	if !errors.Is(err, apperr.ErrMessageQueueFailed) {
 		t.Errorf("expected ErrMessageQueueFailed, got %v", err)
 	}
 }
@@ -622,7 +640,7 @@ func TestMediaService_ConversionStatus_NotFound(t *testing.T) {
 	svc := newTestMediaService(nil, nil, nil, nil, nil, cache, nil)
 
 	_, err := svc.ConversionStatus(context.Background(), "non-existent-job")
-	if !errors.Is(err, domainmedia.ErrCacheGetFailed) {
+	if !errors.Is(err, apperr.ErrCacheGetFailed) {
 		t.Errorf("expected ErrCacheGetFailed, got %v", err)
 	}
 }
@@ -736,18 +754,49 @@ func TestMediaService_GetGifs_RepoError(t *testing.T) {
 
 func TestMediaService_GetByKey_Success(t *testing.T) {
 	gifRepo := &mockGifRepo{
-		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "user-1", nil
+		},
+		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 			return domainmedia.GifResponse{Key: key, Url: "https://minio/" + key}, nil
 		},
 	}
 	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
 
-	gif, err := svc.GetByKey(context.Background(), "my-gif.gif")
+	gif, err := svc.GetByKey(context.Background(), "user-1", "my-gif.gif")
 	if err != nil {
 		t.Fatalf("expected GetByKey to succeed, got %v", err)
 	}
 	if gif.Key != "my-gif.gif" {
 		t.Errorf("expected key my-gif.gif, got %s", gif.Key)
+	}
+}
+
+func TestMediaService_GetByKey_NotFound(t *testing.T) {
+	gifRepo := &mockGifRepo{
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "", sql.ErrNoRows
+		},
+	}
+	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
+
+	_, err := svc.GetByKey(context.Background(), "user-1", "missing.gif")
+	if !errors.Is(err, domainmedia.ErrGifNotFound) {
+		t.Errorf("expected ErrGifNotFound, got %v", err)
+	}
+}
+
+func TestMediaService_GetByKey_OwnerMismatch(t *testing.T) {
+	gifRepo := &mockGifRepo{
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "other-user", nil
+		},
+	}
+	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
+
+	_, err := svc.GetByKey(context.Background(), "user-1", "my-gif.gif")
+	if !errors.Is(err, domainmedia.ErrGifOwnerMismatch) {
+		t.Errorf("expected ErrGifOwnerMismatch, got %v", err)
 	}
 }
 
@@ -765,6 +814,20 @@ func TestMediaService_GetRecents_Success(t *testing.T) {
 	}
 	if len(recents) != 1 {
 		t.Errorf("expected 1 recent gif, got %d", len(recents))
+	}
+}
+
+func TestMediaService_GetRecents_RepoError(t *testing.T) {
+	gifRepo := &mockGifRepo{
+		getRecentsFunc: func(ctx context.Context, user_id string) ([]domainmedia.GifResponse, error) {
+			return nil, errors.New("db error")
+		},
+	}
+	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
+
+	_, err := svc.GetRecents(context.Background(), "user-1")
+	if !errors.Is(err, domainmedia.ErrGifFetchFailed) {
+		t.Errorf("expected ErrGifFetchFailed, got %v", err)
 	}
 }
 
@@ -889,14 +952,19 @@ func TestMediaService_Download_OwnerMismatch(t *testing.T) {
 }
 
 func TestMediaService_Stream_Success(t *testing.T) {
+	gifRepo := &mockGifRepo{
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "user-1", nil
+		},
+	}
 	storage := &mockStorageRepo{
 		getStreamURLFunc: func(ctx context.Context, key string, expiry time.Duration) (*url.URL, error) {
 			return url.Parse("https://minio.stream/" + key)
 		},
 	}
-	svc := newTestMediaService(nil, nil, nil, storage, nil, nil, nil)
+	svc := newTestMediaService(gifRepo, nil, nil, storage, nil, nil, nil)
 
-	res, err := svc.Stream(context.Background(), "video.mp4")
+	res, err := svc.Stream(context.Background(), "user-1", "video.mp4")
 	if err != nil {
 		t.Fatalf("expected Stream to succeed, got %v", err)
 	}
@@ -926,17 +994,29 @@ func TestMediaService_Save_Success(t *testing.T) {
 
 func TestMediaService_Update_Success(t *testing.T) {
 	updated := false
+	now := time.Now()
+	etag := now.Format(time.RFC3339Nano)
 	gifRepo := &mockGifRepo{
-		updateFunc: func(ctx context.Context, key string, gif domainmedia.GifResponse) error {
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "user-1", nil
+		},
+		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
+			return domainmedia.GifResponse{Key: key, UpdatedAt: now}, nil
+		},
+		updateFunc: func(ctx context.Context, key string, req domainmedia.GifUpdateRequest) (domainmedia.GifResponse, error) {
 			updated = true
-			return nil
+			return domainmedia.GifResponse{Key: key}, nil
 		},
 	}
 	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
 
-	err := svc.Update(context.Background(), "user-1", "gif-key-1")
+	name := "new_name"
+	res, err := svc.Update(context.Background(), "user-1", "gif-key-1", domainmedia.GifUpdateRequest{Name: &name}, etag)
 	if err != nil {
 		t.Fatalf("expected Update to succeed, got %v", err)
+	}
+	if res == nil || res.Key != "gif-key-1" {
+		t.Errorf("expected returned gif response with key gif-key-1")
 	}
 	if !updated {
 		t.Errorf("expected Update to be called")
@@ -995,7 +1075,10 @@ func TestMediaService_Delete_OwnerMismatch(t *testing.T) {
 
 func TestMediaService_GetGifThumbnail_Success(t *testing.T) {
 	gifRepo := &mockGifRepo{
-		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "user-1", nil
+		},
+		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 			return domainmedia.GifResponse{
 				Key:          key,
 				ThumbnailUrl: "thumb_" + key + ".jpg",
@@ -1009,7 +1092,7 @@ func TestMediaService_GetGifThumbnail_Success(t *testing.T) {
 	}
 	svc := newTestMediaService(gifRepo, nil, nil, storage, nil, nil, nil)
 
-	thumbUrl, err := svc.GetGifThumbnail(context.Background(), "sample.gif")
+	thumbUrl, err := svc.GetGifThumbnail(context.Background(), "user-1", "sample.gif")
 	if err != nil {
 		t.Fatalf("expected GetGifThumbnail to succeed, got %v", err)
 	}
@@ -1020,13 +1103,13 @@ func TestMediaService_GetGifThumbnail_Success(t *testing.T) {
 
 func TestMediaService_GetGifThumbnail_NotFound(t *testing.T) {
 	gifRepo := &mockGifRepo{
-		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
-			return domainmedia.GifResponse{}, sql.ErrNoRows
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "", sql.ErrNoRows
 		},
 	}
 	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
 
-	_, err := svc.GetGifThumbnail(context.Background(), "missing.gif")
+	_, err := svc.GetGifThumbnail(context.Background(), "user-1", "missing.gif")
 	if !errors.Is(err, domainmedia.ErrGifNotFound) {
 		t.Errorf("expected ErrGifNotFound, got %v", err)
 	}
@@ -1034,7 +1117,10 @@ func TestMediaService_GetGifThumbnail_NotFound(t *testing.T) {
 
 func TestMediaService_GetGifThumbnail_EmptyThumbnailUrl(t *testing.T) {
 	gifRepo := &mockGifRepo{
-		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "user-1", nil
+		},
+		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 			return domainmedia.GifResponse{
 				Key:          key,
 				ThumbnailUrl: "",
@@ -1043,7 +1129,7 @@ func TestMediaService_GetGifThumbnail_EmptyThumbnailUrl(t *testing.T) {
 	}
 	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
 
-	_, err := svc.GetGifThumbnail(context.Background(), "no-thumb.gif")
+	_, err := svc.GetGifThumbnail(context.Background(), "user-1", "no-thumb.gif")
 	if !errors.Is(err, domainmedia.ErrThumbnailNotFound) {
 		t.Errorf("expected ErrThumbnailNotFound, got %v", err)
 	}
@@ -1051,7 +1137,10 @@ func TestMediaService_GetGifThumbnail_EmptyThumbnailUrl(t *testing.T) {
 
 func TestMediaService_GetGifThumbnail_StorageError(t *testing.T) {
 	gifRepo := &mockGifRepo{
-		getByKeyFunc: func(ctx context.Context, key string) (domainmedia.GifResponse, error) {
+		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
+			return "user-1", nil
+		},
+		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
 			return domainmedia.GifResponse{
 				Key:          key,
 				ThumbnailUrl: "thumb.jpg",
@@ -1065,7 +1154,7 @@ func TestMediaService_GetGifThumbnail_StorageError(t *testing.T) {
 	}
 	svc := newTestMediaService(gifRepo, nil, nil, storage, nil, nil, nil)
 
-	_, err := svc.GetGifThumbnail(context.Background(), "error.gif")
+	_, err := svc.GetGifThumbnail(context.Background(), "user-1", "error.gif")
 	if err == nil {
 		t.Fatal("expected error on storage failure, got nil")
 	}

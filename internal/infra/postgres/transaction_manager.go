@@ -37,6 +37,23 @@ func (t *txManager) With(ctx context.Context, fn func(ctx context.Context) (any,
 	return result, tx.Commit()
 }
 
+func (t *txManager) WithRC(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
+	tx, err := t.db.BeginTxx(ctx, &sql.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	txCtx := context.WithValue(ctx, txKey{}, tx)
+	result, err := fn(txCtx)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	return result, tx.Commit()
+}
+
 // Get db connection from context, if absent fallback to db
 func getDBFromCtx(ctx context.Context, db *sqlx.DB) sqlx.ExtContext {
 	if tx, ok := ctx.Value(txKey{}).(*sqlx.Tx); ok {

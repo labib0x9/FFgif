@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/labib0x9/ffgif/config"
 	"github.com/labib0x9/ffgif/internal/domain/media"
 )
 
@@ -13,7 +12,7 @@ type gifRepo struct {
 	db *sqlx.DB
 }
 
-func NewGifRepository(db *sqlx.DB, cnf *config.Minio) media.GifRepository {
+func NewGifRepository(db *sqlx.DB) media.GifRepository {
 	return &gifRepo{
 		db: db,
 	}
@@ -63,14 +62,17 @@ func (r *gifRepo) GetOwner(ctx context.Context, key string) (string, error) {
 	return userId, nil
 }
 
-func (r *gifRepo) GetByKey(ctx context.Context, key string) (media.GifResponse, error) {
+func (r *gifRepo) GetByKey(ctx context.Context, key string, forUpdate bool) (media.GifResponse, error) {
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
-			name, thumbnail_url, url,key, status, persist, download, created_at
+			name, thumbnail_url, url,key, status, persist, download, created_at, updated_at
 		from
 			gifs
 		where key = $1`
+	if forUpdate == true {
+		query += "for update"
+	}
 	var val media.GifResponse
 	if err := sqlx.GetContext(ctx, db, &val, query, key); err != nil {
 		return media.GifResponse{}, err
@@ -103,10 +105,24 @@ func (r *gifRepo) Delete(ctx context.Context, key string) error {
 	return err
 }
 
-func (r *gifRepo) Update(ctx context.Context, key string, gif media.GifResponse) error {
+func (r *gifRepo) Update(ctx context.Context, key string, req media.GifUpdateRequest) (media.GifResponse, error) {
 	db := getDBFromCtx(ctx, r.db)
-	_ = db
-	return nil
+	query := `
+		update gifs
+		set
+			name    = COALESCE($1, name),
+			status  = COALESCE($2, status),
+			persist = COALESCE($3, persist),
+			updated_at = NOW()
+		where key = $4
+		returning key, name, status, persist, url, thumbnail_url, download, created_at, updated_at
+	`
+
+	var resp media.GifResponse
+	if err := sqlx.GetContext(ctx, db, &resp, query, req.Name, req.Status, req.Persist, key); err != nil {
+		return media.GifResponse{}, err
+	}
+	return resp, nil
 }
 
 func (r *gifRepo) SaveRecent(ctx context.Context, key string) error {
@@ -127,9 +143,9 @@ func (l *lastVideoRepo) Create(ctx context.Context, upload media.LastUpload) err
 	db := getDBFromCtx(ctx, l.db)
 	query := `
         INSERT INTO last_upload
-            (user_id, file_key, file_name, content_type, size_bytes, uploaded_at, updated_at)
+            (user_id, file_key, file_name, content_type, size_bytes, duration_sec, thumbnail_url, uploaded_at, updated_at)
         VALUES
-            (:user_id, :file_key, :file_name, :content_type, :size_bytes, :uploaded_at, NOW())
+            (:user_id, :file_key, :file_name, :content_type, :size_bytes, :duration_sec, :thumbnail_url, :uploaded_at, NOW())
         ON CONFLICT (user_id) DO UPDATE SET
             file_key     = EXCLUDED.file_key,
             file_name    = EXCLUDED.file_name,

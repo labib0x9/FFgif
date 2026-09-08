@@ -5,15 +5,18 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/domain/media"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
 
 func (h *Handler) LastVideo(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	userId := httputil.GetUserId(r.Context())
 	if userId == "" {
-		httputil.SendError(w, "user id not found", http.StatusUnauthorized)
-		slog.Error("Media handler - LastVideo()", "err", "user_id not found")
+		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
+		httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "user id not found", http.StatusUnauthorized)
+		slog.Error("media handler - LastVideo() = user_id not found", "request_id", reqId, "err", "user_id not found")
 		return
 	}
 
@@ -21,11 +24,11 @@ func (h *Handler) LastVideo(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, media.ErrLastVideoNotFound):
-			httputil.SendError(w, "video not found", http.StatusNotFound)
+			httputil.SendError(w, media.GIF_NOT_FOUND, "video not found", http.StatusNotFound)
 		default:
-			httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("Media handler - LastVideo()", "err", err)
+		slog.Error("media handler - LastVideo()", "request_id", reqId, "err", err)
 		return
 	}
 

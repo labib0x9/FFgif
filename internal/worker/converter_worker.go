@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 
 	"github.com/labib0x9/ffgif/internal/app/media"
@@ -41,7 +40,7 @@ func (w *VideoWorker) Run(ctx context.Context, name string, concurrency int) err
 			return nil
 		case d, ok := <-msgs:
 			if !ok {
-				return fmt.Errorf("consumer channel closed")
+				return queue.ErrConsumerChannelClosed
 			}
 			sem <- struct{}{}
 			go func(d amqp.Delivery) {
@@ -63,35 +62,26 @@ func (w *VideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 		return
 	}
 
-	slog.Info("converting video", "key", msg.Key, "userID", msg.UserID, "JobId", msg.JobId)
+	slog.Info("converting video", "key", msg.Key, "user_id", msg.UserID, "job_id", msg.JobId)
 
 	err = w.srv.Process(ctx, msg)
 	if err != nil {
-		slog.Error("video convertion failed", "error", err, "retries", msg.Retries, "JobId", msg.JobId)
-
-		// if msg.Retries < w.maxRetries {
-		// 	msg.Retries++
-		// 	err := d.Nack(false, true)
-		// 	if err != nil {
-		// 		slog.Error("nack retry failed", "error", err)
-		// 	}
-		// 	return
-		// }
+		slog.Error("video conversion failed", "error", err, "job_id", msg.JobId)
 
 		err := d.Nack(false, false)
 		if err != nil {
-			slog.Error("nack dead-letter failed", "error", err)
+			slog.Error("nack dead-letter failed", "error", err, "job_id", msg.JobId)
 		}
 		return
 	}
 
 	err = d.Ack(false)
 	if err != nil {
-		slog.Error("ack failed", "error", err)
+		slog.Error("ack failed", "error", err, "job_id", msg.JobId)
 		return
 	}
 
-	slog.Info("video processed successfully", "JobId", msg.JobId)
+	slog.Info("video processed successfully", "job_id", msg.JobId)
 }
 
 // func retryCount(d amqp.Delivery) int {

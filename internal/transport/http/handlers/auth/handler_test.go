@@ -134,7 +134,7 @@ func TestAuthHandler_Signup_ValidationFailed(t *testing.T) {
 func TestAuthHandler_Signup_Conflict(t *testing.T) {
 	mockSvc := &mockAuthService{
 		signupFunc: func(ctx context.Context, email string, username string, fullname string, password string) (*appauth.SignupResult, error) {
-			return nil, domainauth.ErrUserExits
+			return nil, domainauth.ErrUserExists
 		},
 	}
 	handler := authhandler.NewHandler(mockSvc, nil, validator.New())
@@ -311,8 +311,8 @@ func TestAuthHandler_ForgotPassword_Success(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	handler.ForgotPassword(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("expected status 202 Accepted, got %d", rec.Code)
 	}
 }
 
@@ -347,8 +347,8 @@ func TestAuthHandler_ResendVerify_Success(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	handler.ResendVerify(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("expected status 202 Accepted, got %d", rec.Code)
 	}
 }
 

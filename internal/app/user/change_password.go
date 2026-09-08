@@ -4,10 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/labib0x9/ffgif/internal/domain/auth"
-	"github.com/labib0x9/ffgif/internal/domain/user"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 )
 
 func (s *service) ChangePassword(ctx context.Context, id string, currentPass string, pass string, confirmPass string) error {
@@ -25,7 +26,7 @@ func (s *service) ChangePassword(ctx context.Context, id string, currentPass str
 	}
 
 	if pass != confirmPass {
-		return auth.ErrPasswordMismatched
+		return apperr.ErrPasswordMismatched
 	}
 
 	if !s.hasher.CompareHashAndPassword(found.PasswordHash, currentPass) {
@@ -34,12 +35,12 @@ func (s *service) ChangePassword(ctx context.Context, id string, currentPass str
 
 	newPassHash, err := s.hasher.GenerateHash(pass)
 	if err != nil {
-		return user.ErrHashGenFailed
+		return fmt.Errorf("hasher.GenerateHash: %w: %w", apperr.ErrHashGenFailed, err)
 	}
 
 	err = s.userRepo.ChangePassword(ctx, id, newPassHash)
 	if err != nil {
-		return user.ErrTableUpdateFailed
+		return fmt.Errorf("userRepo.ChangePassword: %w: %w", apperr.ErrTableUpdateFailed, err)
 	}
 	return nil
 }

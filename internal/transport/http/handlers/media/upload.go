@@ -13,24 +13,25 @@ type uploadRequest struct {
 }
 
 func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
 	var req uploadRequest
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&req); err != nil {
-		httputil.SendError(w, "Bad request", http.StatusBadRequest)
-		slog.Warn("Upload: bad json body", "error", err)
+		httputil.SendError(w, httputil.BAD_REQUEST, "Bad request", http.StatusBadRequest)
+		slog.Warn("media handler - Upload() = bad json body", "request_id", reqId, "error", err)
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		httputil.SendError(w, "invalid credentials", http.StatusUnauthorized)
-		slog.Warn("Upload: struct validation failed", "error", err)
+		httputil.SendError(w, httputil.VALIDATION_FAILED, "field required", http.StatusUnprocessableEntity)
+		slog.Warn("media handler - Upload() = struct validation failed", "request_id", reqId, "error", err)
 		return
 	}
 
 	claims, ok := httputil.GetClaims(r.Context())
 	if !ok {
-		httputil.SendError(w, "internal server error", http.StatusInternalServerError)
-		slog.Warn("Upload: failed to get claims", "Addr", r.RemoteAddr)
+		httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
+		slog.Error("media handler - Upload() = failed to get claims", "request_id", reqId, "err", "claims missing")
 		return
 	}
 
@@ -39,12 +40,14 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		switch err {
 		default:
 			{
-				httputil.SendError(w, "internal server error", http.StatusInternalServerError)
+				httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 			}
 		}
-		slog.Error("srv.Upload()", "error", err)
+		slog.Error("media handler - Upload()", "request_id", reqId, "err", err)
 		return
 	}
+
+	w.Header().Set("Location", "/uploads/"+result.Key)
 
 	httputil.SendJson(w, result, http.StatusCreated)
 }

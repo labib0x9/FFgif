@@ -56,7 +56,7 @@ func (f *fmeg) Process(ctx context.Context, JobId string, Key string, Start floa
 
 	videoThumbGenerator := NewThumbGenerator(ctx, inputPath, thumpOutputPath, Start+1.0)
 	if err := videoThumbGenerator.Run(); err != nil {
-		return nil, fmt.Errorf("ffmpeg failed to generate thumbnail from video")
+		return nil, fmt.Errorf("ffmpeg failed to generate thumbnail from video: %w", err)
 	}
 
 	gifKey := random.GenerateRandomID().String() + "_output.gif"
@@ -101,12 +101,12 @@ func (f *fmeg) PreProcess(ctx context.Context, key string) (*processor.PrePreces
 
 	mp4Converter := NewMp4Converter(ctx, inputPath, outputPath, result.Stream[0].CodecName)
 	if err := mp4Converter.Run(); err != nil {
-		return nil, fmt.Errorf("ffmpeg failed to convert raw video to mp4")
+		return nil, fmt.Errorf("ffmpeg failed to convert raw video to mp4: %w", err)
 	}
 
 	videoThumbGenerator := NewThumbGenerator(ctx, outputPath, thumpOutputPath, 1.0)
 	if err := videoThumbGenerator.Run(); err != nil {
-		return nil, fmt.Errorf("ffmpeg failed to generate thumbnail from raw video")
+		return nil, fmt.Errorf("ffmpeg failed to generate thumbnail from raw video: %w", err)
 	}
 
 	videoKey := "converted_" + random.GenerateRandomID().String() + ".mp4"

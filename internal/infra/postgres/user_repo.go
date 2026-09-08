@@ -15,11 +15,11 @@ func NewUserRepository(db *sqlx.DB) user.UserRepository {
 	return &userRepo{db: db}
 }
 
-func (r *userRepo) GetProfile(ctx context.Context, id string) (user.ProfileResponse, error) {
+func (r *userRepo) GetProfile(ctx context.Context, id string, forUpdate bool) (user.ProfileResponse, error) {
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
-			u.username, p.profile_pic, u.fullname, u.email, u.is_verified
+			u.username, p.profile_pic, u.fullname, u.email, u.is_verified, u.updated_at
 		from profiles p
 		left join users u
 		on
@@ -27,7 +27,9 @@ func (r *userRepo) GetProfile(ctx context.Context, id string) (user.ProfileRespo
 		where
 		 	u.id = $1
 	`
-	// query := `select * from profiles where user_id = $1`
+	if forUpdate {
+		query += "for update"
+	}
 	var profile user.ProfileResponse
 	if err := sqlx.GetContext(ctx, db, &profile, query, id); err != nil {
 		return user.ProfileResponse{}, err
@@ -46,35 +48,37 @@ func (r *userRepo) SetProfile(ctx context.Context, profile user.Profile) error {
 	return err
 }
 
-func (r *userRepo) UpdateProfile(ctx context.Context, profile user.ProfileResponse, userId string) (user.ProfileResponse, error) {
+func (r *userRepo) UpdateProfile(ctx context.Context, req user.ProfileUpdateRequest, userId string) (user.ProfileResponse, error) {
 	db := getDBFromCtx(ctx, r.db)
-	query1 := `
-	update users 
-	set
-		username = COALESCE($1, username),
-		fullname = COALESCE($2, fullname),
-		updated_at = NOW()
-	where id = $3
-	`
-	query2 := `
-	update profiles
-	set
-		profile_pic = COALESCE($1, profile_pic),
-		updated_at = NOW()
-	where user_id = $2
+	query := `
+		WITH updated_user AS (
+			UPDATE users
+			SET
+				username = COALESCE($1, username),
+				fullname = COALESCE($2, fullname),
+				updated_at = NOW()
+			WHERE id = $3
+			RETURNING id, username, fullname, email, is_verified, updated_at
+		),
+		updated_profile AS (
+			UPDATE profiles
+			SET
+				profile_pic = COALESCE($4, profile_pic),
+				updated_at = NOW()
+			WHERE user_id = $3
+			RETURNING user_id, profile_pic
+		)
+		SELECT u.username, u.fullname, u.email, u.is_verified, p.profile_pic, u.updated_at
+		FROM updated_user u
+		LEFT JOIN updated_profile p ON p.user_id = u.id
 	`
 
-	_, err := db.ExecContext(ctx, query1, profile.Username, profile.Fullname, userId)
+	var resp user.ProfileResponse
+	err := sqlx.GetContext(ctx, db, &resp, query, req.Username, req.Fullname, userId, req.ProfilePic)
 	if err != nil {
 		return user.ProfileResponse{}, err
 	}
-
-	_, err = db.ExecContext(ctx, query2, profile.ProfilePic, userId)
-	if err != nil {
-		return user.ProfileResponse{}, err
-	}
-
-	return r.GetProfile(ctx, userId)
+	return resp, nil
 }
 
 func (r *userRepo) ChangePassword(ctx context.Context, userId string, hash string) error {

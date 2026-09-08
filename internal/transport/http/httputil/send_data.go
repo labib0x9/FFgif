@@ -19,12 +19,13 @@ func SendJson(w http.ResponseWriter, v any, statusCode int) {
 	buf.WriteTo(w)
 }
 
-func SendError(w http.ResponseWriter, v string, statusCode int) {
+func SendError(w http.ResponseWriter, errorCode string, message string, statusCode int) {
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
 	if err := encoder.Encode(map[string]any{
-		"error": v,
-		"code":  statusCode,
+		"error_code": errorCode,
+		"message":    message,
+		"status":     statusCode,
 	}); err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return

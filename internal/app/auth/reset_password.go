@@ -2,15 +2,17 @@ package auth
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/port/queue"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 )
 
 func (s *service) ResetPasswordGet(ctx context.Context, token string) (string, error) {
 	oldToken, err := s.reseterRepo.GetByToken(ctx, token)
 	if err != nil {
-		return "", auth.ErrReseterTokenFatchFailed
+		return "", fmt.Errorf("reseterRepo.GetByToken: %w: %w", auth.ErrReseterTokenFatchFailed, err)
 	}
 	return oldToken.Token, nil
 }
@@ -18,7 +20,7 @@ func (s *service) ResetPasswordGet(ctx context.Context, token string) (string, e
 func (s *service) ResetPasswordPost(ctx context.Context, token string, pass string, confirmPass string) error {
 	oldToken, err := s.reseterRepo.GetByToken(ctx, token)
 	if err != nil {
-		return auth.ErrReseterTokenFatchFailed
+		return fmt.Errorf("reseterRepo.GetByToken: %w: %w", auth.ErrReseterTokenFatchFailed, err)
 	}
 
 	user, err := s.authRepo.GetById(ctx, oldToken.UserId)
@@ -49,7 +51,7 @@ func (s *service) ResetPasswordPost(ctx context.Context, token string, pass stri
 	}
 
 	if err := s.queue.PublishEmail(ctx, mqMsg); err != nil {
-		return auth.ErrMessageQueueFailed
+		return fmt.Errorf("queue.PublishEmail: %w: %w", apperr.ErrMessageQueueFailed, err)
 	}
 	return nil
 }

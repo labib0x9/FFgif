@@ -22,6 +22,7 @@ import (
 	userapp "github.com/labib0x9/ffgif/internal/app/user"
 	domainauth "github.com/labib0x9/ffgif/internal/domain/auth"
 	domainmedia "github.com/labib0x9/ffgif/internal/domain/media"
+	domainuser "github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/internal/infra/ffmpeg"
 	minioinfra "github.com/labib0x9/ffgif/internal/infra/minio"
 	postgresinfra "github.com/labib0x9/ffgif/internal/infra/postgres"
@@ -150,7 +151,7 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 	reseterRepo := postgresinfra.NewReseterRepo(dbConn)
 	quotaRepo := postgresinfra.NewQuotaRepository(dbConn)
 	lastUploadRepo := postgresinfra.NewLastVideoRepository(dbConn)
-	gifRepo := postgresinfra.NewGifRepository(dbConn, cfg.Minio)
+	gifRepo := postgresinfra.NewGifRepository(dbConn)
 	shareRepo := postgresinfra.NewShareRepository(dbConn)
 	txManager := postgresinfra.NewTxManager(dbConn)
 
@@ -166,9 +167,9 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 
 	// 7. Real App Services
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rmq, *jwtProvider, *hasher, txManager)
-	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, shareRepo, lastUploadRepo, storageRepo, rmq, cacheRepo, ffmpegProcessor, cfg)
-	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo)
-	userService := userapp.NewService(userRepo, quotaRepo, authRepo, *jwtProvider, *hasher)
+	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, shareRepo, lastUploadRepo, storageRepo, txManager, rmq, cacheRepo, ffmpegProcessor, cfg)
+	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo, rmq)
+	userService := userapp.NewService(userRepo, quotaRepo, authRepo, txManager, *jwtProvider, *hasher)
 
 	// 8. Real Handlers & Routing
 	authH := authhandler.NewHandler(authService, middlewares, val)
@@ -339,6 +340,12 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 	}
 	t.Log("✓ (9/28) GET /users/profile/me passed")
 
+	var userProf domainuser.ProfileResponse
+	if err := json.Unmarshal(profileRec.Body.Bytes(), &userProf); err != nil {
+		t.Fatalf("failed to decode profile body: %v", err)
+	}
+	userETag := userProf.UpdatedAt.Format(time.RFC3339Nano)
+
 	// Route 10: GET /users/me/quota
 	quotaReq := httptest.NewRequest(http.MethodGet, "/users/me/quota", nil)
 	quotaReq.Header.Set("Authorization", "Bearer "+token)
@@ -350,13 +357,16 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 	t.Log("✓ (10/28) GET /users/me/quota passed")
 
 	// Route 11: PATCH /users/profile/me
-	updateProfBody, _ := json.Marshal(map[string]string{
-		"username":  "alice" + testID,
-		"full_name": "Alice Updated",
-		"email":     aliceEmail,
+	newUName := "alice" + testID
+	newFName := "Alice Updated"
+	updateProfBody, _ := json.Marshal(domainuser.ProfileUpdateRequest{
+		Username: &newUName,
+		Fullname: &newFName,
+		Email:    &aliceEmail,
 	})
 	updateProfReq := httptest.NewRequest(http.MethodPatch, "/users/profile/me", bytes.NewReader(updateProfBody))
 	updateProfReq.Header.Set("Authorization", "Bearer "+token)
+	updateProfReq.Header.Set("If-Match", userETag)
 	updateProfRec := httptest.NewRecorder()
 	wrappedHandler.ServeHTTP(updateProfRec, updateProfReq)
 	if updateProfRec.Code != http.StatusOK {
@@ -525,8 +535,16 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 	t.Log("✓ (21/28) POST /gifs/me/recents/{key}/save passed")
 
 	// Route 22: PATCH /gifs/me/{key}
-	updateGifReq := httptest.NewRequest(http.MethodPatch, "/gifs/me/"+generatedGifKey, nil)
+	var fetchedGif domainmedia.GifResponse
+	if err := json.Unmarshal(getByKeyRec.Body.Bytes(), &fetchedGif); err != nil {
+		t.Fatalf("failed to decode fetched gif for etag: %v", err)
+	}
+	gifETag := fetchedGif.UpdatedAt.Format(time.RFC3339Nano)
+	newName := "renamed.gif"
+	updatePayload, _ := json.Marshal(domainmedia.GifUpdateRequest{Name: &newName})
+	updateGifReq := httptest.NewRequest(http.MethodPatch, "/gifs/me/"+generatedGifKey, bytes.NewReader(updatePayload))
 	updateGifReq.Header.Set("Authorization", "Bearer "+token)
+	updateGifReq.Header.Set("If-Match", gifETag)
 	updateGifRec := httptest.NewRecorder()
 	wrappedHandler.ServeHTTP(updateGifRec, updateGifReq)
 	if updateGifRec.Code != http.StatusOK {

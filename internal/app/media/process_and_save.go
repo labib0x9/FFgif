@@ -18,7 +18,7 @@ func (s *service) ProcessAndSave(ctx context.Context, key string) error {
 
 	res, err := s.processor.PreProcess(ctx, key)
 	if err != nil {
-		return media.ErrInvalidFiletype
+		return fmt.Errorf("processor.PreProcess: %w: %w", media.ErrInvalidFiletype, err)
 	}
 
 	userId := seperateUserId(key)
