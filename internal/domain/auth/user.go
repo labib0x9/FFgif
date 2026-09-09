@@ -30,6 +30,7 @@ type User struct {
 	DeletedAt    *time.Time `json:"deleted_at"    db:"deleted_at"`
 }
 
+//go:generate mockgen -source=user.go -destination=mocks/mock_auth_repository.go -package=mocks
 type AuthRepository interface {
 	GetByEmail(ctx context.Context, email string) (User, error)
 	GetById(ctx context.Context, id uuid.UUID) (User, error)

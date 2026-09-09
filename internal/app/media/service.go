@@ -14,6 +14,7 @@ import (
 	"github.com/labib0x9/ffgif/internal/port/queue"
 )
 
+//go:generate mockgen -source=service.go -destination=mocks/mock_media_service.go -package=mocks
 type Service interface {
 	Delete(ctx context.Context, userId string, key string) error
 	Download(ctx context.Context, userId, key string) (string, error)

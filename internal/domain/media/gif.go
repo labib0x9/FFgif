@@ -45,6 +45,7 @@ type GifUpdateRequest struct {
 	Persist *bool   `json:"persist,omitempty" db:"persist"`
 }
 
+//go:generate mockgen -source=gif.go -destination=mocks/mock_gif_repository.go -package=mocks
 type GifRepository interface {
 	Create(ctx context.Context, gif Gif) error
 	Get(ctx context.Context, user_id string, status string) ([]GifResponse, error)

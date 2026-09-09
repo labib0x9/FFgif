@@ -29,6 +29,7 @@ type Verifier struct {
 	ExpireAt  time.Time `json:"expire_at"    db:"expire_at"`
 }
 
+//go:generate mockgen -source=verifier.go -destination=mocks/mock_verifier_repository.go -package=mocks
 type VerifierRepository interface {
 	Create(ctx context.Context, verifier Verifier) error
 	GetByHash(ctx context.Context, tokenHash string) (Verifier, error)

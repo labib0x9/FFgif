@@ -15,6 +15,7 @@ type Quota struct {
 	GitCount   int       `json:"gif_limit" db:"gif_limit"`
 }
 
+//go:generate mockgen -source=quota.go -destination=mocks/mock_quota_repository.go -package=mocks
 type QuotaRepository interface {
 	Create(ctx context.Context, quota Quota) error
 	GetById(ctx context.Context, userId string) (*Quota, error)

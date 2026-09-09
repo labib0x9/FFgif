@@ -16,6 +16,7 @@ type Reseter struct {
 	ExpireAt  time.Time `json:"expire_at"    db:"expire_at"`
 }
 
+//go:generate mockgen -source=reseter.go -destination=mocks/mock_reseter_repository.go -package=mocks
 type ReseterRepository interface {
 	GetById(ctx context.Context, id uuid.UUID) (Reseter, error)
 	Update(ctx context.Context, reseter Reseter) error
