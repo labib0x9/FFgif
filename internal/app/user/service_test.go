@@ -8,377 +8,442 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/mock/gomock"
+	"golang.org/x/crypto/bcrypt"
+
 	appuser "github.com/labib0x9/ffgif/internal/app/user"
 	domainauth "github.com/labib0x9/ffgif/internal/domain/auth"
+	authmocks "github.com/labib0x9/ffgif/internal/domain/auth/mocks"
 	domainmedia "github.com/labib0x9/ffgif/internal/domain/media"
 	domainuser "github.com/labib0x9/ffgif/internal/domain/user"
+	usermocks "github.com/labib0x9/ffgif/internal/domain/user/mocks"
+	dbmocks "github.com/labib0x9/ffgif/internal/port/db/mocks"
+	jwtpkg "github.com/labib0x9/ffgif/pkg/jwt"
 	"github.com/labib0x9/ffgif/pkg/apperr"
-	"github.com/labib0x9/ffgif/pkg/jwt"
 	"github.com/labib0x9/ffgif/pkg/password"
 )
 
-// --- Mocks ---
-
-type mockTxManager struct{}
-
-func (m *mockTxManager) With(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
-	return fn(ctx)
+type userDeps struct {
+	userRepo  *usermocks.MockUserRepository
+	quotaRepo *usermocks.MockQuotaRepository
+	authRepo  *authmocks.MockAuthRepository
+	tnx       *dbmocks.MockTxManager
+	hasher    *password.Hasher
+	svc       appuser.Service
 }
 
-func (m *mockTxManager) WithRC(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
-	return fn(ctx)
-}
-
-type mockUserRepo struct {
-	getProfileFunc     func(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error)
-	updateProfileFunc  func(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error)
-	setProfileFunc     func(ctx context.Context, profile domainuser.Profile) error
-	changePasswordFunc func(ctx context.Context, userId string, hash string) error
-}
-
-func (m *mockUserRepo) GetProfile(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
-	if m.getProfileFunc != nil {
-		return m.getProfileFunc(ctx, id, forUpdate)
+func newUserDeps(t *testing.T) *userDeps {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	d := &userDeps{
+		userRepo:  usermocks.NewMockUserRepository(ctrl),
+		quotaRepo: usermocks.NewMockQuotaRepository(ctrl),
+		authRepo:  authmocks.NewMockAuthRepository(ctrl),
+		tnx:       dbmocks.NewMockTxManager(ctrl),
+		hasher:    password.NewHasher("pepper", bcrypt.MinCost),
 	}
-	return domainuser.ProfileResponse{}, nil
-}
-func (m *mockUserRepo) UpdateProfile(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error) {
-	if m.updateProfileFunc != nil {
-		return m.updateProfileFunc(ctx, req, id)
-	}
-	return domainuser.ProfileResponse{}, nil
-}
-func (m *mockUserRepo) SetProfile(ctx context.Context, profile domainuser.Profile) error {
-	if m.setProfileFunc != nil {
-		return m.setProfileFunc(ctx, profile)
-	}
-	return nil
-}
-func (m *mockUserRepo) ChangePassword(ctx context.Context, userId string, hash string) error {
-	if m.changePasswordFunc != nil {
-		return m.changePasswordFunc(ctx, userId, hash)
-	}
-	return nil
+	d.svc = appuser.NewService(
+		d.userRepo, d.quotaRepo, d.authRepo, d.tnx,
+		*jwtpkg.NewJwt([]byte("test-secret-key-1234")), *d.hasher,
+	)
+	return d
 }
 
-type mockQuotaRepo struct {
-	getByIdFunc func(ctx context.Context, id string) (*domainuser.Quota, error)
+func (d *userDeps) passthroughRC(times int) {
+	d.tnx.EXPECT().
+		WithRC(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, fn func(context.Context) (any, error)) (any, error) {
+			return fn(ctx)
+		}).
+		Times(times)
 }
 
-func (m *mockQuotaRepo) Create(ctx context.Context, quota domainuser.Quota) error { return nil }
-func (m *mockQuotaRepo) GetById(ctx context.Context, userId string) (*domainuser.Quota, error) {
-	if m.getByIdFunc != nil {
-		return m.getByIdFunc(ctx, userId)
-	}
-	return &domainuser.Quota{UserID: uuid.New(), TotalBytes: 1024 * 1024, GifCount: 5}, nil
-}
+// ===========================================================================
+// ChangePassword
+// ===========================================================================
 
-type mockAuthRepo struct {
-	getByIdFunc        func(ctx context.Context, id uuid.UUID) (domainauth.User, error)
-	deleteByIdFunc     func(ctx context.Context, id uuid.UUID) error
-	updatePasswordFunc func(ctx context.Context, id uuid.UUID, passHash string) error
-}
-
-func (m *mockAuthRepo) GetByEmail(ctx context.Context, email string) (domainauth.User, error) {
-	return domainauth.User{}, nil
-}
-func (m *mockAuthRepo) GetById(ctx context.Context, id uuid.UUID) (domainauth.User, error) {
-	if m.getByIdFunc != nil {
-		return m.getByIdFunc(ctx, id)
-	}
-	return domainauth.User{}, nil
-}
-func (m *mockAuthRepo) Create(ctx context.Context, user domainauth.User) (domainauth.User, error) {
-	return user, nil
-}
-func (m *mockAuthRepo) DeleteById(ctx context.Context, id uuid.UUID) error {
-	if m.deleteByIdFunc != nil {
-		return m.deleteByIdFunc(ctx, id)
-	}
-	return nil
-}
-func (m *mockAuthRepo) DeleteByEmail(ctx context.Context, email string) error { return nil }
-func (m *mockAuthRepo) UpdatePassword(ctx context.Context, id uuid.UUID, passHash string) error {
-	if m.updatePasswordFunc != nil {
-		return m.updatePasswordFunc(ctx, id, passHash)
-	}
-	return nil
-}
-func (m *mockAuthRepo) SetVerified(ctx context.Context, userId uuid.UUID) error { return nil }
-func (m *mockAuthRepo) Upgrade(ctx context.Context, id string, user domainauth.User) (domainauth.User, error) {
-	return user, nil
-}
-
-func newTestUserService(userRepo *mockUserRepo, quotaRepo *mockQuotaRepo, authRepo *mockAuthRepo, hasher *password.Hasher) appuser.Service {
-	if userRepo == nil {
-		userRepo = &mockUserRepo{}
-	}
-	if quotaRepo == nil {
-		quotaRepo = &mockQuotaRepo{}
-	}
-	if authRepo == nil {
-		authRepo = &mockAuthRepo{}
-	}
-	if hasher == nil {
-		h := password.NewHasher("test-pepper", 10)
-		hasher = h
-	}
-	jwtProvider := jwt.NewJwt([]byte("test-user-secret"))
-	return appuser.NewService(userRepo, quotaRepo, authRepo, &mockTxManager{}, *jwtProvider, *hasher)
-}
-
-// --- Tests ---
-
-func TestUserService_GetProfile_Success(t *testing.T) {
-	expectedProfile := domainuser.ProfileResponse{
-		Username: "john_doe",
-		Email:    "john@example.com",
-		Fullname: "John Doe",
-	}
-
-	userRepo := &mockUserRepo{
-		getProfileFunc: func(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
-			return expectedProfile, nil
-		},
-	}
-
-	svc := newTestUserService(userRepo, nil, nil, nil)
-
-	profile, err := svc.GetProfile(context.Background(), "user-123")
+func TestChangePassword_StoresANewHashOfTheNewPassword(t *testing.T) {
+	d := newUserDeps(t)
+	id := uuid.New()
+	current, err := d.hasher.GenerateHash("old-password!")
 	if err != nil {
-		t.Fatalf("expected GetProfile to succeed, got: %v", err)
+		t.Fatalf("GenerateHash: %v", err)
 	}
 
-	if profile.Username != expectedProfile.Username {
-		t.Errorf("expected username %s, got %s", expectedProfile.Username, profile.Username)
-	}
-}
+	d.authRepo.EXPECT().
+		GetById(gomock.Any(), gomock.Eq(id)).
+		Return(domainauth.User{Id: id, PasswordHash: current}, nil).
+		Times(1)
 
-func TestUserService_GetProfile_NotFound(t *testing.T) {
-	userRepo := &mockUserRepo{
-		getProfileFunc: func(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
-			return domainuser.ProfileResponse{}, sql.ErrNoRows
-		},
-	}
-
-	svc := newTestUserService(userRepo, nil, nil, nil)
-
-	_, err := svc.GetProfile(context.Background(), "missing-user")
-	if !errors.Is(err, domainauth.ErrUserNotFound) {
-		t.Errorf("expected ErrUserNotFound, got %v", err)
-	}
-}
-
-func TestUserService_UpdateProfile_Success(t *testing.T) {
-	now := time.Now()
-	etag := now.Format(time.RFC3339Nano)
-	newName := "updated_john"
-	newFullname := "John Updated"
-
-	inputReq := domainuser.ProfileUpdateRequest{
-		Username: &newName,
-		Fullname: &newFullname,
-	}
-
-	userRepo := &mockUserRepo{
-		getProfileFunc: func(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
-			return domainuser.ProfileResponse{Username: "john", Fullname: "John", UpdatedAt: now}, nil
-		},
-		updateProfileFunc: func(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error) {
-			return domainuser.ProfileResponse{Username: *req.Username, Fullname: *req.Fullname, UpdatedAt: time.Now()}, nil
-		},
-	}
-
-	svc := newTestUserService(userRepo, nil, nil, nil)
-
-	updated, err := svc.UpdateProfile(context.Background(), inputReq, "user-123", etag)
-	if err != nil {
-		t.Fatalf("expected UpdateProfile to succeed, got %v", err)
-	}
-	if updated.Username != "updated_john" {
-		t.Errorf("expected updated_john, got %s", updated.Username)
-	}
-}
-
-func TestUserService_UpdateProfile_ETagMismatch(t *testing.T) {
-	now := time.Now()
-	outdatedETag := now.Add(-time.Hour).Format(time.RFC3339Nano)
-	newName := "updated_john"
-
-	inputReq := domainuser.ProfileUpdateRequest{
-		Username: &newName,
-	}
-
-	userRepo := &mockUserRepo{
-		getProfileFunc: func(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
-			return domainuser.ProfileResponse{Username: "john", UpdatedAt: now}, nil
-		},
-	}
-
-	svc := newTestUserService(userRepo, nil, nil, nil)
-
-	_, err := svc.UpdateProfile(context.Background(), inputReq, "user-123", outdatedETag)
-	if !errors.Is(err, domainmedia.ErrETagValidationFailed) {
-		t.Errorf("expected ErrETagValidationFailed, got %v", err)
-	}
-}
-
-func TestUserService_GetQuota_Success(t *testing.T) {
-	userId := uuid.New()
-	quotaRepo := &mockQuotaRepo{
-		getByIdFunc: func(ctx context.Context, id string) (*domainuser.Quota, error) {
-			return &domainuser.Quota{UserID: userId, TotalBytes: 500000, GifCount: 5}, nil
-		},
-	}
-
-	svc := newTestUserService(nil, quotaRepo, nil, nil)
-
-	quota, err := svc.GetQuota(context.Background(), userId.String())
-	if err != nil {
-		t.Fatalf("expected GetQuota to succeed, got: %v", err)
-	}
-
-	if quota.TotalBytes != 500000 {
-		t.Errorf("expected TotalBytes 500000, got %d", quota.TotalBytes)
-	}
-}
-
-func TestUserService_ChangePassword_Success(t *testing.T) {
-	hasher := password.NewHasher("test-pepper", 10)
-	oldHash, _ := hasher.GenerateHash("oldPass123")
-	userId := uuid.New()
-	updated := false
-
-	userRepo := &mockUserRepo{
-		changePasswordFunc: func(ctx context.Context, uid string, hash string) error {
-			updated = true
-			if !hasher.CompareHashAndPassword(hash, "newPass123") {
-				t.Errorf("expected updated password hash to match newPass123")
+	d.userRepo.EXPECT().
+		ChangePassword(gomock.Any(), gomock.Eq(id.String()), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, hash string) error {
+			if hash == "new-password!" {
+				t.Error("the new password was stored in plaintext")
+			}
+			if hash == current {
+				t.Error("the stored hash did not change")
+			}
+			if !d.hasher.CompareHashAndPassword(hash, "new-password!") {
+				t.Error("the stored hash does not verify against the new password")
 			}
 			return nil
+		}).
+		Times(1)
+
+	if err := d.svc.ChangePassword(context.Background(), id.String(),
+		"old-password!", "new-password!", "new-password!"); err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+}
+
+func TestChangePassword_Rejections(t *testing.T) {
+	id := uuid.New()
+
+	tests := []struct {
+		name        string
+		userID      string
+		current     string
+		newPass     string
+		confirm     string
+		storedFor   string // plaintext the stored hash was made from
+		repoErr     error
+		wantErr     error
+		wantAttempt bool // whether userRepo.ChangePassword may be called
+	}{
+		{
+			name:      "wrong current password",
+			userID:    id.String(),
+			current:   "not-my-password",
+			newPass:   "new-password!",
+			confirm:   "new-password!",
+			storedFor: "old-password!",
+			wantErr:   domainauth.ErrInvalidCredential,
+		},
+		{
+			name:      "new and confirmation do not match",
+			userID:    id.String(),
+			current:   "old-password!",
+			newPass:   "new-password!",
+			confirm:   "typo-password!",
+			storedFor: "old-password!",
+			wantErr:   apperr.ErrPasswordMismatched,
+		},
+		{
+			name:      "empty current password",
+			userID:    id.String(),
+			current:   "",
+			newPass:   "new-password!",
+			confirm:   "new-password!",
+			storedFor: "old-password!",
+			wantErr:   domainauth.ErrInvalidCredential,
+		},
+		{
+			name:      "unknown user",
+			userID:    id.String(),
+			current:   "old-password!",
+			newPass:   "new-password!",
+			confirm:   "new-password!",
+			storedFor: "old-password!",
+			repoErr:   sql.ErrNoRows,
+			wantErr:   domainauth.ErrUserNotFound,
 		},
 	}
 
-	authRepo := &mockAuthRepo{
-		getByIdFunc: func(ctx context.Context, id uuid.UUID) (domainauth.User, error) {
-			return domainauth.User{Id: id, PasswordHash: oldHash}, nil
-		},
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := newUserDeps(t)
+			hash, err := d.hasher.GenerateHash(tc.storedFor)
+			if err != nil {
+				t.Fatalf("GenerateHash: %v", err)
+			}
+
+			d.authRepo.EXPECT().
+				GetById(gomock.Any(), gomock.Eq(id)).
+				Return(domainauth.User{Id: id, PasswordHash: hash}, tc.repoErr).
+				Times(1)
+
+			// userRepo.ChangePassword must not be reached for any of these.
+			got := d.svc.ChangePassword(context.Background(), tc.userID, tc.current, tc.newPass, tc.confirm)
+			if !errors.Is(got, tc.wantErr) {
+				t.Errorf("err = %v, want %v", got, tc.wantErr)
+			}
+		})
 	}
+}
 
-	svc := newTestUserService(userRepo, nil, authRepo, hasher)
+func TestChangePassword_MalformedUserIdNeverTouchesTheDatabase(t *testing.T) {
+	d := newUserDeps(t)
+	// authRepo.GetById must not be called for an unparseable id.
+	if err := d.svc.ChangePassword(context.Background(), "not-a-uuid",
+		"old", "new", "new"); err == nil {
+		t.Error("a malformed user id was accepted")
+	}
+}
 
-	err := svc.ChangePassword(context.Background(), userId.String(), "oldPass123", "newPass123", "newPass123")
+// EXPECTED TO FAIL: internal/app/user/change_password.go compares the new
+// password only against confirmPass. Setting the password to its current value
+// is accepted and rewrites the row with a fresh bcrypt hash, so the user
+// believes they rotated a credential that in fact did not change. A rotation
+// endpoint must refuse a no-op change.
+func TestChangePassword_RefusesToReuseTheCurrentPassword(t *testing.T) {
+	d := newUserDeps(t)
+	id := uuid.New()
+	hash, err := d.hasher.GenerateHash("same-password!")
 	if err != nil {
-		t.Fatalf("expected ChangePassword to succeed, got: %v", err)
+		t.Fatalf("GenerateHash: %v", err)
 	}
 
-	if !updated {
-		t.Errorf("expected password to be updated in database")
-	}
-}
+	d.authRepo.EXPECT().
+		GetById(gomock.Any(), gomock.Eq(id)).
+		Return(domainauth.User{Id: id, PasswordHash: hash}, nil).
+		Times(1)
 
-func TestUserService_ChangePassword_InvalidUUID(t *testing.T) {
-	svc := newTestUserService(nil, nil, nil, nil)
-
-	err := svc.ChangePassword(context.Background(), "not-a-valid-uuid", "old", "new", "new")
-	if err == nil {
-		t.Fatal("expected error on invalid UUID, got nil")
-	}
-}
-
-func TestUserService_ChangePassword_UserNotFound(t *testing.T) {
-	authRepo := &mockAuthRepo{
-		getByIdFunc: func(ctx context.Context, id uuid.UUID) (domainauth.User, error) {
-			return domainauth.User{}, sql.ErrNoRows
-		},
-	}
-
-	svc := newTestUserService(nil, nil, authRepo, nil)
-
-	err := svc.ChangePassword(context.Background(), uuid.New().String(), "old", "new", "new")
-	if !errors.Is(err, domainauth.ErrUserNotFound) {
-		t.Errorf("expected ErrUserNotFound, got %v", err)
-	}
-}
-
-func TestUserService_ChangePassword_Mismatch(t *testing.T) {
-	hasher := password.NewHasher("test-pepper", 10)
-	userId := uuid.New()
-	authRepo := &mockAuthRepo{
-		getByIdFunc: func(ctx context.Context, id uuid.UUID) (domainauth.User, error) {
-			return domainauth.User{Id: id}, nil
-		},
-	}
-
-	svc := newTestUserService(nil, nil, authRepo, hasher)
-
-	err := svc.ChangePassword(context.Background(), userId.String(), "old", "newPass1", "differentPass2")
-	if !errors.Is(err, apperr.ErrPasswordMismatched) {
-		t.Errorf("expected ErrPasswordMismatched, got %v", err)
-	}
-}
-
-func TestUserService_ChangePassword_WrongCurrentPassword(t *testing.T) {
-	hasher := password.NewHasher("test-pepper", 10)
-	hashedPass, _ := hasher.GenerateHash("actualPass123")
-	userId := uuid.New()
-
-	authRepo := &mockAuthRepo{
-		getByIdFunc: func(ctx context.Context, id uuid.UUID) (domainauth.User, error) {
-			return domainauth.User{Id: id, PasswordHash: hashedPass}, nil
-		},
-	}
-
-	svc := newTestUserService(nil, nil, authRepo, hasher)
-
-	err := svc.ChangePassword(context.Background(), userId.String(), "wrongCurrentPass", "newPass123", "newPass123")
-	if !errors.Is(err, domainauth.ErrInvalidCredential) {
-		t.Errorf("expected ErrInvalidCredential, got %v", err)
-	}
-}
-
-func TestUserService_DeleteUser_Success(t *testing.T) {
-	hasher := password.NewHasher("test-pepper", 10)
-	hashedPass, _ := hasher.GenerateHash("correctPass")
-	userId := uuid.New()
-	deleted := false
-
-	authRepo := &mockAuthRepo{
-		getByIdFunc: func(ctx context.Context, id uuid.UUID) (domainauth.User, error) {
-			return domainauth.User{Id: id, PasswordHash: hashedPass}, nil
-		},
-		deleteByIdFunc: func(ctx context.Context, id uuid.UUID) error {
-			deleted = true
+	d.userRepo.EXPECT().
+		ChangePassword(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _, newHash string) error {
+			t.Error("the password was 'changed' to the value it already had; " +
+				"the user is told the rotation succeeded but the credential is unchanged")
 			return nil
-		},
-	}
+		}).
+		AnyTimes()
 
-	svc := newTestUserService(nil, nil, authRepo, hasher)
-
-	err := svc.DeleteUser(context.Background(), userId.String(), "correctPass")
-	if err != nil {
-		t.Fatalf("expected DeleteUser to succeed, got %v", err)
-	}
-	if !deleted {
-		t.Errorf("expected user to be deleted from repository")
+	if err := d.svc.ChangePassword(context.Background(), id.String(),
+		"same-password!", "same-password!", "same-password!"); err == nil {
+		t.Error("ChangePassword accepted the current password as the new password")
 	}
 }
 
-func TestUserService_DeleteUser_WrongPassword(t *testing.T) {
-	hasher := password.NewHasher("test-pepper", 10)
-	hashedPass, _ := hasher.GenerateHash("correctPass")
-	userId := uuid.New()
+func TestChangePassword_RepositoryFailureIsReported(t *testing.T) {
+	d := newUserDeps(t)
+	id := uuid.New()
+	hash, _ := d.hasher.GenerateHash("old-password!")
 
-	authRepo := &mockAuthRepo{
-		getByIdFunc: func(ctx context.Context, id uuid.UUID) (domainauth.User, error) {
-			return domainauth.User{Id: id, PasswordHash: hashedPass}, nil
-		},
+	d.authRepo.EXPECT().GetById(gomock.Any(), gomock.Eq(id)).
+		Return(domainauth.User{Id: id, PasswordHash: hash}, nil).Times(1)
+	d.userRepo.EXPECT().ChangePassword(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(errors.New("update failed")).Times(1)
+
+	err := d.svc.ChangePassword(context.Background(), id.String(), "old-password!", "new!", "new!")
+	if !errors.Is(err, apperr.ErrTableUpdateFailed) {
+		t.Errorf("err = %v, want it to wrap ErrTableUpdateFailed", err)
 	}
+}
 
-	svc := newTestUserService(nil, nil, authRepo, hasher)
+// ===========================================================================
+// DeleteUser
+// ===========================================================================
 
-	err := svc.DeleteUser(context.Background(), userId.String(), "wrongPass")
+func TestDeleteUser_RequiresTheCorrectPassword(t *testing.T) {
+	d := newUserDeps(t)
+	id := uuid.New()
+	hash, _ := d.hasher.GenerateHash("my-password!")
+
+	d.authRepo.EXPECT().GetById(gomock.Any(), gomock.Eq(id)).
+		Return(domainauth.User{Id: id, PasswordHash: hash}, nil).Times(1)
+
+	// DeleteById must not be reached with the wrong password.
+	err := d.svc.DeleteUser(context.Background(), id.String(), "wrong-password")
 	if !errors.Is(err, domainauth.ErrInvalidCredential) {
-		t.Errorf("expected ErrInvalidCredential, got %v", err)
+		t.Errorf("err = %v, want ErrInvalidCredential", err)
+	}
+}
+
+func TestDeleteUser_DeletesTheCallersOwnIdOnly(t *testing.T) {
+	d := newUserDeps(t)
+	id := uuid.New()
+	hash, _ := d.hasher.GenerateHash("my-password!")
+
+	d.authRepo.EXPECT().GetById(gomock.Any(), gomock.Eq(id)).
+		Return(domainauth.User{Id: id, PasswordHash: hash}, nil).Times(1)
+
+	// The id deleted must be the one derived from the caller's own token,
+	// never anything taken from the request body.
+	d.authRepo.EXPECT().DeleteById(gomock.Any(), gomock.Eq(id)).Return(nil).Times(1)
+
+	if err := d.svc.DeleteUser(context.Background(), id.String(), "my-password!"); err != nil {
+		t.Fatalf("DeleteUser: %v", err)
+	}
+}
+
+// If the delete itself fails the caller must be told, not left believing their
+// account is gone while it is still live.
+func TestDeleteUser_DeleteFailureIsReported(t *testing.T) {
+	d := newUserDeps(t)
+	id := uuid.New()
+	hash, _ := d.hasher.GenerateHash("my-password!")
+
+	d.authRepo.EXPECT().GetById(gomock.Any(), gomock.Eq(id)).
+		Return(domainauth.User{Id: id, PasswordHash: hash}, nil).Times(1)
+	d.authRepo.EXPECT().DeleteById(gomock.Any(), gomock.Eq(id)).
+		Return(errors.New("fk violation: gifs still reference this user")).Times(1)
+
+	err := d.svc.DeleteUser(context.Background(), id.String(), "my-password!")
+	if !errors.Is(err, apperr.ErrTableUpdateFailed) {
+		t.Errorf("err = %v, want it to wrap ErrTableUpdateFailed", err)
+	}
+}
+
+// A lookup failure mid-request must abort before anything is deleted.
+func TestDeleteUser_LookupFailureLeavesTheAccountIntact(t *testing.T) {
+	d := newUserDeps(t)
+	id := uuid.New()
+
+	d.authRepo.EXPECT().GetById(gomock.Any(), gomock.Eq(id)).
+		Return(domainauth.User{}, errors.New("connection reset")).Times(1)
+
+	// DeleteById must not be reached.
+	if err := d.svc.DeleteUser(context.Background(), id.String(), "my-password!"); err == nil {
+		t.Error("want an error when the user cannot be loaded")
+	}
+}
+
+func TestDeleteUser_MalformedIdNeverTouchesTheDatabase(t *testing.T) {
+	d := newUserDeps(t)
+	if err := d.svc.DeleteUser(context.Background(), "not-a-uuid", "pw"); err == nil {
+		t.Error("a malformed user id was accepted")
+	}
+}
+
+// ===========================================================================
+// UpdateProfile
+// ===========================================================================
+
+func TestUpdateProfile_ForwardsTheRequestAndHonoursTheETag(t *testing.T) {
+	d := newUserDeps(t)
+	d.passthroughRC(1)
+	now := time.Now().UTC()
+	etag := now.Format(time.RFC3339Nano)
+
+	newName := "Updated Name"
+	req := domainuser.ProfileUpdateRequest{Fullname: &newName}
+
+	d.userRepo.EXPECT().
+		GetProfile(gomock.Any(), gomock.Eq("user-1"), gomock.Eq(true)).
+		Return(domainuser.ProfileResponse{Username: "u", UpdatedAt: now}, nil).
+		Times(1)
+
+	d.userRepo.EXPECT().
+		UpdateProfile(gomock.Any(), gomock.Any(), gomock.Eq("user-1")).
+		DoAndReturn(func(_ context.Context, r domainuser.ProfileUpdateRequest, _ string) (domainuser.ProfileResponse, error) {
+			if r.Fullname == nil || *r.Fullname != "Updated Name" {
+				t.Errorf("Fullname = %v, want Updated Name", r.Fullname)
+			}
+			if r.Email != nil {
+				t.Errorf("Email = %q, want nil for a field the client did not send", *r.Email)
+			}
+			return domainuser.ProfileResponse{Fullname: "Updated Name"}, nil
+		}).
+		Times(1)
+
+	got, err := d.svc.UpdateProfile(context.Background(), req, "user-1", etag)
+	if err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+	if got.Fullname != "Updated Name" {
+		t.Errorf("Fullname = %q, want Updated Name", got.Fullname)
+	}
+}
+
+func TestUpdateProfile_StaleETagAbortsTheWrite(t *testing.T) {
+	d := newUserDeps(t)
+	d.passthroughRC(1)
+
+	d.userRepo.EXPECT().
+		GetProfile(gomock.Any(), gomock.Eq("user-1"), gomock.Eq(true)).
+		Return(domainuser.ProfileResponse{UpdatedAt: time.Now().UTC()}, nil).
+		Times(1)
+
+	// UpdateProfile must not be reached.
+	_, err := d.svc.UpdateProfile(context.Background(),
+		domainuser.ProfileUpdateRequest{}, "user-1", "1999-01-01T00:00:00Z")
+	if !errors.Is(err, domainmedia.ErrETagValidationFailed) {
+		t.Errorf("err = %v, want ErrETagValidationFailed", err)
+	}
+}
+
+func TestUpdateProfile_RowLockIsTakenBeforeTheRead(t *testing.T) {
+	d := newUserDeps(t)
+	d.passthroughRC(1)
+	now := time.Now().UTC()
+
+	// forUpdate must be true so the read-modify-write is serialised
+	d.userRepo.EXPECT().
+		GetProfile(gomock.Any(), gomock.Any(), gomock.Eq(true)).
+		Return(domainuser.ProfileResponse{UpdatedAt: now}, nil).
+		Times(1)
+	d.userRepo.EXPECT().
+		UpdateProfile(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(domainuser.ProfileResponse{}, nil).
+		Times(1)
+
+	if _, err := d.svc.UpdateProfile(context.Background(),
+		domainuser.ProfileUpdateRequest{}, "user-1", now.Format(time.RFC3339Nano)); err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+}
+
+// ===========================================================================
+// GetProfile / GetQuota
+// ===========================================================================
+
+func TestGetProfile(t *testing.T) {
+	t.Run("existing user", func(t *testing.T) {
+		d := newUserDeps(t)
+		// a plain read must not take a row lock
+		d.userRepo.EXPECT().
+			GetProfile(gomock.Any(), gomock.Eq("user-1"), gomock.Eq(false)).
+			Return(domainuser.ProfileResponse{Username: "alice", Email: "a@example.com"}, nil).
+			Times(1)
+
+		got, err := d.svc.GetProfile(context.Background(), "user-1")
+		if err != nil {
+			t.Fatalf("GetProfile: %v", err)
+		}
+		if got.Username != "alice" {
+			t.Errorf("Username = %q, want alice", got.Username)
+		}
+	})
+
+	t.Run("unknown user", func(t *testing.T) {
+		d := newUserDeps(t)
+		d.userRepo.EXPECT().GetProfile(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(domainuser.ProfileResponse{}, sql.ErrNoRows).Times(1)
+
+		if _, err := d.svc.GetProfile(context.Background(), "nobody"); !errors.Is(err, domainauth.ErrUserNotFound) {
+			t.Errorf("err = %v, want ErrUserNotFound", err)
+		}
+	})
+
+	t.Run("backend outage is not a missing user", func(t *testing.T) {
+		d := newUserDeps(t)
+		d.userRepo.EXPECT().GetProfile(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(domainuser.ProfileResponse{}, errors.New("connection refused")).Times(1)
+
+		_, err := d.svc.GetProfile(context.Background(), "user-1")
+		if errors.Is(err, domainauth.ErrUserNotFound) {
+			t.Error("a backend outage was reported as ErrUserNotFound")
+		}
+	})
+}
+
+func TestGetQuota_ScopesToTheRequestedUser(t *testing.T) {
+	d := newUserDeps(t)
+	id := uuid.New()
+
+	d.quotaRepo.EXPECT().
+		GetById(gomock.Any(), gomock.Eq(id.String())).
+		Return(&domainuser.Quota{UserID: id, UsedBytes: 1024, TotalBytes: 4096, GifCount: 3, GitCount: 50}, nil).
+		Times(1)
+
+	got, err := d.svc.GetQuota(context.Background(), id.String())
+	if err != nil {
+		t.Fatalf("GetQuota: %v", err)
+	}
+	if got.UsedBytes != 1024 || got.TotalBytes != 4096 {
+		t.Errorf("got %+v, want UsedBytes=1024 TotalBytes=4096", got)
+	}
+	if got.UserID != id {
+		t.Errorf("UserID = %v, want %v", got.UserID, id)
 	}
 }

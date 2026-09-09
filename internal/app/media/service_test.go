@@ -5,1167 +5,966 @@ import (
 	"database/sql"
 	"errors"
 	"net/url"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"go.uber.org/mock/gomock"
+
 	"github.com/labib0x9/ffgif/config"
 	appmedia "github.com/labib0x9/ffgif/internal/app/media"
-	domainauth "github.com/labib0x9/ffgif/internal/domain/auth"
+	authmocks "github.com/labib0x9/ffgif/internal/domain/auth/mocks"
 	domainmedia "github.com/labib0x9/ffgif/internal/domain/media"
-	domainshare "github.com/labib0x9/ffgif/internal/domain/share"
+	mediamocks "github.com/labib0x9/ffgif/internal/domain/media/mocks"
+	sharemocks "github.com/labib0x9/ffgif/internal/domain/share/mocks"
 	domainuser "github.com/labib0x9/ffgif/internal/domain/user"
-	"github.com/labib0x9/ffgif/internal/port/processor"
+	usermocks "github.com/labib0x9/ffgif/internal/domain/user/mocks"
+	portcache "github.com/labib0x9/ffgif/internal/port/cache"
+	cachemocks "github.com/labib0x9/ffgif/internal/port/cache/mocks"
+	dbmocks "github.com/labib0x9/ffgif/internal/port/db/mocks"
+	processormocks "github.com/labib0x9/ffgif/internal/port/processor/mocks"
 	"github.com/labib0x9/ffgif/internal/port/queue"
-	"github.com/labib0x9/ffgif/pkg/apperr"
-	jwtpkg "github.com/labib0x9/ffgif/pkg/jwt"
-	amqp "github.com/rabbitmq/amqp091-go"
+	queuemocks "github.com/labib0x9/ffgif/internal/port/queue/mocks"
 )
 
-// --- Mocks ---
-
-type mockStorageRepo struct {
-	createFunc          func(ctx context.Context, key string, expirey time.Duration) (*url.URL, error)
-	downloadFunc        func(ctx context.Context, key string, expirey time.Duration) (*url.URL, error)
-	getStreamURLFunc    func(ctx context.Context, key string, expiry time.Duration) (*url.URL, error)
-	getThumbnailURLFunc func(ctx context.Context, key string) (*url.URL, error)
-	statusFunc          func(ctx context.Context, key string) (domainmedia.Info, error)
+type mediaDeps struct {
+	authRepo      *authmocks.MockAuthRepository
+	profileRepo   *usermocks.MockUserRepository
+	quotaRepo     *usermocks.MockQuotaRepository
+	gifRepo       *mediamocks.MockGifRepository
+	shareRepo     *sharemocks.MockShareRepository
+	lastVideoRepo *mediamocks.MockLastVideoRepository
+	storage       *mediamocks.MockStorageRepository
+	tnx           *dbmocks.MockTxManager
+	queue         *queuemocks.MockQueue
+	cache         *cachemocks.MockCache
+	processor     *processormocks.MockVideoProcessor
+	svc           appmedia.Service
 }
 
-func (m *mockStorageRepo) Create(ctx context.Context, key string, expirey time.Duration) (*url.URL, error) {
-	if m.createFunc != nil {
-		return m.createFunc(ctx, key, expirey)
+func newMediaDeps(t *testing.T) *mediaDeps {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	d := &mediaDeps{
+		authRepo:      authmocks.NewMockAuthRepository(ctrl),
+		profileRepo:   usermocks.NewMockUserRepository(ctrl),
+		quotaRepo:     usermocks.NewMockQuotaRepository(ctrl),
+		gifRepo:       mediamocks.NewMockGifRepository(ctrl),
+		shareRepo:     sharemocks.NewMockShareRepository(ctrl),
+		lastVideoRepo: mediamocks.NewMockLastVideoRepository(ctrl),
+		storage:       mediamocks.NewMockStorageRepository(ctrl),
+		tnx:           dbmocks.NewMockTxManager(ctrl),
+		queue:         queuemocks.NewMockQueue(ctrl),
+		cache:         cachemocks.NewMockCache(ctrl),
+		processor:     processormocks.NewMockVideoProcessor(ctrl),
 	}
-	u, _ := url.Parse("https://storage.local/upload/" + key)
-	return u, nil
-}
-func (m *mockStorageRepo) Download(ctx context.Context, key string, expirey time.Duration) (*url.URL, error) {
-	if m.downloadFunc != nil {
-		return m.downloadFunc(ctx, key, expirey)
-	}
-	u, _ := url.Parse("https://storage.local/download/" + key)
-	return u, nil
-}
-func (m *mockStorageRepo) IsExists(ctx context.Context, key string) (bool, error) { return true, nil }
-func (m *mockStorageRepo) Status(ctx context.Context, key string) (domainmedia.Info, error) {
-	if m.statusFunc != nil {
-		return m.statusFunc(ctx, key)
-	}
-	return domainmedia.Info{Size: 1024, ContentType: "video/mp4", UploadedAt: time.Now()}, nil
-}
-// func (m *mockStorageRepo) GetObject(ctx context.Context, start, end int64, key string) (domainmedia.Object, error) {
-// 	return domainmedia.Object{}, nil
-// }
-func (m *mockStorageRepo) DownloadLocal(ctx context.Context, key, destPath string) error { return nil }
-func (m *mockStorageRepo) DownloadLocalRawVideo(ctx context.Context, key, destPath string) error {
-	return nil
-}
-func (m *mockStorageRepo) Upload(ctx context.Context, key, filePath, contentType string) error {
-	return nil
-}
-func (m *mockStorageRepo) Delete(ctx context.Context, key string) error { return nil }
-func (m *mockStorageRepo) GetStreamURL(ctx context.Context, key string, expiry time.Duration) (*url.URL, error) {
-	if m.getStreamURLFunc != nil {
-		return m.getStreamURLFunc(ctx, key, expiry)
-	}
-	u, _ := url.Parse("https://storage.local/stream/" + key)
-	return u, nil
-}
-func (m *mockStorageRepo) GetThumbnailURL(ctx context.Context, key string) (*url.URL, error) {
-	if m.getThumbnailURLFunc != nil {
-		return m.getThumbnailURLFunc(ctx, key)
-	}
-	u, _ := url.Parse("https://storage.local/thumbnail/" + key)
-	return u, nil
-}
-
-type mockTxManager struct{}
-
-func (m *mockTxManager) With(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
-	return fn(ctx)
-}
-
-func (m *mockTxManager) WithRC(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
-	return fn(ctx)
-}
-
-type mockGifRepo struct {
-	getOwnerFunc   func(ctx context.Context, key string) (string, error)
-	getByKeyFunc   func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error)
-	getRecentsFunc func(ctx context.Context, user_id string) ([]domainmedia.GifResponse, error)
-	getFunc        func(ctx context.Context, user_id string, status string) ([]domainmedia.GifResponse, error)
-	deleteFunc     func(ctx context.Context, key string) error
-	createFunc     func(ctx context.Context, gif domainmedia.Gif) error
-	updateFunc     func(ctx context.Context, key string, req domainmedia.GifUpdateRequest) (domainmedia.GifResponse, error)
-	saveRecentFunc func(ctx context.Context, key string) error
-}
-
-func (m *mockGifRepo) GetOwner(ctx context.Context, key string) (string, error) {
-	if m.getOwnerFunc != nil {
-		return m.getOwnerFunc(ctx, key)
-	}
-	return "owner-uuid-1", nil
-}
-func (m *mockGifRepo) Create(ctx context.Context, gif domainmedia.Gif) error {
-	if m.createFunc != nil {
-		return m.createFunc(ctx, gif)
-	}
-	return nil
-}
-func (m *mockGifRepo) Get(ctx context.Context, user_id string, status string) ([]domainmedia.GifResponse, error) {
-	if m.getFunc != nil {
-		return m.getFunc(ctx, user_id, status)
-	}
-	return []domainmedia.GifResponse{}, nil
-}
-func (m *mockGifRepo) GetByKey(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
-	if m.getByKeyFunc != nil {
-		return m.getByKeyFunc(ctx, key, forUpdate)
-	}
-	return domainmedia.GifResponse{Key: key, Url: "https://storage/gif/" + key}, nil
-}
-func (m *mockGifRepo) GetRecents(ctx context.Context, user_id string) ([]domainmedia.GifResponse, error) {
-	if m.getRecentsFunc != nil {
-		return m.getRecentsFunc(ctx, user_id)
-	}
-	return []domainmedia.GifResponse{}, nil
-}
-func (m *mockGifRepo) Delete(ctx context.Context, key string) error {
-	if m.deleteFunc != nil {
-		return m.deleteFunc(ctx, key)
-	}
-	return nil
-}
-func (m *mockGifRepo) Update(ctx context.Context, key string, req domainmedia.GifUpdateRequest) (domainmedia.GifResponse, error) {
-	if m.updateFunc != nil {
-		return m.updateFunc(ctx, key, req)
-	}
-	return domainmedia.GifResponse{Key: key}, nil
-}
-func (m *mockGifRepo) SaveRecent(ctx context.Context, key string) error {
-	if m.saveRecentFunc != nil {
-		return m.saveRecentFunc(ctx, key)
-	}
-	return nil
-}
-
-type mockShareRepo struct {
-	getOwnerFunc func(ctx context.Context, sharedWithUserId string, gifKey string) (string, error)
-}
-
-func (m *mockShareRepo) Create(ctx context.Context, gif domainshare.Share) error {
-	return nil
-}
-func (m *mockShareRepo) CreateByToken(ctx context.Context, gif domainshare.ShareByToken) error {
-	return nil
-}
-func (m *mockShareRepo) Get(ctx context.Context, userID string) ([]domainshare.GifResponse, error) {
-	return nil, nil
-}
-func (m *mockShareRepo) GetByToken(ctx context.Context, token string) (domainshare.GifTokenResponse, error) {
-	return domainshare.GifTokenResponse{}, nil
-}
-func (m *mockShareRepo) GetOwner(ctx context.Context, sharedWithUserId string, gifKey string) (string, error) {
-	if m.getOwnerFunc != nil {
-		return m.getOwnerFunc(ctx, sharedWithUserId, gifKey)
-	}
-	return "", sql.ErrNoRows
-}
-func (m *mockShareRepo) Delete(ctx context.Context, key, shareWithId string) error {
-	return nil
-}
-
-type mockLastVideoRepo struct {
-	createFunc       func(ctx context.Context, upload domainmedia.LastUpload) error
-	getLastVideoFunc func(ctx context.Context, user_id string) (domainmedia.LastUploadResponse, error)
-}
-
-func (m *mockLastVideoRepo) Create(ctx context.Context, upload domainmedia.LastUpload) error {
-	if m.createFunc != nil {
-		return m.createFunc(ctx, upload)
-	}
-	return nil
-}
-func (m *mockLastVideoRepo) GetLastVideo(ctx context.Context, user_id string) (domainmedia.LastUploadResponse, error) {
-	if m.getLastVideoFunc != nil {
-		return m.getLastVideoFunc(ctx, user_id)
-	}
-	uID, _ := uuid.Parse(user_id)
-	return domainmedia.LastUploadResponse{UserID: uID, FileKey: "last-video.mp4"}, nil
-}
-
-type mockProcessor struct {
-	preProcessFunc func(ctx context.Context, key string) (*processor.PrePrecessedResult, error)
-	processFunc    func(ctx context.Context, JobId string, Key string, Start float32, End float32, Width int, FPS int, Loop bool) (*processor.JobResult, error)
-}
-
-func (m *mockProcessor) Process(ctx context.Context, JobId string, Key string, Start float32, End float32, Width int, FPS int, Loop bool) (*processor.JobResult, error) {
-	if m.processFunc != nil {
-		return m.processFunc(ctx, JobId, Key, Start, End, Width, FPS, Loop)
-	}
-	return &processor.JobResult{GifKey: "output.gif", ThumbKey: "thumb.jpg"}, nil
-}
-func (m *mockProcessor) PreProcess(ctx context.Context, key string) (*processor.PrePrecessedResult, error) {
-	if m.preProcessFunc != nil {
-		return m.preProcessFunc(ctx, key)
-	}
-	return &processor.PrePrecessedResult{
-		VideoKey:     "converted_video.mp4",
-		ThumbnailKey: "thumb.jpg",
-		ContentType:  "video/mp4",
-		Size:         "2048",
-		Duration:     "10.0",
-	}, nil
-}
-
-type mockCache struct {
-	store   map[string]string
-	setFunc func(ctx context.Context, key string, value string, expiration time.Duration) error
-	getFunc func(ctx context.Context, key string) (string, error)
-}
-
-func newMockCache() *mockCache {
-	return &mockCache{store: make(map[string]string)}
-}
-
-func (m *mockCache) Set(ctx context.Context, key string, value string, expiration time.Duration) error {
-	if m.setFunc != nil {
-		return m.setFunc(ctx, key, value, expiration)
-	}
-	m.store[key] = value
-	return nil
-}
-func (m *mockCache) Get(ctx context.Context, key string) (string, error) {
-	if m.getFunc != nil {
-		return m.getFunc(ctx, key)
-	}
-	if v, ok := m.store[key]; ok {
-		return v, nil
-	}
-	return "", errors.New("not found in cache")
-}
-
-type mockQueue struct {
-	publishVideoFunc          func(ctx context.Context, msg queue.VideoMessage) error
-	publishRetrySaveVideoFunc func(ctx context.Context, msg queue.SaveVideoMessage) error
-}
-
-func (m *mockQueue) PublishEmail(ctx context.Context, msg queue.EmailMessage) error { return nil }
-func (m *mockQueue) PublishVideo(ctx context.Context, msg queue.VideoMessage) error {
-	if m.publishVideoFunc != nil {
-		return m.publishVideoFunc(ctx, msg)
-	}
-	return nil
-}
-func (m *mockQueue) PublishSaveVideo(ctx context.Context, msg queue.SaveVideoMessage) error {
-	return nil
-}
-func (m *mockQueue) PublishRetrySaveVideo(ctx context.Context, msg queue.SaveVideoMessage) error {
-	if m.publishRetrySaveVideoFunc != nil {
-		return m.publishRetrySaveVideoFunc(ctx, msg)
-	}
-	return nil
-}
-func (m *mockQueue) ConsumeEmail(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error) {
-	return nil, nil
-}
-func (m *mockQueue) ConsumeSave(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error) {
-	return nil, nil
-}
-func (m *mockQueue) ConsumeVideo(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error) {
-	return nil, nil
-}
-func (m *mockQueue) ConsumeRawVideo(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error) {
-	return nil, nil
-}
-func (m *mockQueue) Close() error                           { return nil }
-func (m *mockQueue) CloseConsumerChannel(name string) error { return nil }
-
-type mockAuthRepo struct{}
-
-func (m *mockAuthRepo) GetByEmail(ctx context.Context, email string) (domainauth.User, error) {
-	return domainauth.User{}, nil
-}
-func (m *mockAuthRepo) GetById(ctx context.Context, id uuid.UUID) (domainauth.User, error) {
-	return domainauth.User{}, nil
-}
-func (m *mockAuthRepo) Create(ctx context.Context, user domainauth.User) (domainauth.User, error) {
-	return user, nil
-}
-func (m *mockAuthRepo) DeleteById(ctx context.Context, id uuid.UUID) error    { return nil }
-func (m *mockAuthRepo) DeleteByEmail(ctx context.Context, email string) error { return nil }
-func (m *mockAuthRepo) UpdatePassword(ctx context.Context, id uuid.UUID, passHash string) error {
-	return nil
-}
-func (m *mockAuthRepo) SetVerified(ctx context.Context, userId uuid.UUID) error { return nil }
-func (m *mockAuthRepo) Upgrade(ctx context.Context, id string, user domainauth.User) (domainauth.User, error) {
-	return user, nil
-}
-
-type mockUserRepo struct{}
-
-func (m *mockUserRepo) GetProfile(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
-	return domainuser.ProfileResponse{}, nil
-}
-func (m *mockUserRepo) UpdateProfile(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error) {
-	return domainuser.ProfileResponse{}, nil
-}
-func (m *mockUserRepo) SetProfile(ctx context.Context, profile domainuser.Profile) error { return nil }
-func (m *mockUserRepo) ChangePassword(ctx context.Context, userId string, hash string) error {
-	return nil
-}
-
-type mockQuotaRepo struct{}
-
-func (m *mockQuotaRepo) Create(ctx context.Context, quota domainuser.Quota) error { return nil }
-func (m *mockQuotaRepo) GetById(ctx context.Context, id string) (*domainuser.Quota, error) {
-	return &domainuser.Quota{}, nil
-}
-
-func newTestMediaService(
-	gifRepo *mockGifRepo,
-	shareRepo *mockShareRepo,
-	lastVideoRepo *mockLastVideoRepo,
-	storage *mockStorageRepo,
-	queueMock *mockQueue,
-	cache *mockCache,
-	proc *mockProcessor,
-) appmedia.Service {
-	if gifRepo == nil {
-		gifRepo = &mockGifRepo{}
-	}
-	if shareRepo == nil {
-		shareRepo = &mockShareRepo{}
-	}
-	if lastVideoRepo == nil {
-		lastVideoRepo = &mockLastVideoRepo{}
-	}
-	if storage == nil {
-		storage = &mockStorageRepo{}
-	}
-	if queueMock == nil {
-		queueMock = &mockQueue{}
-	}
-	if cache == nil {
-		cache = newMockCache()
-	}
-	if proc == nil {
-		proc = &mockProcessor{}
-	}
-	return appmedia.NewService(
-		&mockAuthRepo{},
-		&mockUserRepo{},
-		&mockQuotaRepo{},
-		gifRepo,
-		shareRepo,
-		lastVideoRepo,
-		storage,
-		&mockTxManager{},
-		queueMock,
-		cache,
-		proc,
+	d.svc = appmedia.NewService(
+		d.authRepo, d.profileRepo, d.quotaRepo, d.gifRepo, d.shareRepo,
+		d.lastVideoRepo, d.storage, d.tnx, d.queue, d.cache, d.processor,
 		&config.Config{},
 	)
+	return d
 }
 
-// --- Tests ---
+func (d *mediaDeps) passthroughRC(times int) {
+	d.tnx.EXPECT().
+		WithRC(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, fn func(context.Context) (any, error)) (any, error) {
+			return fn(ctx)
+		}).
+		Times(times)
+}
 
-func TestMediaService_Upload_Success(t *testing.T) {
-	cache := newMockCache()
-	storage := &mockStorageRepo{
-		createFunc: func(ctx context.Context, key string, expirey time.Duration) (*url.URL, error) {
-			return url.Parse("https://storage.local/upload/" + key)
-		},
-	}
-
-	svc := newTestMediaService(nil, nil, nil, storage, nil, cache, nil)
-
-	claims := jwtpkg.Payload{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: "user-123",
-		},
-	}
-
-	result, err := svc.Upload(context.Background(), "sample.mp4", claims.Subject)
+func mustURL(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(raw)
 	if err != nil {
-		t.Fatalf("expected Upload to succeed, got error: %v", err)
+		t.Fatalf("url.Parse(%q): %v", raw, err)
 	}
-
-	if result.Url == "" || result.Key == "" {
-		t.Errorf("expected non-empty URL and Key in upload result")
-	}
-	if status, _ := cache.Get(context.Background(), "uploading:"+result.Key); status != "uploading" {
-		t.Errorf("expected uploading status cached, got %s", status)
-	}
+	return u
 }
 
-func TestMediaService_Upload_StorageError(t *testing.T) {
-	storage := &mockStorageRepo{
-		createFunc: func(ctx context.Context, key string, expirey time.Duration) (*url.URL, error) {
-			return nil, errors.New("minio down")
-		},
-	}
-	svc := newTestMediaService(nil, nil, nil, storage, nil, nil, nil)
-
-	claims := jwtpkg.Payload{RegisteredClaims: jwt.RegisteredClaims{Subject: "user-123"}}
-	_, err := svc.Upload(context.Background(), "video.mp4", claims.Subject)
-	if err == nil {
-		t.Fatal("expected error on storage failure, got nil")
-	}
+// gifUpdateMatcher asserts the *contents* of the update request reaching the
+// repository, so a handler that drops the body cannot pass unnoticed.
+type gifUpdateMatcher struct {
+	name    *string
+	status  *string
+	persist *bool
+	got     domainmedia.GifUpdateRequest
 }
 
-func TestMediaService_Status_Success(t *testing.T) {
-	cache := newMockCache()
-	cache.Set(context.Background(), "uploading:test-key.mp4", "ok", time.Minute)
-	userId := uuid.New().String()
-	lastVideoRepo := &mockLastVideoRepo{
-		getLastVideoFunc: func(ctx context.Context, uId string) (domainmedia.LastUploadResponse, error) {
-			return domainmedia.LastUploadResponse{FileKey: "last-video.mp4"}, nil
-		},
+func (m *gifUpdateMatcher) Matches(x any) bool {
+	r, ok := x.(domainmedia.GifUpdateRequest)
+	if !ok {
+		return false
 	}
+	m.got = r
+	eqStr := func(a, b *string) bool {
+		if a == nil || b == nil {
+			return a == b
+		}
+		return *a == *b
+	}
+	eqBool := func(a, b *bool) bool {
+		if a == nil || b == nil {
+			return a == b
+		}
+		return *a == *b
+	}
+	return eqStr(m.name, r.Name) && eqStr(m.status, r.Status) && eqBool(m.persist, r.Persist)
+}
 
-	svc := newTestMediaService(nil, nil, lastVideoRepo, nil, nil, cache, nil)
+func (m *gifUpdateMatcher) String() string {
+	s := "media.GifUpdateRequest{"
+	if m.name != nil {
+		s += "Name:" + *m.name
+	}
+	if m.status != nil {
+		s += " Status:" + *m.status
+	}
+	s += "}"
+	return s
+}
 
-	fileKey, status, err := svc.Status(context.Background(), userId, "test-key.mp4")
+func strptr(s string) *string { return &s }
+func boolptr(b bool) *bool    { return &b }
+
+// ===========================================================================
+// Update
+// ===========================================================================
+
+func TestUpdate_ForwardsEveryRequestedFieldToTheRepository(t *testing.T) {
+	d := newMediaDeps(t)
+	d.passthroughRC(1)
+	now := time.Now().UTC()
+	etag := now.Format(time.RFC3339Nano)
+
+	d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Eq("gif-1")).Return("user-1", nil).Times(1)
+	d.gifRepo.EXPECT().
+		GetByKey(gomock.Any(), gomock.Eq("gif-1"), gomock.Eq(true)).
+		Return(domainmedia.GifResponse{Key: "gif-1", Name: "old.gif", UpdatedAt: now}, nil).
+		Times(1)
+
+	// The exact fields the caller asked for must arrive at the repo — not a
+	// zero-value struct.
+	d.gifRepo.EXPECT().
+		Update(gomock.Any(), gomock.Eq("gif-1"), &gifUpdateMatcher{
+			name:    strptr("new.gif"),
+			status:  strptr("ready"),
+			persist: boolptr(true),
+		}).
+		Return(domainmedia.GifResponse{Key: "gif-1", Name: "new.gif", Status: "ready", Persist: true}, nil).
+		Times(1)
+
+	req := domainmedia.GifUpdateRequest{
+		Name: strptr("new.gif"), Status: strptr("ready"), Persist: boolptr(true),
+	}
+	got, err := d.svc.Update(context.Background(), "user-1", "gif-1", req, etag)
 	if err != nil {
-		t.Fatalf("expected Status to succeed, got %v", err)
+		t.Fatalf("Update: %v", err)
 	}
-	if status != "ok" {
-		t.Errorf("expected ok status, got %s", status)
-	}
-	if fileKey != "last-video.mp4" {
-		t.Errorf("expected last-video.mp4, got %s", fileKey)
+	if got.Name != "new.gif" {
+		t.Errorf("Name = %q, want new.gif", got.Name)
 	}
 }
 
-func TestMediaService_Status_CacheEmptyDefaultsFailed(t *testing.T) {
-	cache := newMockCache()
-	cache.Set(context.Background(), "uploading:test-key.mp4", "", time.Minute)
+// IDOR: user B must not be able to rename or unpublish user A's GIF.
+func TestUpdate_NonOwnerIsRejectedBeforeAnyWrite(t *testing.T) {
+	d := newMediaDeps(t)
 
-	svc := newTestMediaService(nil, nil, nil, nil, nil, cache, nil)
+	d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Eq("victims-gif")).
+		Return("victim-user", nil).Times(1)
 
-	_, status, err := svc.Status(context.Background(), "user-123", "test-key.mp4")
+	// WithRC / GetByKey / Update must not be reached.
+	_, err := d.svc.Update(context.Background(), "attacker", "victims-gif",
+		domainmedia.GifUpdateRequest{Name: strptr("pwned.gif")}, "etag")
+	if !errors.Is(err, domainmedia.ErrGifOwnerMismatch) {
+		t.Errorf("err = %v, want ErrGifOwnerMismatch", err)
+	}
+}
+
+// Optimistic concurrency: a stale If-Match must abort the write.
+func TestUpdate_StaleETagAbortsTheWrite(t *testing.T) {
+	d := newMediaDeps(t)
+	d.passthroughRC(1)
+
+	d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Any()).Return("user-1", nil).Times(1)
+	d.gifRepo.EXPECT().
+		GetByKey(gomock.Any(), gomock.Eq("gif-1"), gomock.Eq(true)).
+		Return(domainmedia.GifResponse{Key: "gif-1", UpdatedAt: time.Now().UTC()}, nil).
+		Times(1)
+
+	// Update must not be called.
+	_, err := d.svc.Update(context.Background(), "user-1", "gif-1",
+		domainmedia.GifUpdateRequest{Name: strptr("x.gif")}, "1999-01-01T00:00:00Z")
+	if !errors.Is(err, domainmedia.ErrETagValidationFailed) {
+		t.Errorf("err = %v, want ErrETagValidationFailed", err)
+	}
+}
+
+func TestUpdate_MissingGif(t *testing.T) {
+	d := newMediaDeps(t)
+	d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Eq("nope")).Return("", sql.ErrNoRows).Times(1)
+
+	_, err := d.svc.Update(context.Background(), "user-1", "nope",
+		domainmedia.GifUpdateRequest{}, "etag")
+	if !errors.Is(err, domainmedia.ErrGifNotFound) {
+		t.Errorf("err = %v, want ErrGifNotFound", err)
+	}
+}
+
+// The row is locked FOR UPDATE inside the transaction, so N concurrent renames
+// must all be serialised through it and none may panic. Run with -race.
+func TestUpdate_ConcurrentRenamesAreSerialised(t *testing.T) {
+	d := newMediaDeps(t)
+	const n = 12
+	now := time.Now().UTC()
+	etag := now.Format(time.RFC3339Nano)
+
+	d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Any()).Return("user-1", nil).Times(n)
+	d.tnx.EXPECT().
+		WithRC(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, fn func(context.Context) (any, error)) (any, error) {
+			return fn(ctx)
+		}).
+		Times(n)
+
+	var mu sync.Mutex
+	d.gifRepo.EXPECT().
+		GetByKey(gomock.Any(), gomock.Any(), gomock.Eq(true)).
+		DoAndReturn(func(_ context.Context, _ string, _ bool) (domainmedia.GifResponse, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			return domainmedia.GifResponse{Key: "gif-1", UpdatedAt: now}, nil
+		}).
+		Times(n)
+
+	var updates int64
+	d.gifRepo.EXPECT().
+		Update(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, r domainmedia.GifUpdateRequest) (domainmedia.GifResponse, error) {
+			atomic.AddInt64(&updates, 1)
+			return domainmedia.GifResponse{Key: "gif-1", Name: *r.Name}, nil
+		}).
+		Times(n)
+
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			name := "rename.gif"
+			if _, err := d.svc.Update(context.Background(), "user-1", "gif-1",
+				domainmedia.GifUpdateRequest{Name: &name}, etag); err != nil {
+				t.Errorf("concurrent Update: %v", err)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt64(&updates); got != n {
+		t.Errorf("%d updates reached the repo, want %d", got, n)
+	}
+}
+
+// ===========================================================================
+// Status — cache miss must not look like a backend fault
+// ===========================================================================
+
+// EXPECTED TO FAIL: internal/app/media/status.go treats every error from
+// cache.Get identically:
+//
+//	status, err := s.cache.Get(ctx, lookupKey); if err != nil { return "", "", err }
+//
+// go-redis returns redis.Nil for a key that does not exist, so an ordinary
+// cache miss — an unknown or long-finished upload — is bubbled up as an error
+// and the handler answers 500 Internal Server Error. The `status == ""` ->
+// "failed" branch below it is dead code, because a miss never gets that far.
+//
+// Contract: a miss (cache.ErrCacheMiss) is a normal outcome and must be
+// reported as a status, while a real backend fault must stay an error.
+func TestStatus_CacheMissIsNotAnInternalError(t *testing.T) {
+	d := newMediaDeps(t)
+
+	d.cache.EXPECT().
+		Get(gomock.Any(), gomock.Eq("uploading:gif-1")).
+		Return("", portcache.ErrCacheMiss).
+		Times(1)
+
+	_, status, err := d.svc.Status(context.Background(), "user-1", "gif-1")
 	if err != nil {
-		t.Fatalf("expected Status to succeed, got %v", err)
+		t.Fatalf("a cache miss surfaced as an error (%v); the caller answers 500 "+
+			"for an upload it simply has no record of", err)
 	}
 	if status != "failed" {
-		t.Errorf("expected failed status for empty string, got %s", status)
+		t.Errorf("status = %q, want %q for an unknown upload", status, "failed")
 	}
 }
 
-func TestMediaService_ProcessAndSave_Success(t *testing.T) {
-	userId := uuid.New().String()
-	uploadKey := userId + ":video-uuid.mp4"
-	saved := false
+func TestStatus_BackendOutageStaysAnError(t *testing.T) {
+	d := newMediaDeps(t)
+	outage := errors.New("dial tcp 127.0.0.1:6379: connect: connection refused")
 
-	lastVideoRepo := &mockLastVideoRepo{
-		createFunc: func(ctx context.Context, upload domainmedia.LastUpload) error {
-			saved = true
-			if upload.UserID.String() != userId {
-				t.Errorf("expected userID %s, got %s", userId, upload.UserID)
-			}
-			return nil
-		},
-	}
+	d.cache.EXPECT().
+		Get(gomock.Any(), gomock.Eq("uploading:gif-1")).
+		Return("", outage).
+		Times(1)
 
-	svc := newTestMediaService(nil, nil, lastVideoRepo, nil, nil, nil, nil)
-
-	err := svc.ProcessAndSave(context.Background(), uploadKey)
-	if err != nil {
-		t.Fatalf("expected ProcessAndSave to succeed, got: %v", err)
-	}
-	if !saved {
-		t.Errorf("expected LastUpload to be created")
-	}
-}
-
-func TestMediaService_ProcessAndSave_EmptyKey(t *testing.T) {
-	svc := newTestMediaService(nil, nil, nil, nil, nil, nil, nil)
-
-	err := svc.ProcessAndSave(context.Background(), "")
-	if !errors.Is(err, domainmedia.ErrEmptyKey) {
-		t.Errorf("expected ErrEmptyKey, got %v", err)
-	}
-}
-
-func TestMediaService_ProcessAndSave_PreprocessError(t *testing.T) {
-	proc := &mockProcessor{
-		preProcessFunc: func(ctx context.Context, key string) (*processor.PrePrecessedResult, error) {
-			return nil, errors.New("corrupt video")
-		},
-	}
-	svc := newTestMediaService(nil, nil, nil, nil, nil, nil, proc)
-
-	err := svc.ProcessAndSave(context.Background(), uuid.New().String()+":file.mp4")
-	if !errors.Is(err, domainmedia.ErrInvalidFiletype) {
-		t.Errorf("expected ErrInvalidFiletype, got %v", err)
-	}
-}
-
-func TestMediaService_SaveMetadata_Success(t *testing.T) {
-	saved := false
-	validUUID := uuid.New().String()
-
-	lastVideoRepo := &mockLastVideoRepo{
-		createFunc: func(ctx context.Context, upload domainmedia.LastUpload) error {
-			saved = true
-			if upload.FileKey != "valid-key.mp4" {
-				t.Errorf("expected file key 'valid-key.mp4', got %s", upload.FileKey)
-			}
-			return nil
-		},
-	}
-
-	svc := newTestMediaService(nil, nil, lastVideoRepo, nil, nil, nil, nil)
-
-	msg := queue.SaveVideoMessage{
-		UserID:   validUUID,
-		Key:      "valid-key.mp4",
-		Filename: "video.mp4",
-	}
-
-	err := svc.SaveMetadata(context.Background(), msg)
-	if err != nil {
-		t.Fatalf("expected SaveMetadata to succeed, got: %v", err)
-	}
-	if !saved {
-		t.Errorf("expected last video metadata to be saved")
-	}
-}
-
-func TestMediaService_SaveMetadata_InvalidUserID(t *testing.T) {
-	svc := newTestMediaService(nil, nil, nil, nil, nil, nil, nil)
-
-	msg := queue.SaveVideoMessage{
-		UserID:   "invalid-uuid",
-		Key:      "key-123",
-		Filename: "test.mp4",
-	}
-
-	err := svc.SaveMetadata(context.Background(), msg)
-	if !errors.Is(err, domainmedia.ErrInvalidUserID) {
-		t.Errorf("expected ErrInvalidUserID, got %v", err)
-	}
-}
-
-func TestMediaService_SaveMetadata_StorageStatusRetry(t *testing.T) {
-	retried := false
-	storage := &mockStorageRepo{
-		statusFunc: func(ctx context.Context, key string) (domainmedia.Info, error) {
-			return domainmedia.Info{}, errors.New("object not found yet")
-		},
-	}
-	queueMock := &mockQueue{
-		publishRetrySaveVideoFunc: func(ctx context.Context, msg queue.SaveVideoMessage) error {
-			retried = true
-			return nil
-		},
-	}
-
-	svc := newTestMediaService(nil, nil, nil, storage, queueMock, nil, nil)
-
-	msg := queue.SaveVideoMessage{
-		UserID:   uuid.New().String(),
-		Key:      "raw.mp4",
-		Filename: "raw.mp4",
-	}
-
-	err := svc.SaveMetadata(context.Background(), msg)
+	_, status, err := d.svc.Status(context.Background(), "user-1", "gif-1")
 	if err == nil {
-		t.Fatal("expected error from status fetch, got nil")
+		t.Fatal("a Redis outage was reported as a normal status")
 	}
-	if !retried {
-		t.Errorf("expected retry message to be published to queue")
+	if status == "failed" {
+		t.Error("a Redis outage was reported to the user as a failed upload")
 	}
 }
 
-func TestMediaService_Convert_Success(t *testing.T) {
-	cache := newMockCache()
-	videoPublished := false
-	queueMock := &mockQueue{
-		publishVideoFunc: func(ctx context.Context, msg queue.VideoMessage) error {
-			videoPublished = true
-			if msg.Key != "test_key.mp4" {
-				t.Errorf("expected key test_key.mp4, got %s", msg.Key)
+func TestStatus_OkLooksUpTheLastVideo(t *testing.T) {
+	d := newMediaDeps(t)
+
+	d.cache.EXPECT().Get(gomock.Any(), gomock.Eq("uploading:gif-1")).Return("ok", nil).Times(1)
+	d.lastVideoRepo.EXPECT().
+		GetLastVideo(gomock.Any(), gomock.Eq("user-1")).
+		Return(domainmedia.LastUploadResponse{FileKey: "user-1:abc.mp4"}, nil).
+		Times(1)
+
+	key, status, err := d.svc.Status(context.Background(), "user-1", "gif-1")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if status != "ok" || key != "user-1:abc.mp4" {
+		t.Errorf("got (%q, %q), want (user-1:abc.mp4, ok)", key, status)
+	}
+}
+
+func TestStatus_StillUploadingDoesNotTouchTheDatabase(t *testing.T) {
+	d := newMediaDeps(t)
+	d.cache.EXPECT().Get(gomock.Any(), gomock.Any()).Return("uploading", nil).Times(1)
+	// GetLastVideo must not be called.
+	_, status, err := d.svc.Status(context.Background(), "user-1", "gif-1")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if status != "uploading" {
+		t.Errorf("status = %q, want uploading", status)
+	}
+}
+
+// ===========================================================================
+// ConversionStatus
+// ===========================================================================
+
+// EXPECTED TO FAIL: internal/app/media/conversion_status.go wraps any cache.Get
+// error in ErrCacheGetFailed, so an unknown job id (a miss) is indistinguishable
+// from a Redis outage. media.JOB_NOT_FOUND exists in the domain and the handler
+// maps it to 404, but the service can never produce it.
+func TestConversionStatus_UnknownJobIsDistinguishableFromAnOutage(t *testing.T) {
+	t.Run("unknown job id", func(t *testing.T) {
+		d := newMediaDeps(t)
+		d.cache.EXPECT().
+			Get(gomock.Any(), gomock.Eq("messaage_queue:job_id:no-such-job")).
+			Return("", portcache.ErrCacheMiss).
+			Times(1)
+		d.cache.EXPECT().Get(gomock.Any(), gomock.Any()).Return("", portcache.ErrCacheMiss).AnyTimes()
+
+		_, err := d.svc.ConversionStatus(context.Background(), "no-such-job")
+		if err == nil {
+			t.Fatal("want an error for an unknown job id")
+		}
+		if !errors.Is(err, portcache.ErrCacheMiss) {
+			t.Errorf("err = %v; an unknown job id must stay distinguishable from a "+
+				"backend fault so the handler can answer 404 JOB_NOT_FOUND rather than 500", err)
+		}
+	})
+
+	t.Run("backend outage", func(t *testing.T) {
+		d := newMediaDeps(t)
+		outage := errors.New("connection refused")
+		d.cache.EXPECT().Get(gomock.Any(), gomock.Any()).Return("", outage).Times(1)
+
+		_, err := d.svc.ConversionStatus(context.Background(), "job-1")
+		if errors.Is(err, portcache.ErrCacheMiss) {
+			t.Error("a backend outage was reported as a cache miss")
+		}
+	})
+}
+
+func TestConversionStatus_ReadsBothJobAndGifKeys(t *testing.T) {
+	d := newMediaDeps(t)
+
+	d.cache.EXPECT().Get(gomock.Any(), gomock.Eq("messaage_queue:job_id:job-1")).
+		Return("done", nil).Times(1)
+	d.cache.EXPECT().Get(gomock.Any(), gomock.Eq("messaage_queue_gif:job_id:job-1")).
+		Return("gif-42", nil).Times(1)
+
+	res, err := d.svc.ConversionStatus(context.Background(), "job-1")
+	if err != nil {
+		t.Fatalf("ConversionStatus: %v", err)
+	}
+	if res.Status != "done" || res.GifId != "gif-42" || res.JobId != "job-1" {
+		t.Errorf("got %+v, want {JobId:job-1 Status:done GifId:gif-42}", res)
+	}
+}
+
+// ===========================================================================
+// Quota enforcement
+// ===========================================================================
+
+// EXPECTED TO FAIL: user.QuotaRepository is injected into the media service and
+// user.Quota carries UsedBytes/TotalBytes/GifCount/GitCount(gif_limit), but no
+// code path in internal/app/media reads any of it. Quota is tracked and shown
+// to the user, never enforced — a user at 100% can keep uploading forever.
+func TestUpload_IsRejectedWhenTheUserIsOverQuota(t *testing.T) {
+	d := newMediaDeps(t)
+	userID := uuid.New()
+
+	d.quotaRepo.EXPECT().
+		GetById(gomock.Any(), gomock.Eq(userID.String())).
+		Return(&domainuser.Quota{
+			UserID:     userID,
+			UsedBytes:  500 * 1024 * 1024,
+			TotalBytes: 500 * 1024 * 1024, // completely full
+			GifCount:   50,
+			GitCount:   50,
+		}, nil).
+		AnyTimes()
+
+	// Handing out a presigned PUT here lets the user write past their quota.
+	d.storage.EXPECT().
+		Create(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, key string, _ time.Duration) (*url.URL, error) {
+			t.Errorf("a presigned upload URL was issued for key %q to a user "+
+				"who is at 100%% of their storage quota", key)
+			return mustURL(t, "https://storage/put"), nil
+		}).
+		AnyTimes()
+	d.cache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+	_, err := d.svc.Upload(context.Background(), "clip.mp4", userID.String())
+	if err == nil {
+		t.Error("Upload succeeded for a user who is over quota")
+	}
+}
+
+// EXPECTED TO FAIL: same gap on the conversion path — a user at their gif_limit
+// can still enqueue unlimited conversion jobs, each of which produces a new GIF.
+func TestConvert_IsRejectedWhenTheUserIsAtTheirGifLimit(t *testing.T) {
+	d := newMediaDeps(t)
+	userID := uuid.New()
+
+	d.quotaRepo.EXPECT().
+		GetById(gomock.Any(), gomock.Eq(userID.String())).
+		Return(&domainuser.Quota{
+			UserID:   userID,
+			GifCount: 50,
+			GitCount: 50, // gif_limit reached
+		}, nil).
+		AnyTimes()
+
+	d.cache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	d.queue.EXPECT().
+		PublishVideo(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, msg queue.VideoMessage) error {
+			t.Errorf("conversion job %q was enqueued for a user already at their "+
+				"gif_limit of 50", msg.JobId)
+			return nil
+		}).
+		AnyTimes()
+
+	_, err := d.svc.Convert(context.Background(), userID.String(), "upload-1", 0, 5, 15, 480, false)
+	if err == nil {
+		t.Error("Convert succeeded for a user at their GIF limit")
+	}
+}
+
+// EXPECTED TO FAIL: with no quota check at all there is nothing to double-spend
+// against, so N concurrent conversions for a user with 1 slot left all go
+// through. Once a check exists this test guards it against a TOCTOU race.
+func TestConvert_ConcurrentJobsCannotDoubleSpendTheLastQuotaSlot(t *testing.T) {
+	d := newMediaDeps(t)
+	const n = 20
+	userID := uuid.New()
+
+	d.quotaRepo.EXPECT().
+		GetById(gomock.Any(), gomock.Any()).
+		Return(&domainuser.Quota{UserID: userID, GifCount: 49, GitCount: 50}, nil).
+		AnyTimes()
+	d.cache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+	var published int64
+	d.queue.EXPECT().
+		PublishVideo(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ queue.VideoMessage) error {
+			atomic.AddInt64(&published, 1)
+			return nil
+		}).
+		AnyTimes()
+
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = d.svc.Convert(context.Background(), userID.String(), "upload-1", 0, 5, 15, 480, false)
+		}()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt64(&published); got > 1 {
+		t.Errorf("%d conversion jobs were enqueued against a single remaining "+
+			"quota slot; quota can be double-spent by concurrent requests", got)
+	}
+}
+
+// ===========================================================================
+// Convert — job bookkeeping
+// ===========================================================================
+
+func TestConvert_PublishesTheRequestedParametersVerbatim(t *testing.T) {
+	d := newMediaDeps(t)
+
+	var jobID string
+	d.cache.EXPECT().
+		Set(gomock.Any(), gomock.Any(), gomock.Eq("queued"), gomock.Eq(5*time.Minute)).
+		DoAndReturn(func(_ context.Context, key, _ string, _ time.Duration) error {
+			return nil
+		}).
+		Times(2) // one entry for the job, one for the resulting gif
+
+	d.queue.EXPECT().
+		PublishVideo(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, msg queue.VideoMessage) error {
+			jobID = msg.JobId
+			if msg.UserID != "user-1" {
+				t.Errorf("UserID = %q, want user-1", msg.UserID)
+			}
+			if msg.Key != "upload-1" {
+				t.Errorf("Key = %q, want upload-1", msg.Key)
+			}
+			if msg.Start != 1.5 || msg.End != 9.25 {
+				t.Errorf("trim = [%v,%v], want [1.5,9.25]", msg.Start, msg.End)
+			}
+			if msg.Width != 640 || msg.FPS != 24 {
+				t.Errorf("got width=%d fps=%d, want 640/24", msg.Width, msg.FPS)
+			}
+			if !msg.Loop {
+				t.Error("Loop was dropped on the way to the queue")
+			}
+			if msg.Retries != 0 {
+				t.Errorf("Retries = %d, want 0 on a fresh job", msg.Retries)
 			}
 			return nil
-		},
-	}
+		}).
+		Times(1)
 
-	svc := newTestMediaService(nil, nil, nil, nil, queueMock, cache, nil)
-
-	res, err := svc.Convert(context.Background(), "user-123", "test_key.mp4", 0.0, 5.0, 15, 480, true)
+	res, err := d.svc.Convert(context.Background(), "user-1", "upload-1", 1.5, 9.25, 24, 640, true)
 	if err != nil {
-		t.Fatalf("expected Convert to succeed, got error: %v", err)
-	}
-
-	if res.Id == "" {
-		t.Errorf("expected non-empty JobId")
+		t.Fatalf("Convert: %v", err)
 	}
 	if res.Status != "queued" {
-		t.Errorf("expected status 'queued', got %s", res.Status)
+		t.Errorf("Status = %q, want queued", res.Status)
 	}
-	if !videoPublished {
-		t.Errorf("expected video message to be published to queue")
-	}
-}
-
-func TestMediaService_Convert_QueueFailure(t *testing.T) {
-	queueMock := &mockQueue{
-		publishVideoFunc: func(ctx context.Context, msg queue.VideoMessage) error {
-			return errors.New("amqp connection closed")
-		},
-	}
-	svc := newTestMediaService(nil, nil, nil, nil, queueMock, nil, nil)
-
-	_, err := svc.Convert(context.Background(), "user-1", "test.mp4", 0, 5, 10, 320, true)
-	if !errors.Is(err, apperr.ErrMessageQueueFailed) {
-		t.Errorf("expected ErrMessageQueueFailed, got %v", err)
+	if res.Id != jobID {
+		t.Errorf("returned job id %q != published job id %q", res.Id, jobID)
 	}
 }
 
-func TestMediaService_ConversionStatus_Success(t *testing.T) {
-	cache := newMockCache()
-	cache.Set(context.Background(), "messaage_queue:job_id:job-789", "completed", time.Minute)
-	cache.Set(context.Background(), "messaage_queue_gif:job_id:job-789", "gif-result-key.gif", time.Minute)
+// If the job's status entry cannot be written, the job must not be enqueued —
+// otherwise a worker processes a job whose status nobody can ever read.
+func TestConvert_CacheFailureMeansNothingIsEnqueued(t *testing.T) {
+	d := newMediaDeps(t)
 
-	svc := newTestMediaService(nil, nil, nil, nil, nil, cache, nil)
+	d.cache.EXPECT().
+		Set(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(errors.New("redis down")).
+		Times(1)
 
-	result, err := svc.ConversionStatus(context.Background(), "job-789")
-	if err != nil {
-		t.Fatalf("expected ConversionStatus to succeed, got: %v", err)
-	}
-
-	if result.Status != "completed" {
-		t.Errorf("expected status 'completed', got %s", result.Status)
-	}
-	if result.GifId != "gif-result-key.gif" {
-		t.Errorf("expected gifId 'gif-result-key.gif', got %s", result.GifId)
+	// PublishVideo must not be called.
+	if _, err := d.svc.Convert(context.Background(), "user-1", "upload-1", 0, 5, 15, 480, false); err == nil {
+		t.Fatal("want an error when the job status cannot be recorded")
 	}
 }
 
-func TestMediaService_ConversionStatus_NotFound(t *testing.T) {
-	cache := newMockCache()
-	svc := newTestMediaService(nil, nil, nil, nil, nil, cache, nil)
+// EXPECTED TO FAIL: internal/app/media/convert.go writes two cache entries and
+// then publishes. If the publish fails the entries are left behind saying
+// "queued" for a job no worker will ever see, and they only disappear after the
+// 5-minute TTL. The status entries should be rolled back on a publish failure.
+func TestConvert_PublishFailureDoesNotLeaveAPhantomQueuedJob(t *testing.T) {
+	d := newMediaDeps(t)
 
-	_, err := svc.ConversionStatus(context.Background(), "non-existent-job")
-	if !errors.Is(err, apperr.ErrCacheGetFailed) {
-		t.Errorf("expected ErrCacheGetFailed, got %v", err)
-	}
-}
-
-func TestMediaService_Process_Success(t *testing.T) {
-	cache := newMockCache()
-	createdGif := false
-	gifRepo := &mockGifRepo{
-		createFunc: func(ctx context.Context, gif domainmedia.Gif) error {
-			createdGif = true
-			if gif.Key != "output.gif" {
-				t.Errorf("expected gif key output.gif, got %s", gif.Key)
-			}
+	written := map[string]string{}
+	var mu sync.Mutex
+	d.cache.EXPECT().
+		Set(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, k, v string, _ time.Duration) error {
+			mu.Lock()
+			defer mu.Unlock()
+			written[k] = v
 			return nil
-		},
-	}
-	proc := &mockProcessor{
-		processFunc: func(ctx context.Context, JobId string, Key string, Start float32, End float32, Width int, FPS int, Loop bool) (*processor.JobResult, error) {
-			return &processor.JobResult{GifKey: "output.gif", ThumbKey: "thumb.jpg"}, nil
-		},
-	}
+		}).
+		AnyTimes()
 
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, cache, proc)
+	d.queue.EXPECT().
+		PublishVideo(gomock.Any(), gomock.Any()).
+		Return(errors.New("rabbitmq unreachable")).
+		Times(1)
 
-	msg := queue.VideoMessage{
-		UserID: "user-123",
-		JobId:  "job-456",
-		Key:    "raw.mp4",
-		Start:  0,
-		End:    3,
-		FPS:    10,
-		Width:  320,
-		Loop:   true,
-	}
-
-	err := svc.Process(context.Background(), msg)
-	if err != nil {
-		t.Fatalf("expected Process to succeed, got: %v", err)
-	}
-
-	if !createdGif {
-		t.Errorf("expected gif record to be created in repository")
-	}
-
-	status, _ := cache.Get(context.Background(), "messaage_queue:job_id:job-456")
-	if status != "completed" {
-		t.Errorf("expected status completed, got %s", status)
-	}
-}
-
-func TestMediaService_Process_ProcessorFailure(t *testing.T) {
-	cache := newMockCache()
-	proc := &mockProcessor{
-		processFunc: func(ctx context.Context, JobId string, Key string, Start float32, End float32, Width int, FPS int, Loop bool) (*processor.JobResult, error) {
-			return nil, errors.New("ffmpeg transcoding failed")
-		},
-	}
-
-	svc := newTestMediaService(nil, nil, nil, nil, nil, cache, proc)
-
-	msg := queue.VideoMessage{
-		UserID: "user-1",
-		JobId:  "job-fail-1",
-		Key:    "video.mp4",
-	}
-
-	err := svc.Process(context.Background(), msg)
+	_, err := d.svc.Convert(context.Background(), "user-1", "upload-1", 0, 5, 15, 480, false)
 	if err == nil {
-		t.Fatal("expected error on ffmpeg failure, got nil")
+		t.Fatal("want an error when the job cannot be published")
 	}
 
-	status, _ := cache.Get(context.Background(), "messaage_queue:job_id:job-fail-1")
-	if status != "failed" {
-		t.Errorf("expected status failed in cache, got %s", status)
+	mu.Lock()
+	defer mu.Unlock()
+	for k, v := range written {
+		if v == "queued" {
+			t.Errorf("cache key %q was left reading %q after the publish failed; "+
+				"the client will poll a job that will never run", k, v)
+		}
 	}
 }
 
-func TestMediaService_GetGifs_Success(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getFunc: func(ctx context.Context, user_id string, status string) ([]domainmedia.GifResponse, error) {
-			return []domainmedia.GifResponse{
-				{Key: "gif-1.gif", Url: "https://minio/1.gif"},
-				{Key: "gif-2.gif", Url: "https://minio/2.gif"},
-			}, nil
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
+// ===========================================================================
+// Upload
+// ===========================================================================
 
-	res, err := svc.GetGifs(context.Background(), "user-1", "all")
+func TestUpload_KeyLayoutAndStatusSeeding(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		wantExt  string
+	}{
+		{"ordinary name", "holiday.mp4", ".mp4"},
+		{"uppercase extension", "CLIP.MOV", ".MOV"},
+		{"multiple dots", "my.holiday.clip.webm", ".webm"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := newMediaDeps(t)
+			var gotKey string
+
+			d.storage.EXPECT().
+				Create(gomock.Any(), gomock.Any(), gomock.Eq(5*time.Minute)).
+				DoAndReturn(func(_ context.Context, key string, _ time.Duration) (*url.URL, error) {
+					gotKey = key
+					return mustURL(t, "https://storage/presigned-put"), nil
+				}).
+				Times(1)
+
+			d.cache.EXPECT().
+				Set(gomock.Any(), gomock.Any(), gomock.Eq("uploading"), gomock.Eq(5*time.Minute)).
+				Return(nil).
+				Times(1)
+
+			res, err := d.svc.Upload(context.Background(), tc.filename, "user-1")
+			if err != nil {
+				t.Fatalf("Upload: %v", err)
+			}
+			// key = <userId>:<uuid><ext>
+			if len(gotKey) < len("user-1:") || gotKey[:7] != "user-1:" {
+				t.Errorf("key %q is not namespaced by the user id", gotKey)
+			}
+			if tc.wantExt != "" && !hasSuffix(gotKey, tc.wantExt) {
+				t.Errorf("key %q does not end in %q", gotKey, tc.wantExt)
+			}
+			if res.Key != gotKey {
+				t.Errorf("returned key %q != storage key %q", res.Key, gotKey)
+			}
+			if res.ExpireIn != 300 {
+				t.Errorf("ExpireIn = %d, want 300", res.ExpireIn)
+			}
+		})
+	}
+}
+
+// EXPECTED TO FAIL: internal/app/media/upload.go derives the object key with
+// filepath.Ext and never validates it. A filename with no extension yields a
+// key with no extension, and ffprobe/ffmpeg later have to guess the container.
+// media.ErrInvalidExt exists in the domain for exactly this and is never used
+// on this path.
+func TestUpload_RejectsFilenameWithNoExtension(t *testing.T) {
+	cases := []string{"", "noextension", "trailingdot."}
+
+	for _, filename := range cases {
+		t.Run("filename="+filename, func(t *testing.T) {
+			d := newMediaDeps(t)
+
+			d.storage.EXPECT().
+				Create(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, key string, _ time.Duration) (*url.URL, error) {
+					t.Errorf("an upload slot was issued for key %q from filename %q, "+
+						"which carries no usable file extension", key, filename)
+					return mustURL(t, "https://storage/put"), nil
+				}).
+				AnyTimes()
+			d.cache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+			if _, err := d.svc.Upload(context.Background(), filename, "user-1"); err == nil {
+				t.Errorf("Upload(%q) succeeded; want media.ErrInvalidExt", filename)
+			}
+		})
+	}
+}
+
+// If the status entry cannot be seeded the client can never poll the upload, so
+// handing back a presigned URL is a dead end.
+func TestUpload_StatusSeedFailureIsReported(t *testing.T) {
+	d := newMediaDeps(t)
+
+	d.storage.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(mustURL(t, "https://storage/put"), nil).Times(1)
+	d.cache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(errors.New("redis down")).Times(1)
+
+	if _, err := d.svc.Upload(context.Background(), "clip.mp4", "user-1"); err == nil {
+		t.Error("want an error when the upload status cannot be recorded")
+	}
+}
+
+// ===========================================================================
+// Download / Stream / Thumbnail — object-level authorisation
+// ===========================================================================
+
+func TestDownload(t *testing.T) {
+	tests := []struct {
+		name        string
+		gifOwner    string
+		shareOwner  string
+		shareErr    error
+		caller      string
+		wantAllowed bool
+	}{
+		{name: "owner downloads their own gif", gifOwner: "user-1", shareErr: sql.ErrNoRows, caller: "user-1", wantAllowed: true},
+		{name: "valid share recipient", gifOwner: "user-1", shareOwner: "user-1", caller: "user-2", wantAllowed: true},
+		{name: "stranger with no share", gifOwner: "user-1", shareErr: sql.ErrNoRows, caller: "user-3"},
+		{name: "expired share is filtered out by the repo", gifOwner: "user-1", shareErr: sql.ErrNoRows, caller: "user-2"},
+		{name: "share issued by someone who is not the owner", gifOwner: "user-1", shareOwner: "impostor", caller: "user-2"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := newMediaDeps(t)
+
+			d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Eq("gif-1")).
+				Return(tc.gifOwner, nil).Times(1)
+			d.shareRepo.EXPECT().
+				GetOwner(gomock.Any(), gomock.Eq(tc.caller), gomock.Eq("gif-1")).
+				Return(tc.shareOwner, tc.shareErr).
+				Times(1)
+
+			if tc.wantAllowed {
+				d.storage.EXPECT().
+					Download(gomock.Any(), gomock.Eq("gif-1"), gomock.Eq(5*time.Minute)).
+					Return(mustURL(t, "https://storage/get?sig=x"), nil).
+					Times(1)
+			}
+			// when not allowed, storage.Download must not be reached
+
+			got, err := d.svc.Download(context.Background(), tc.caller, "gif-1")
+			if tc.wantAllowed {
+				if err != nil {
+					t.Fatalf("Download: %v", err)
+				}
+				if got == "" {
+					t.Error("no download URL returned")
+				}
+				return
+			}
+			if !errors.Is(err, domainmedia.ErrGifOwnerMismatch) {
+				t.Errorf("err = %v, want ErrGifOwnerMismatch — %s got a download URL", err, tc.caller)
+			}
+		})
+	}
+}
+
+// EXPECTED TO FAIL: internal/app/media/stream.go takes userId and never reads
+// it. It goes straight to storage.GetStreamURL(key), so ANY authenticated user
+// can mint a presigned stream URL for ANY object key belonging to anyone.
+// Every sibling method (Download, GetByKey, Delete, GetGifThumbnail) checks
+// gifRepo.GetOwner first; Stream does not.
+func TestStream_NonOwnerCannotMintAStreamUrl(t *testing.T) {
+	d := newMediaDeps(t)
+
+	// The ownership lookup that ought to happen.
+	d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Any()).Return("victim-user", nil).AnyTimes()
+	d.shareRepo.EXPECT().GetOwner(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return("", sql.ErrNoRows).AnyTimes()
+
+	d.storage.EXPECT().
+		GetStreamURL(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, key string, _ time.Duration) (*url.URL, error) {
+			t.Errorf("a presigned stream URL was minted for key %q on behalf of "+
+				"attacker-user, who neither owns it nor holds a share for it", key)
+			return mustURL(t, "https://storage/stream?sig=x"), nil
+		}).
+		AnyTimes()
+
+	res, err := d.svc.Stream(context.Background(), "attacker-user", "victims-gif-key")
+	if err == nil {
+		t.Errorf("Stream returned %q to a non-owner; want ErrGifOwnerMismatch", res.PresignedUrl)
+	}
+}
+
+func TestGetGifThumbnail(t *testing.T) {
+	t.Run("owner with a thumbnail", func(t *testing.T) {
+		d := newMediaDeps(t)
+		d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Eq("gif-1")).Return("user-1", nil).Times(1)
+		d.gifRepo.EXPECT().GetByKey(gomock.Any(), gomock.Eq("gif-1"), gomock.Eq(false)).
+			Return(domainmedia.GifResponse{Key: "gif-1", ThumbnailUrl: "thumb-1.jpg"}, nil).Times(1)
+		d.storage.EXPECT().GetThumbnailURL(gomock.Any(), gomock.Eq("thumb-1.jpg")).
+			Return(mustURL(t, "https://storage/thumb-1.jpg"), nil).Times(1)
+
+		got, err := d.svc.GetGifThumbnail(context.Background(), "user-1", "gif-1")
+		if err != nil {
+			t.Fatalf("GetGifThumbnail: %v", err)
+		}
+		if got == "" {
+			t.Error("empty thumbnail URL")
+		}
+	})
+
+	t.Run("gif exists but has no thumbnail", func(t *testing.T) {
+		d := newMediaDeps(t)
+		d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Any()).Return("user-1", nil).Times(1)
+		d.gifRepo.EXPECT().GetByKey(gomock.Any(), gomock.Any(), gomock.Eq(false)).
+			Return(domainmedia.GifResponse{Key: "gif-1", ThumbnailUrl: ""}, nil).Times(1)
+		// storage must not be asked for an empty key
+		_, err := d.svc.GetGifThumbnail(context.Background(), "user-1", "gif-1")
+		if !errors.Is(err, domainmedia.ErrThumbnailNotFound) {
+			t.Errorf("err = %v, want ErrThumbnailNotFound", err)
+		}
+	})
+
+	t.Run("gif does not exist", func(t *testing.T) {
+		d := newMediaDeps(t)
+		d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Any()).Return("", sql.ErrNoRows).Times(1)
+		_, err := d.svc.GetGifThumbnail(context.Background(), "user-1", "nope")
+		if !errors.Is(err, domainmedia.ErrGifNotFound) {
+			t.Errorf("err = %v, want ErrGifNotFound", err)
+		}
+		if errors.Is(err, domainmedia.ErrThumbnailNotFound) {
+			t.Error("a missing gif was reported as a missing thumbnail")
+		}
+	})
+
+	t.Run("non-owner is refused", func(t *testing.T) {
+		d := newMediaDeps(t)
+		d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Any()).Return("victim", nil).Times(1)
+		// GetByKey and storage must not be reached
+		_, err := d.svc.GetGifThumbnail(context.Background(), "attacker", "gif-1")
+		if !errors.Is(err, domainmedia.ErrGifOwnerMismatch) {
+			t.Errorf("err = %v, want ErrGifOwnerMismatch", err)
+		}
+	})
+}
+
+// ===========================================================================
+// GetByKey / Delete / Save
+// ===========================================================================
+
+func TestGetByKey_NonOwnerIsRefused(t *testing.T) {
+	d := newMediaDeps(t)
+	d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Eq("gif-1")).Return("victim", nil).Times(1)
+	// GetByKey must not be reached
+	_, err := d.svc.GetByKey(context.Background(), "attacker", "gif-1")
+	if !errors.Is(err, domainmedia.ErrGifOwnerMismatch) {
+		t.Errorf("err = %v, want ErrGifOwnerMismatch", err)
+	}
+}
+
+func TestDelete_NonOwnerIsRefused(t *testing.T) {
+	d := newMediaDeps(t)
+	d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Eq("gif-1")).Return("victim", nil).Times(1)
+	// gifRepo.Delete must not be reached
+	if err := d.svc.Delete(context.Background(), "attacker", "gif-1"); !errors.Is(err, domainmedia.ErrGifOwnerMismatch) {
+		t.Errorf("err = %v, want ErrGifOwnerMismatch", err)
+	}
+}
+
+func TestDelete_OwnerDeletesTheirOwnGif(t *testing.T) {
+	d := newMediaDeps(t)
+	d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Eq("gif-1")).Return("user-1", nil).Times(1)
+	d.gifRepo.EXPECT().Delete(gomock.Any(), gomock.Eq("gif-1")).Return(nil).Times(1)
+
+	if err := d.svc.Delete(context.Background(), "user-1", "gif-1"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+}
+
+// EXPECTED TO FAIL: internal/app/media/save.go is
+//
+//	// To-do, validate user
+//	return s.gifRepo.SaveRecent(ctx, key)
+//
+// It never checks ownership, so any authenticated user can pin any other user's
+// GIF into their recents by key.
+func TestSave_NonOwnerCannotSaveSomeoneElsesGif(t *testing.T) {
+	d := newMediaDeps(t)
+
+	d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Any()).Return("victim-user", nil).AnyTimes()
+	d.gifRepo.EXPECT().
+		SaveRecent(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, key string) error {
+			t.Errorf("attacker-user saved gif %q, which belongs to victim-user", key)
+			return nil
+		}).
+		AnyTimes()
+
+	if err := d.svc.Save(context.Background(), "attacker-user", "victims-gif"); err == nil {
+		t.Error("Save succeeded for a non-owner; want ErrGifOwnerMismatch")
+	}
+}
+
+// ===========================================================================
+// Listing
+// ===========================================================================
+
+func TestGetGifs_ScopesToTheCallerAndForwardsTheFilter(t *testing.T) {
+	d := newMediaDeps(t)
+	rows := []domainmedia.GifResponse{{Key: "a"}, {Key: "b"}}
+
+	d.gifRepo.EXPECT().
+		Get(gomock.Any(), gomock.Eq("user-1"), gomock.Eq("ready")).
+		Return(rows, nil).
+		Times(1)
+
+	res, err := d.svc.GetGifs(context.Background(), "user-1", "ready")
 	if err != nil {
-		t.Fatalf("expected GetGifs to succeed, got %v", err)
+		t.Fatalf("GetGifs: %v", err)
 	}
 	if res.Total != 2 {
-		t.Errorf("expected 2 gifs, got %d", res.Total)
+		t.Errorf("Total = %d, want 2", res.Total)
 	}
 }
 
-func TestMediaService_GetGifs_RepoError(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getFunc: func(ctx context.Context, user_id string, status string) ([]domainmedia.GifResponse, error) {
-			return nil, errors.New("db error")
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
+func TestGetRecents_EmptyResultIsNotAnError(t *testing.T) {
+	d := newMediaDeps(t)
+	d.gifRepo.EXPECT().GetRecents(gomock.Any(), gomock.Eq("user-1")).
+		Return([]domainmedia.GifResponse{}, nil).Times(1)
 
-	_, err := svc.GetGifs(context.Background(), "user-1", "all")
-	if !errors.Is(err, domainmedia.ErrGifFetchFailed) {
-		t.Errorf("expected ErrGifFetchFailed, got %v", err)
-	}
-}
-
-func TestMediaService_GetByKey_Success(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "user-1", nil
-		},
-		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
-			return domainmedia.GifResponse{Key: key, Url: "https://minio/" + key}, nil
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
-
-	gif, err := svc.GetByKey(context.Background(), "user-1", "my-gif.gif")
+	got, err := d.svc.GetRecents(context.Background(), "user-1")
 	if err != nil {
-		t.Fatalf("expected GetByKey to succeed, got %v", err)
+		t.Fatalf("GetRecents: %v", err)
 	}
-	if gif.Key != "my-gif.gif" {
-		t.Errorf("expected key my-gif.gif, got %s", gif.Key)
-	}
-}
-
-func TestMediaService_GetByKey_NotFound(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "", sql.ErrNoRows
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
-
-	_, err := svc.GetByKey(context.Background(), "user-1", "missing.gif")
-	if !errors.Is(err, domainmedia.ErrGifNotFound) {
-		t.Errorf("expected ErrGifNotFound, got %v", err)
+	if len(got) != 0 {
+		t.Errorf("len = %d, want 0", len(got))
 	}
 }
 
-func TestMediaService_GetByKey_OwnerMismatch(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "other-user", nil
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
+func TestLastVideo_MissingRowIsReportedAsNotFound(t *testing.T) {
+	d := newMediaDeps(t)
+	d.lastVideoRepo.EXPECT().GetLastVideo(gomock.Any(), gomock.Eq("user-1")).
+		Return(domainmedia.LastUploadResponse{}, sql.ErrNoRows).Times(1)
 
-	_, err := svc.GetByKey(context.Background(), "user-1", "my-gif.gif")
-	if !errors.Is(err, domainmedia.ErrGifOwnerMismatch) {
-		t.Errorf("expected ErrGifOwnerMismatch, got %v", err)
-	}
-}
-
-func TestMediaService_GetRecents_Success(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getRecentsFunc: func(ctx context.Context, user_id string) ([]domainmedia.GifResponse, error) {
-			return []domainmedia.GifResponse{{Key: "recent.gif"}}, nil
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
-
-	recents, err := svc.GetRecents(context.Background(), "user-1")
-	if err != nil {
-		t.Fatalf("expected GetRecents to succeed, got %v", err)
-	}
-	if len(recents) != 1 {
-		t.Errorf("expected 1 recent gif, got %d", len(recents))
-	}
-}
-
-func TestMediaService_GetRecents_RepoError(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getRecentsFunc: func(ctx context.Context, user_id string) ([]domainmedia.GifResponse, error) {
-			return nil, errors.New("db error")
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
-
-	_, err := svc.GetRecents(context.Background(), "user-1")
-	if !errors.Is(err, domainmedia.ErrGifFetchFailed) {
-		t.Errorf("expected ErrGifFetchFailed, got %v", err)
-	}
-}
-
-func TestMediaService_LastVideo_Success(t *testing.T) {
-	userId := uuid.New().String()
-	lastVideoRepo := &mockLastVideoRepo{
-		getLastVideoFunc: func(ctx context.Context, uid string) (domainmedia.LastUploadResponse, error) {
-			return domainmedia.LastUploadResponse{
-				UserID:  uuid.MustParse(uid),
-				FileKey: "last-upload.mp4",
-			}, nil
-		},
-	}
-	svc := newTestMediaService(nil, nil, lastVideoRepo, nil, nil, nil, nil)
-
-	last, err := svc.LastVideo(context.Background(), userId)
-	if err != nil {
-		t.Fatalf("expected LastVideo to succeed, got %v", err)
-	}
-	if last.FileKey != "last-upload.mp4" {
-		t.Errorf("expected last-upload.mp4, got %s", last.FileKey)
-	}
-}
-
-func TestMediaService_LastVideo_NotFound(t *testing.T) {
-	lastVideoRepo := &mockLastVideoRepo{
-		getLastVideoFunc: func(ctx context.Context, uid string) (domainmedia.LastUploadResponse, error) {
-			return domainmedia.LastUploadResponse{}, sql.ErrNoRows
-		},
-	}
-	svc := newTestMediaService(nil, nil, lastVideoRepo, nil, nil, nil, nil)
-
-	_, err := svc.LastVideo(context.Background(), uuid.New().String())
+	_, err := d.svc.LastVideo(context.Background(), "user-1")
 	if !errors.Is(err, domainmedia.ErrLastVideoNotFound) {
-		t.Errorf("expected ErrLastVideoNotFound, got %v", err)
+		t.Errorf("err = %v, want ErrLastVideoNotFound", err)
 	}
 }
 
-func TestMediaService_Download_SuccessAsOwner(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "user-owner-1", nil
-		},
-	}
-	storage := &mockStorageRepo{
-		downloadFunc: func(ctx context.Context, key string, expirey time.Duration) (*url.URL, error) {
-			return url.Parse("https://minio.download/" + key)
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, storage, nil, nil, nil)
-
-	downloadUrl, err := svc.Download(context.Background(), "user-owner-1", "my-gif.gif")
-	if err != nil {
-		t.Fatalf("expected Download to succeed, got %v", err)
-	}
-	if downloadUrl != "https://minio.download/my-gif.gif" {
-		t.Errorf("unexpected download URL: %s", downloadUrl)
-	}
-}
-
-func TestMediaService_Download_SuccessAsSharedUser(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "user-owner-1", nil
-		},
-	}
-	shareRepo := &mockShareRepo{
-		getOwnerFunc: func(ctx context.Context, sharedWithUserId string, gifKey string) (string, error) {
-			if sharedWithUserId == "user-shared-2" && gifKey == "my-gif.gif" {
-				return "user-owner-1", nil
-			}
-			return "", sql.ErrNoRows
-		},
-	}
-	storage := &mockStorageRepo{
-		downloadFunc: func(ctx context.Context, key string, expirey time.Duration) (*url.URL, error) {
-			return url.Parse("https://minio.download/" + key)
-		},
-	}
-	svc := newTestMediaService(gifRepo, shareRepo, nil, storage, nil, nil, nil)
-
-	downloadUrl, err := svc.Download(context.Background(), "user-shared-2", "my-gif.gif")
-	if err != nil {
-		t.Fatalf("expected Download to succeed for shared user, got %v", err)
-	}
-	if downloadUrl != "https://minio.download/my-gif.gif" {
-		t.Errorf("unexpected download URL: %s", downloadUrl)
-	}
-}
-
-func TestMediaService_Download_NotFound(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "", sql.ErrNoRows
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
-
-	_, err := svc.Download(context.Background(), "user-1", "non-existent.gif")
-	if !errors.Is(err, domainmedia.ErrGifNotFound) {
-		t.Errorf("expected ErrGifNotFound, got %v", err)
-	}
-}
-
-func TestMediaService_Download_OwnerMismatch(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "user-owner-1", nil
-		},
-	}
-	shareRepo := &mockShareRepo{
-		getOwnerFunc: func(ctx context.Context, sharedWithUserId string, gifKey string) (string, error) {
-			return "", sql.ErrNoRows
-		},
-	}
-	svc := newTestMediaService(gifRepo, shareRepo, nil, nil, nil, nil, nil)
-
-	_, err := svc.Download(context.Background(), "unauthorized-user-3", "my-gif.gif")
-	if !errors.Is(err, domainmedia.ErrGifOwnerMismatch) {
-		t.Errorf("expected ErrGifOwnerMismatch, got %v", err)
-	}
-}
-
-func TestMediaService_Stream_Success(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "user-1", nil
-		},
-	}
-	storage := &mockStorageRepo{
-		getStreamURLFunc: func(ctx context.Context, key string, expiry time.Duration) (*url.URL, error) {
-			return url.Parse("https://minio.stream/" + key)
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, storage, nil, nil, nil)
-
-	res, err := svc.Stream(context.Background(), "user-1", "video.mp4")
-	if err != nil {
-		t.Fatalf("expected Stream to succeed, got %v", err)
-	}
-	if res.PresignedUrl != "https://minio.stream/video.mp4" {
-		t.Errorf("unexpected presigned URL: %s", res.PresignedUrl)
-	}
-}
-
-func TestMediaService_Save_Success(t *testing.T) {
-	saved := false
-	gifRepo := &mockGifRepo{
-		saveRecentFunc: func(ctx context.Context, key string) error {
-			saved = true
-			return nil
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
-
-	err := svc.Save(context.Background(), "user-1", "gif-key-1")
-	if err != nil {
-		t.Fatalf("expected Save to succeed, got %v", err)
-	}
-	if !saved {
-		t.Errorf("expected SaveRecent to be called")
-	}
-}
-
-func TestMediaService_Update_Success(t *testing.T) {
-	updated := false
-	now := time.Now()
-	etag := now.Format(time.RFC3339Nano)
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "user-1", nil
-		},
-		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
-			return domainmedia.GifResponse{Key: key, UpdatedAt: now}, nil
-		},
-		updateFunc: func(ctx context.Context, key string, req domainmedia.GifUpdateRequest) (domainmedia.GifResponse, error) {
-			updated = true
-			return domainmedia.GifResponse{Key: key}, nil
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
-
-	name := "new_name"
-	res, err := svc.Update(context.Background(), "user-1", "gif-key-1", domainmedia.GifUpdateRequest{Name: &name}, etag)
-	if err != nil {
-		t.Fatalf("expected Update to succeed, got %v", err)
-	}
-	if res == nil || res.Key != "gif-key-1" {
-		t.Errorf("expected returned gif response with key gif-key-1")
-	}
-	if !updated {
-		t.Errorf("expected Update to be called")
-	}
-}
-
-func TestMediaService_Delete_Success(t *testing.T) {
-	deleted := false
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "user-1", nil
-		},
-		deleteFunc: func(ctx context.Context, key string) error {
-			deleted = true
-			return nil
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
-
-	err := svc.Delete(context.Background(), "user-1", "my-gif.gif")
-	if err != nil {
-		t.Fatalf("expected Delete to succeed, got %v", err)
-	}
-	if !deleted {
-		t.Errorf("expected gif to be deleted")
-	}
-}
-
-func TestMediaService_Delete_NotFound(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "", sql.ErrNoRows
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
-
-	err := svc.Delete(context.Background(), "user-1", "missing.gif")
-	if !errors.Is(err, domainmedia.ErrGifNotFound) {
-		t.Errorf("expected ErrGifNotFound, got %v", err)
-	}
-}
-
-func TestMediaService_Delete_OwnerMismatch(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "another-user", nil
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
-
-	err := svc.Delete(context.Background(), "user-1", "my-gif.gif")
-	if !errors.Is(err, domainmedia.ErrGifOwnerMismatch) {
-		t.Errorf("expected ErrGifOwnerMismatch, got %v", err)
-	}
-}
-
-func TestMediaService_GetGifThumbnail_Success(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "user-1", nil
-		},
-		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
-			return domainmedia.GifResponse{
-				Key:          key,
-				ThumbnailUrl: "thumb_" + key + ".jpg",
-			}, nil
-		},
-	}
-	storage := &mockStorageRepo{
-		getThumbnailURLFunc: func(ctx context.Context, key string) (*url.URL, error) {
-			return url.Parse("https://minio.local/thumbnails/" + key)
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, storage, nil, nil, nil)
-
-	thumbUrl, err := svc.GetGifThumbnail(context.Background(), "user-1", "sample.gif")
-	if err != nil {
-		t.Fatalf("expected GetGifThumbnail to succeed, got %v", err)
-	}
-	if thumbUrl != "https://minio.local/thumbnails/thumb_sample.gif.jpg" {
-		t.Errorf("unexpected thumbnail URL: %s", thumbUrl)
-	}
-}
-
-func TestMediaService_GetGifThumbnail_NotFound(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "", sql.ErrNoRows
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
-
-	_, err := svc.GetGifThumbnail(context.Background(), "user-1", "missing.gif")
-	if !errors.Is(err, domainmedia.ErrGifNotFound) {
-		t.Errorf("expected ErrGifNotFound, got %v", err)
-	}
-}
-
-func TestMediaService_GetGifThumbnail_EmptyThumbnailUrl(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "user-1", nil
-		},
-		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
-			return domainmedia.GifResponse{
-				Key:          key,
-				ThumbnailUrl: "",
-			}, nil
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, nil, nil, nil, nil)
-
-	_, err := svc.GetGifThumbnail(context.Background(), "user-1", "no-thumb.gif")
-	if !errors.Is(err, domainmedia.ErrThumbnailNotFound) {
-		t.Errorf("expected ErrThumbnailNotFound, got %v", err)
-	}
-}
-
-func TestMediaService_GetGifThumbnail_StorageError(t *testing.T) {
-	gifRepo := &mockGifRepo{
-		getOwnerFunc: func(ctx context.Context, key string) (string, error) {
-			return "user-1", nil
-		},
-		getByKeyFunc: func(ctx context.Context, key string, forUpdate bool) (domainmedia.GifResponse, error) {
-			return domainmedia.GifResponse{
-				Key:          key,
-				ThumbnailUrl: "thumb.jpg",
-			}, nil
-		},
-	}
-	storage := &mockStorageRepo{
-		getThumbnailURLFunc: func(ctx context.Context, key string) (*url.URL, error) {
-			return nil, errors.New("storage error")
-		},
-	}
-	svc := newTestMediaService(gifRepo, nil, nil, storage, nil, nil, nil)
-
-	_, err := svc.GetGifThumbnail(context.Background(), "user-1", "error.gif")
-	if err == nil {
-		t.Fatal("expected error on storage failure, got nil")
-	}
+func hasSuffix(s, suffix string) bool {
+	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
 }
