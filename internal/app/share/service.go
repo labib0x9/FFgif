@@ -10,6 +10,7 @@ import (
 	"github.com/labib0x9/ffgif/internal/port/queue"
 )
 
+//go:generate mockgen -source=service.go -destination=mocks/mock_share_service.go -package=mocks
 type Service interface {
 	Create(ctx context.Context, sharedBy string, gifKey string, sharedWith string, expiresAt time.Time) error
 	CreateByToken(ctx context.Context, sharedBy string, gifKey string, sharedWithEmail string, expiresAt time.Time) (string, error)

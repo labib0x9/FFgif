@@ -10,6 +10,7 @@ import (
 	"github.com/labib0x9/ffgif/pkg/password"
 )
 
+//go:generate mockgen -source=service.go -destination=mocks/mock_user_service.go -package=mocks
 type Service interface {
 	ChangePassword(ctx context.Context, userId string, currentPass string, pass string, confirmPass string) error
 	DeleteUser(ctx context.Context, userId string, pass string) error

@@ -12,6 +12,7 @@ import (
 	"github.com/labib0x9/ffgif/pkg/password"
 )
 
+//go:generate mockgen -source=service.go -destination=mocks/mock_auth_service.go -package=mocks
 type Service interface {
 	Signup(ctx context.Context, email string, username string, fullname string, password string) (*SignupResult, error)
 	Login(ctx context.Context, email string, password string) (*Result, error)

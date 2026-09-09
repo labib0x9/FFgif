@@ -7,620 +7,488 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
+	gojwt "github.com/golang-jwt/jwt/v5"
+	"go.uber.org/mock/gomock"
+
+	"github.com/labib0x9/ffgif/config"
 	appmedia "github.com/labib0x9/ffgif/internal/app/media"
+	mediasvcmocks "github.com/labib0x9/ffgif/internal/app/media/mocks"
 	domainmedia "github.com/labib0x9/ffgif/internal/domain/media"
-	"github.com/labib0x9/ffgif/internal/port/queue"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/media"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 	jwtpkg "github.com/labib0x9/ffgif/pkg/jwt"
 )
 
-type mockMediaService struct {
-	uploadFunc                func(rctx context.Context, filename string, claims string) (*domainmedia.UploadResult, error)
-	downloadFunc              func(ctx context.Context, userId, key string) (string, error)
-	getByKeyFunc              func(ctx context.Context, userId string, key string) (*domainmedia.GifResponse, error)
-	getRecentsFunc            func(ctx context.Context, id string) ([]domainmedia.GifResponse, error)
-	getGifsFunc               func(ctx context.Context, id string, filter string) (*appmedia.GifResult, error)
-	lastVideoFunc             func(ctx context.Context, userId string) (domainmedia.LastUploadResponse, error)
-	deleteFunc                func(ctx context.Context, userId string, key string) error
-	saveFunc                  func(ctx context.Context, userId, key string) error
-	streamFunc                func(ctx context.Context, userId string, key string) (*domainmedia.StreamResult, error)
-	updateFunc                func(ctx context.Context, userId string, key string, _gif domainmedia.GifUpdateRequest, lastUpdatedAt string) (*domainmedia.GifResponse, error)
-	processAndSaveFunc        func(ctx context.Context, key string) error
-	updateUploadingStatusFunc func(ctx context.Context, key string, status string) error
-	statusFunc                func(ctx context.Context, userId, key string) (string, string, error)
+const testUserID = "11111111-1111-1111-1111-111111111111"
 
-	convertFunc          func(ctx context.Context, userId string, key string, start float32, end float32, fps int, width int, loop bool) (*appmedia.ConvertResult, error)
-	conversionStatusFunc func(ctx context.Context, jobId string) (*appmedia.StatusResult, error)
-	processFunc          func(ctx context.Context, msg queue.VideoMessage) error
-	saveMetadataFunc     func(ctx context.Context, msg queue.SaveVideoMessage) error
-
-	getGifThumbnailFunc func(ctx context.Context, userId string, key string) (string, error)
+type handlerHarness struct {
+	svc *mediasvcmocks.MockService
+	h   *media.Handler
 }
 
-func (m *mockMediaService) Upload(rctx context.Context, filename string, claims string) (*domainmedia.UploadResult, error) {
-	if m.uploadFunc != nil {
-		return m.uploadFunc(rctx, filename, claims)
-	}
-	return &domainmedia.UploadResult{Url: "https://storage/presigned-put", Key: "upload-123", ExpireIn: 300}, nil
-}
-func (m *mockMediaService) Download(ctx context.Context, userId, key string) (string, error) {
-	if m.downloadFunc != nil {
-		return m.downloadFunc(ctx, userId, key)
-	}
-	return "https://storage/presigned-get", nil
-}
-func (m *mockMediaService) GetByKey(ctx context.Context, userId string, key string) (*domainmedia.GifResponse, error) {
-	if m.getByKeyFunc != nil {
-		return m.getByKeyFunc(ctx, userId, key)
-	}
-	return &domainmedia.GifResponse{Key: key, Url: "https://storage/" + key}, nil
-}
-func (m *mockMediaService) GetRecents(ctx context.Context, id string) ([]domainmedia.GifResponse, error) {
-	if m.getRecentsFunc != nil {
-		return m.getRecentsFunc(ctx, id)
-	}
-	return []domainmedia.GifResponse{}, nil
-}
-func (m *mockMediaService) GetGifs(ctx context.Context, id string, filter string) (*appmedia.GifResult, error) {
-	if m.getGifsFunc != nil {
-		return m.getGifsFunc(ctx, id, filter)
-	}
-	return &appmedia.GifResult{Data: []domainmedia.GifResponse{}, Total: 0}, nil
-}
-func (m *mockMediaService) LastVideo(ctx context.Context, userId string) (domainmedia.LastUploadResponse, error) {
-	if m.lastVideoFunc != nil {
-		return m.lastVideoFunc(ctx, userId)
-	}
-	uID, _ := uuid.Parse(userId)
-	return domainmedia.LastUploadResponse{UserID: uID, FileKey: "last.mp4"}, nil
-}
-func (m *mockMediaService) Delete(ctx context.Context, userId string, key string) error {
-	if m.deleteFunc != nil {
-		return m.deleteFunc(ctx, userId, key)
-	}
-	return nil
-}
-func (m *mockMediaService) Save(ctx context.Context, userId, key string) error {
-	if m.saveFunc != nil {
-		return m.saveFunc(ctx, userId, key)
-	}
-	return nil
-}
-func (m *mockMediaService) Stream(ctx context.Context, userId string, key string) (*domainmedia.StreamResult, error) {
-	if m.streamFunc != nil {
-		return m.streamFunc(ctx, userId, key)
-	}
-	return &domainmedia.StreamResult{PresignedUrl: "https://storage/stream/" + key, ExpireIn: 300}, nil
-}
-func (m *mockMediaService) Update(ctx context.Context, userId string, key string, _gif domainmedia.GifUpdateRequest, lastUpdatedAt string) (*domainmedia.GifResponse, error) {
-	if m.updateFunc != nil {
-		return m.updateFunc(ctx, userId, key, _gif, lastUpdatedAt)
-	}
-	return &domainmedia.GifResponse{Key: key}, nil
-}
-func (m *mockMediaService) ProcessAndSave(ctx context.Context, key string) error {
-	if m.processAndSaveFunc != nil {
-		return m.processAndSaveFunc(ctx, key)
-	}
-	return nil
-}
-func (m *mockMediaService) UpdateUploadingStatus(ctx context.Context, key string, status string) error {
-	if m.updateUploadingStatusFunc != nil {
-		return m.updateUploadingStatusFunc(ctx, key, status)
-	}
-	return nil
-}
-func (m *mockMediaService) Status(ctx context.Context, userId, key string) (string, string, error) {
-	if m.statusFunc != nil {
-		return m.statusFunc(ctx, userId, key)
-	}
-	return "stream-key", "ok", nil
-}
-func (m *mockMediaService) Convert(ctx context.Context, userId string, key string, start float32, end float32, fps int, width int, loop bool) (*appmedia.ConvertResult, error) {
-	if m.convertFunc != nil {
-		return m.convertFunc(ctx, userId, key, start, end, fps, width, loop)
-	}
-	return &appmedia.ConvertResult{Id: "job-123", Status: "queued"}, nil
-}
-func (m *mockMediaService) ConversionStatus(ctx context.Context, jobId string) (*appmedia.StatusResult, error) {
-	if m.conversionStatusFunc != nil {
-		return m.conversionStatusFunc(ctx, jobId)
-	}
-	return &appmedia.StatusResult{JobId: jobId, Status: "completed", GifId: "gif-123"}, nil
-}
-func (m *mockMediaService) Process(ctx context.Context, msg queue.VideoMessage) error {
-	if m.processFunc != nil {
-		return m.processFunc(ctx, msg)
-	}
-	return nil
-}
-func (m *mockMediaService) SaveMetadata(ctx context.Context, msg queue.SaveVideoMessage) error {
-	if m.saveMetadataFunc != nil {
-		return m.saveMetadataFunc(ctx, msg)
-	}
-	return nil
-}
-func (m *mockMediaService) GetGifThumbnail(ctx context.Context, userId string, key string) (string, error) {
-	if m.getGifThumbnailFunc != nil {
-		return m.getGifThumbnailFunc(ctx, userId, key)
-	}
-	return "https://storage/thumbnail.jpg", nil
+func newHandlerHarness(t *testing.T) *handlerHarness {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	svc := mediasvcmocks.NewMockService(ctrl)
+	mws := middleware.NewMiddlewares(&config.Config{}, nil, jwtpkg.Jwt{})
+	return &handlerHarness{svc: svc, h: media.NewHandler(svc, mws, validator.New())}
 }
 
-func withUserAuth(r *http.Request, userId string) *http.Request {
+// authed returns a request carrying a populated auth context, as the Auth
+// middleware would leave it.
+func authed(t *testing.T, method, target string, body any) *http.Request {
+	t.Helper()
+	var r *http.Request
+	if body == nil {
+		r = httptest.NewRequest(method, target, nil)
+	} else {
+		var buf bytes.Buffer
+		switch b := body.(type) {
+		case string:
+			buf.WriteString(b)
+		default:
+			if err := json.NewEncoder(&buf).Encode(b); err != nil {
+				t.Fatalf("encode body: %v", err)
+			}
+		}
+		r = httptest.NewRequest(method, target, &buf)
+		r.Header.Set("Content-Type", "application/json")
+	}
+
 	claims := jwtpkg.Payload{
 		Fullname: "Test User",
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: userId,
+		Email:    "test@example.com",
+		Role:     "user",
+		RegisteredClaims: gojwt.RegisteredClaims{
+			Subject:   testUserID,
+			ExpiresAt: gojwt.NewNumericDate(time.Now().Add(time.Hour)),
 		},
 	}
-	ctx := httputil.WithAuthContext(r.Context(), claims, "test-token")
-	return r.WithContext(ctx)
+	return r.WithContext(httputil.WithAuthContext(r.Context(), claims, "test.jwt.token"))
 }
 
-func TestMediaHandler_Upload_Success(t *testing.T) {
-	mockSvc := &mockMediaService{
-		uploadFunc: func(rctx context.Context, filename string, claims string) (*domainmedia.UploadResult, error) {
-			return &domainmedia.UploadResult{
-				Url:      "https://minio.local/presigned-upload",
-				Key:      "user-123:video-uuid.mp4",
-				ExpireIn: 300,
+func anonymous(method, target string, body string) *http.Request {
+	r := httptest.NewRequest(method, target, strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	return r
+}
+
+// ===========================================================================
+// Update — does the request body actually reach the service?
+// ===========================================================================
+
+// The brief lists this as broken ("handler never decodes the request body").
+// It is not: internal/transport/http/handlers/media/update.go:32 decodes into a
+// media.GifUpdateRequest. This test asserts the decoded fields with a gomock
+// argument matcher so a regression to a zero-value struct is caught.
+func TestUpdate_DecodedBodyReachesTheService(t *testing.T) {
+	h := newHandlerHarness(t)
+	updatedAt := time.Now().UTC()
+
+	h.svc.EXPECT().
+		Update(gomock.Any(), gomock.Eq(testUserID), gomock.Eq("gif-1"), gomock.Any(), gomock.Eq("etag-value")).
+		DoAndReturn(func(_ context.Context, _, _ string, req domainmedia.GifUpdateRequest, _ string) (*domainmedia.GifResponse, error) {
+			if req.Name == nil {
+				t.Fatal("the request body was discarded: Name is nil at the service boundary")
+			}
+			if *req.Name != "new.gif" {
+				t.Errorf("Name = %q, want new.gif", *req.Name)
+			}
+			if req.Status == nil || *req.Status != "ready" {
+				t.Errorf("Status = %v, want ready", req.Status)
+			}
+			if req.Persist == nil || *req.Persist != true {
+				t.Errorf("Persist = %v, want true", req.Persist)
+			}
+			return &domainmedia.GifResponse{
+				Key: "gif-1", Name: *req.Name, Status: *req.Status,
+				Persist: *req.Persist, UpdatedAt: updatedAt,
 			}, nil
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
+		}).
+		Times(1)
 
-	body, _ := json.Marshal(map[string]string{"filename": "my-video.mp4"})
-	req := httptest.NewRequest(http.MethodPost, "/uploads", bytes.NewReader(body))
-	req = withUserAuth(req, "user-123")
-
-	rec := httptest.NewRecorder()
-	handler.Upload(rec, req)
-
-	if rec.Code != http.StatusCreated {
-		t.Errorf("expected status 201 Created, got %d. Body: %s", rec.Code, rec.Body.String())
-	}
-}
-
-func TestMediaHandler_Upload_BadJSON(t *testing.T) {
-	handler := media.NewHandler(&mockMediaService{}, nil, validator.New())
-	req := httptest.NewRequest(http.MethodPost, "/uploads", bytes.NewReader([]byte("{bad")))
-	rec := httptest.NewRecorder()
-
-	handler.Upload(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status 400 Bad Request, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_Status_Success(t *testing.T) {
-	mockSvc := &mockMediaService{
-		statusFunc: func(ctx context.Context, userId, key string) (string, string, error) {
-			return "stream-test.mp4", "ok", nil
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /uploads/{key}/status", handler.Status)
-
-	req := httptest.NewRequest(http.MethodGet, "/uploads/user-1:test.mp4/status", nil)
-	req = withUserAuth(req, "user-1")
-	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_Convert_Success(t *testing.T) {
-	mockSvc := &mockMediaService{
-		convertFunc: func(ctx context.Context, userId string, key string, start float32, end float32, fps int, width int, loop bool) (*appmedia.ConvertResult, error) {
-			return &appmedia.ConvertResult{Id: "job-xyz", Status: "queued"}, nil
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	body, _ := json.Marshal(map[string]any{
-		"upload_key": "raw_video.mp4",
-		"start_time": 0.0,
-		"end_time":   5.0,
-		"fps":        15,
-		"width":      480,
-		"loop":       true,
+	req := authed(t, http.MethodPatch, "/gifs/gif-1", map[string]any{
+		"name": "new.gif", "status": "ready", "persist": true,
 	})
-	req := httptest.NewRequest(http.MethodPost, "/convert", bytes.NewReader(body))
-	req = withUserAuth(req, "user-123")
+	req.SetPathValue("key", "gif-1")
+	req.Header.Set("If-Match", "etag-value")
 
 	rec := httptest.NewRecorder()
-	handler.Convert(rec, req)
+	h.h.Update(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+
+	var got domainmedia.GifResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v — body = %s", err, rec.Body.String())
+	}
+	if got.Name != "new.gif" {
+		t.Errorf("response Name = %q, want new.gif", got.Name)
+	}
+}
+
+// A partial PATCH must leave the untouched fields nil so the repository's
+// COALESCE keeps their current values.
+func TestUpdate_PartialBodyLeavesOtherFieldsNil(t *testing.T) {
+	h := newHandlerHarness(t)
+
+	h.svc.EXPECT().
+		Update(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _, _ string, req domainmedia.GifUpdateRequest, _ string) (*domainmedia.GifResponse, error) {
+			if req.Name == nil || *req.Name != "only-name.gif" {
+				t.Errorf("Name = %v, want only-name.gif", req.Name)
+			}
+			if req.Status != nil {
+				t.Errorf("Status = %q, want nil for a field the client did not send", *req.Status)
+			}
+			if req.Persist != nil {
+				t.Errorf("Persist = %v, want nil for a field the client did not send", *req.Persist)
+			}
+			return &domainmedia.GifResponse{Key: "gif-1"}, nil
+		}).
+		Times(1)
+
+	req := authed(t, http.MethodPatch, "/gifs/gif-1", `{"name":"only-name.gif"}`)
+	req.SetPathValue("key", "gif-1")
+	req.Header.Set("If-Match", "etag")
+
+	rec := httptest.NewRecorder()
+	h.h.Update(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdate_RequestPreconditions(t *testing.T) {
+	tests := []struct {
+		name     string
+		authed   bool
+		key      string
+		ifMatch  string
+		body     string
+		wantCode int
+	}{
+		{name: "unauthenticated", key: "gif-1", ifMatch: "etag", body: `{"name":"x"}`, wantCode: http.StatusUnauthorized},
+		{name: "missing path key", authed: true, ifMatch: "etag", body: `{"name":"x"}`, wantCode: http.StatusBadRequest},
+		{name: "malformed json", authed: true, key: "gif-1", ifMatch: "etag", body: `{"name":`, wantCode: http.StatusBadRequest},
+		{name: "missing If-Match", authed: true, key: "gif-1", body: `{"name":"x"}`, wantCode: http.StatusPreconditionFailed},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHandlerHarness(t)
+			// the service must never be reached for any of these
+			var req *http.Request
+			if tc.authed {
+				req = authed(t, http.MethodPatch, "/gifs/"+tc.key, tc.body)
+			} else {
+				req = anonymous(http.MethodPatch, "/gifs/"+tc.key, tc.body)
+			}
+			if tc.key != "" {
+				req.SetPathValue("key", tc.key)
+			}
+			if tc.ifMatch != "" {
+				req.Header.Set("If-Match", tc.ifMatch)
+			}
+
+			rec := httptest.NewRecorder()
+			h.h.Update(rec, req)
+
+			if rec.Code != tc.wantCode {
+				t.Errorf("status = %d, want %d; body = %s", rec.Code, tc.wantCode, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestUpdate_ServiceErrorsMapToStatusCodes(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		wantCode int
+	}{
+		{"gif not found", domainmedia.ErrGifNotFound, http.StatusNotFound},
+		{"not the owner", domainmedia.ErrGifOwnerMismatch, http.StatusForbidden},
+		{"stale etag", domainmedia.ErrETagValidationFailed, http.StatusPreconditionFailed},
+		{"unexpected failure", errors.New("boom"), http.StatusInternalServerError},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHandlerHarness(t)
+			h.svc.EXPECT().
+				Update(gomock.Any(), gomock.Eq(testUserID), gomock.Eq("gif-1"), gomock.Any(), gomock.Any()).
+				Return(nil, tc.err).
+				Times(1)
+
+			req := authed(t, http.MethodPatch, "/gifs/gif-1", `{"name":"x"}`)
+			req.SetPathValue("key", "gif-1")
+			req.Header.Set("If-Match", "etag")
+
+			rec := httptest.NewRecorder()
+			h.h.Update(rec, req)
+
+			if rec.Code != tc.wantCode {
+				t.Errorf("status = %d, want %d", rec.Code, tc.wantCode)
+			}
+		})
+	}
+}
+
+// ===========================================================================
+// Convert — request validation
+// ===========================================================================
+
+type convertBody struct {
+	Key   string  `json:"upload_key"`
+	Start float32 `json:"start_time"`
+	End   float32 `json:"end_time"`
+	Width int     `json:"width"`
+	FPS   int     `json:"fps"`
+	Loop  bool    `json:"loop"`
+}
+
+func validConvert() convertBody {
+	return convertBody{Key: "upload-1", Start: 0, End: 5, Width: 480, FPS: 15}
+}
+
+// EXPECTED TO FAIL: convertRequ in
+// internal/transport/http/handlers/media/convert.go validates Start and End
+// independently (`gte=0` and `gt=0`) and never relates them. A trim window
+// where end <= start is accepted and forwarded to the worker, which hands
+// ffmpeg a negative or zero duration.
+func TestConvert_RejectsTrimWindowWhereEndIsNotAfterStart(t *testing.T) {
+	tests := []struct {
+		name  string
+		start float32
+		end   float32
+	}{
+		{"end before start", 5, 2},
+		{"end equals start", 5, 5},
+		{"zero-length window at the origin", 0, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHandlerHarness(t)
+
+			h.svc.EXPECT().
+				Convert(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+					gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _, key string, start, end float32, fps, width int, loop bool) (*appmedia.ConvertResult, error) {
+					t.Errorf("a conversion with start=%v end=%v was accepted and queued; "+
+						"ffmpeg receives a %v-second window", start, end, end-start)
+					return &appmedia.ConvertResult{Id: "job-1", Status: "queued"}, nil
+				}).
+				AnyTimes()
+
+			body := validConvert()
+			body.Start, body.End = tc.start, tc.end
+
+			req := authed(t, http.MethodPost, "/convert", body)
+			rec := httptest.NewRecorder()
+			h.h.Convert(rec, req)
+
+			if rec.Code != http.StatusUnprocessableEntity {
+				t.Errorf("status = %d, want 422 for start=%v end=%v",
+					rec.Code, tc.start, tc.end)
+			}
+		})
+	}
+}
+
+// The declared width/fps bounds must hold exactly at the edges.
+func TestConvert_WidthAndFpsBoundaries(t *testing.T) {
+	tests := []struct {
+		name     string
+		width    int
+		fps      int
+		wantCode int
+	}{
+		{"width at lower bound", 100, 15, http.StatusAccepted},
+		{"width at upper bound", 1920, 15, http.StatusAccepted},
+		{"width one below lower bound", 99, 15, http.StatusUnprocessableEntity},
+		{"width one above upper bound", 1921, 15, http.StatusUnprocessableEntity},
+		{"width zero", 0, 15, http.StatusUnprocessableEntity},
+		{"fps at lower bound", 480, 1, http.StatusAccepted},
+		{"fps at upper bound", 480, 30, http.StatusAccepted},
+		{"fps zero", 480, 0, http.StatusUnprocessableEntity},
+		{"fps above upper bound", 480, 31, http.StatusUnprocessableEntity},
+		{"fps negative", 480, -1, http.StatusUnprocessableEntity},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHandlerHarness(t)
+
+			if tc.wantCode == http.StatusAccepted {
+				h.svc.EXPECT().
+					Convert(gomock.Any(), gomock.Eq(testUserID), gomock.Eq("upload-1"),
+						gomock.Any(), gomock.Any(), gomock.Eq(tc.fps), gomock.Eq(tc.width), gomock.Eq(false)).
+					Return(&appmedia.ConvertResult{Id: "job-1", Status: "queued"}, nil).
+					Times(1)
+			}
+			// otherwise the service must not be called at all
+
+			body := validConvert()
+			body.Width, body.FPS = tc.width, tc.fps
+
+			req := authed(t, http.MethodPost, "/convert", body)
+			rec := httptest.NewRecorder()
+			h.h.Convert(rec, req)
+
+			if rec.Code != tc.wantCode {
+				t.Errorf("status = %d, want %d; body = %s", rec.Code, tc.wantCode, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestConvert_MissingOrMalformedRequest(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		wantCode int
+	}{
+		{"missing upload key", `{"start_time":0,"end_time":5,"width":480,"fps":15}`, http.StatusUnprocessableEntity},
+		{"empty upload key", `{"upload_key":"","start_time":0,"end_time":5,"width":480,"fps":15}`, http.StatusUnprocessableEntity},
+		{"negative start", `{"upload_key":"u","start_time":-1,"end_time":5,"width":480,"fps":15}`, http.StatusUnprocessableEntity},
+		{"malformed json", `{"upload_key":`, http.StatusBadRequest},
+		{"empty body", ``, http.StatusBadRequest},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHandlerHarness(t)
+			// the service must not be reached
+			req := authed(t, http.MethodPost, "/convert", tc.body)
+			rec := httptest.NewRecorder()
+			h.h.Convert(rec, req)
+
+			if rec.Code != tc.wantCode {
+				t.Errorf("status = %d, want %d; body = %s", rec.Code, tc.wantCode, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestConvert_AcceptedResponseCarriesJobIdAndLocation(t *testing.T) {
+	h := newHandlerHarness(t)
+
+	h.svc.EXPECT().
+		Convert(gomock.Any(), gomock.Eq(testUserID), gomock.Eq("upload-1"),
+			gomock.Eq(float32(1.5)), gomock.Eq(float32(9.25)),
+			gomock.Eq(24), gomock.Eq(640), gomock.Eq(true)).
+		Return(&appmedia.ConvertResult{Id: "job-abc", Status: "queued"}, nil).
+		Times(1)
+
+	body := convertBody{Key: "upload-1", Start: 1.5, End: 9.25, Width: 640, FPS: 24, Loop: true}
+	req := authed(t, http.MethodPost, "/convert", body)
+	rec := httptest.NewRecorder()
+	h.h.Convert(rec, req)
 
 	if rec.Code != http.StatusAccepted {
-		t.Errorf("expected status 202 Accepted, got %d. Body: %s", rec.Code, rec.Body.String())
+		t.Fatalf("status = %d, want 202; body = %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Location"); got != "/jobs/job-abc/status" {
+		t.Errorf("Location = %q, want /jobs/job-abc/status", got)
+	}
+
+	var payload map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["job_id"] != "job-abc" || payload["status"] != "queued" {
+		t.Errorf("body = %v, want job_id=job-abc status=queued", payload)
 	}
 }
 
-func TestMediaHandler_Convert_ValidationFailed(t *testing.T) {
-	handler := media.NewHandler(&mockMediaService{}, nil, validator.New())
+// EXPECTED TO FAIL: Convert's handler validates the body BEFORE it reads the
+// user id from the context, and answers 500 when the id is missing. An
+// unauthenticated request must be 401, not 500 — and it must not be told
+// whether its payload was well-formed.
+func TestConvert_UnauthenticatedRequestIsUnauthorizedNotServerError(t *testing.T) {
+	h := newHandlerHarness(t)
 
-	body, _ := json.Marshal(map[string]any{
-		"upload_key": "",
-		"start_time": -1.0,
+	buf, err := json.Marshal(validConvert())
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	req := anonymous(http.MethodPost, "/convert", string(buf))
+	rec := httptest.NewRecorder()
+	h.h.Convert(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401 for a request with no auth context", rec.Code)
+	}
+}
+
+// ===========================================================================
+// Status
+// ===========================================================================
+
+func TestStatus_LocationHeaderOnlyWhenReady(t *testing.T) {
+	tests := []struct {
+		name         string
+		status       string
+		streamKey    string
+		wantLocation string
+	}{
+		{"ready", "ok", "user-1:clip.mp4", "/uploads/user-1:clip.mp4/stream"},
+		{"still uploading", "uploading", "", ""},
+		{"failed", "failed", "", ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHandlerHarness(t)
+			h.svc.EXPECT().
+				Status(gomock.Any(), gomock.Eq(testUserID), gomock.Eq("key-1")).
+				Return(tc.streamKey, tc.status, nil).
+				Times(1)
+
+			req := authed(t, http.MethodGet, "/uploads/key-1/status", nil)
+			req.SetPathValue("key", "key-1")
+			rec := httptest.NewRecorder()
+			h.h.Status(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", rec.Code)
+			}
+			if got := rec.Header().Get("Location"); got != tc.wantLocation {
+				t.Errorf("Location = %q, want %q", got, tc.wantLocation)
+			}
+		})
+	}
+}
+
+func TestStatus_RequiresKeyAndAuth(t *testing.T) {
+	t.Run("missing key", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		req := authed(t, http.MethodGet, "/uploads//status", nil)
+		rec := httptest.NewRecorder()
+		h.h.Status(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", rec.Code)
+		}
 	})
-	req := httptest.NewRequest(http.MethodPost, "/convert", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
 
-	handler.Convert(rec, req)
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Errorf("expected status 422 Unprocessable Entity, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_ConversionStatus_Success(t *testing.T) {
-	mockSvc := &mockMediaService{
-		conversionStatusFunc: func(ctx context.Context, jobId string) (*appmedia.StatusResult, error) {
-			return &appmedia.StatusResult{JobId: jobId, Status: "completed", GifId: "output.gif"}, nil
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /convert/{jobId}/status", handler.ConversionStatus)
-
-	req := httptest.NewRequest(http.MethodGet, "/convert/job-123/status", nil)
-	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_GetGifs_Success(t *testing.T) {
-	mockSvc := &mockMediaService{
-		getGifsFunc: func(ctx context.Context, id string, filter string) (*appmedia.GifResult, error) {
-			return &appmedia.GifResult{Data: []domainmedia.GifResponse{}, Total: 0}, nil
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	req := httptest.NewRequest(http.MethodGet, "/gifs/me", nil)
-	req = withUserAuth(req, "user-123")
-
-	rec := httptest.NewRecorder()
-	handler.GetGifs(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_GetByKey_Success(t *testing.T) {
-	mockSvc := &mockMediaService{
-		getByKeyFunc: func(ctx context.Context, userId string, key string) (*domainmedia.GifResponse, error) {
-			return &domainmedia.GifResponse{Key: key}, nil
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /gifs/me/{key}", handler.GetByKey)
-
-	req := httptest.NewRequest(http.MethodGet, "/gifs/me/sample.gif", nil)
-	req = withUserAuth(req, "user-123")
-
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_GetRecents_Success(t *testing.T) {
-	mockSvc := &mockMediaService{
-		getRecentsFunc: func(ctx context.Context, id string) ([]domainmedia.GifResponse, error) {
-			return []domainmedia.GifResponse{}, nil
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	req := httptest.NewRequest(http.MethodGet, "/gifs/me/recents", nil)
-	req = withUserAuth(req, "user-123")
-
-	rec := httptest.NewRecorder()
-	handler.GetRecents(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_LastVideo_Success(t *testing.T) {
-	mockSvc := &mockMediaService{
-		lastVideoFunc: func(ctx context.Context, userId string) (domainmedia.LastUploadResponse, error) {
-			return domainmedia.LastUploadResponse{FileKey: "last.mp4"}, nil
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	req := httptest.NewRequest(http.MethodGet, "/uploads/last", nil)
-	req = withUserAuth(req, "123e4567-e89b-12d3-a456-426614174000")
-
-	rec := httptest.NewRecorder()
-	handler.LastVideo(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_Download_Success(t *testing.T) {
-	mockSvc := &mockMediaService{
-		downloadFunc: func(ctx context.Context, userId, key string) (string, error) {
-			return "https://minio.download/sample.gif", nil
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /gifs/me/{key}/download", handler.Download)
-
-	req := httptest.NewRequest(http.MethodGet, "/gifs/me/sample.gif/download", nil)
-	req = withUserAuth(req, "user-123")
-
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_Download_NotFound(t *testing.T) {
-	mockSvc := &mockMediaService{
-		downloadFunc: func(ctx context.Context, userId, key string) (string, error) {
-			return "", domainmedia.ErrGifNotFound
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /gifs/me/{key}/download", handler.Download)
-
-	req := httptest.NewRequest(http.MethodGet, "/gifs/me/missing.gif/download", nil)
-	req = withUserAuth(req, "user-123")
-
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected status 404 Not Found, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_Download_OwnerMismatch(t *testing.T) {
-	mockSvc := &mockMediaService{
-		downloadFunc: func(ctx context.Context, userId, key string) (string, error) {
-			return "", domainmedia.ErrGifOwnerMismatch
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /gifs/me/{key}/download", handler.Download)
-
-	req := httptest.NewRequest(http.MethodGet, "/gifs/me/private.gif/download", nil)
-	req = withUserAuth(req, "user-123")
-
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("expected status 403 Forbidden, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_Stream_Success(t *testing.T) {
-	mockSvc := &mockMediaService{
-		streamFunc: func(ctx context.Context, userId string, key string) (*domainmedia.StreamResult, error) {
-			return &domainmedia.StreamResult{PresignedUrl: "https://minio/stream/v.mp4"}, nil
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /uploads/{key}/stream", handler.Stream)
-
-	req := httptest.NewRequest(http.MethodGet, "/uploads/user-1:v.mp4/stream", nil)
-	req = withUserAuth(req, "user-1")
-	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_Save_Success(t *testing.T) {
-	mockSvc := &mockMediaService{
-		saveFunc: func(ctx context.Context, userId, key string) error {
-			return nil
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /gifs/me/recents/{key}/save", handler.Save)
-
-	req := httptest.NewRequest(http.MethodPost, "/gifs/me/recents/key-123/save", nil)
-	req = withUserAuth(req, "user-123")
-
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNoContent {
-		t.Errorf("expected status 204 No Content, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_Update_Success(t *testing.T) {
-	mockSvc := &mockMediaService{
-		updateFunc: func(ctx context.Context, userId string, key string, _gif domainmedia.GifUpdateRequest, lastUpdatedAt string) (*domainmedia.GifResponse, error) {
-			return &domainmedia.GifResponse{Key: key}, nil
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("PATCH /gifs/me/{key}", handler.Update)
-
-	name := "updated_name"
-	body, _ := json.Marshal(domainmedia.GifUpdateRequest{Name: &name})
-	req := httptest.NewRequest(http.MethodPatch, "/gifs/me/key-123", bytes.NewReader(body))
-	req.Header.Set("If-Match", "2026-09-07T12:00:00Z")
-	req = withUserAuth(req, "user-123")
-
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_Delete_Success(t *testing.T) {
-	mockSvc := &mockMediaService{
-		deleteFunc: func(ctx context.Context, userId string, key string) error {
-			return nil
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("DELETE /gifs/me/{key}", handler.Delete)
-
-	req := httptest.NewRequest(http.MethodDelete, "/gifs/me/key-123", nil)
-	req = withUserAuth(req, "user-123")
-
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_Delete_NotFound(t *testing.T) {
-	mockSvc := &mockMediaService{
-		deleteFunc: func(ctx context.Context, userId string, key string) error {
-			return domainmedia.ErrGifNotFound
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("DELETE /gifs/me/{key}", handler.Delete)
-
-	req := httptest.NewRequest(http.MethodDelete, "/gifs/me/missing.gif", nil)
-	req = withUserAuth(req, "user-123")
-
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected status 404 Not Found, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_Delete_OwnerMismatch(t *testing.T) {
-	mockSvc := &mockMediaService{
-		deleteFunc: func(ctx context.Context, userId string, key string) error {
-			return domainmedia.ErrGifOwnerMismatch
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("DELETE /gifs/me/{key}", handler.Delete)
-
-	req := httptest.NewRequest(http.MethodDelete, "/gifs/me/other.gif", nil)
-	req = withUserAuth(req, "user-123")
-
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("expected status 403 Forbidden, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_GetGifThumbnail_Success(t *testing.T) {
-	mockSvc := &mockMediaService{
-		getGifThumbnailFunc: func(ctx context.Context, userId string, key string) (string, error) {
-			return "https://minio/thumbnail.jpg", nil
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /gifs/me/{key}/thumbnail", handler.GetGifThumbnail)
-
-	req := httptest.NewRequest(http.MethodGet, "/gifs/me/sample.gif/thumbnail", nil)
-	req = withUserAuth(req, "user-123")
-	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_GetGifThumbnail_NotFound(t *testing.T) {
-	mockSvc := &mockMediaService{
-		getGifThumbnailFunc: func(ctx context.Context, userId string, key string) (string, error) {
-			return "", domainmedia.ErrGifNotFound
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /gifs/me/{key}/thumbnail", handler.GetGifThumbnail)
-
-	req := httptest.NewRequest(http.MethodGet, "/gifs/me/missing.gif/thumbnail", nil)
-	req = withUserAuth(req, "user-123")
-	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected status 404 Not Found, got %d", rec.Code)
-	}
-}
-
-func TestMediaHandler_GetGifThumbnail_InternalError(t *testing.T) {
-	mockSvc := &mockMediaService{
-		getGifThumbnailFunc: func(ctx context.Context, userId string, key string) (string, error) {
-			return "", errors.New("storage error")
-		},
-	}
-	handler := media.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /gifs/me/{key}/thumbnail", handler.GetGifThumbnail)
-
-	req := httptest.NewRequest(http.MethodGet, "/gifs/me/error.gif/thumbnail", nil)
-	req = withUserAuth(req, "user-123")
-	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected status 500 Internal Server Error, got %d", rec.Code)
-	}
+	t.Run("unauthenticated", func(t *testing.T) {
+		h := newHandlerHarness(t)
+		req := anonymous(http.MethodGet, "/uploads/key-1/status", "")
+		req.SetPathValue("key", "key-1")
+		rec := httptest.NewRecorder()
+		h.h.Status(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("status = %d, want 401", rec.Code)
+		}
+	})
 }

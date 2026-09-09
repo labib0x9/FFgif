@@ -1,362 +1,396 @@
 package user_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/golang-jwt/jwt/v5"
+	gojwt "github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"go.uber.org/mock/gomock"
+
+	"github.com/labib0x9/ffgif/config"
+	usersvcmocks "github.com/labib0x9/ffgif/internal/app/user/mocks"
 	domainauth "github.com/labib0x9/ffgif/internal/domain/auth"
 	domainmedia "github.com/labib0x9/ffgif/internal/domain/media"
 	domainuser "github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/user"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 	jwtpkg "github.com/labib0x9/ffgif/pkg/jwt"
 )
 
-type mockUserService struct {
-	getProfileFunc     func(ctx context.Context, id string) (*domainuser.ProfileResponse, error)
-	updateProfileFunc  func(ctx context.Context, profile domainuser.ProfileUpdateRequest, id string, lastUpdatedAt string) (*domainuser.ProfileResponse, error)
-	changePasswordFunc func(ctx context.Context, id string, currentPass string, pass string, confirmPass string) error
-	deleteUserFunc     func(ctx context.Context, id string, pass string) error
-	getQuotaFunc       func(ctx context.Context, id string) (*domainuser.Quota, error)
+const userID = "33333333-3333-3333-3333-333333333333"
+
+type userHarness struct {
+	svc *usersvcmocks.MockService
+	h   *user.Handler
 }
 
-func (m *mockUserService) GetProfile(ctx context.Context, id string) (*domainuser.ProfileResponse, error) {
-	if m.getProfileFunc != nil {
-		return m.getProfileFunc(ctx, id)
-	}
-	return &domainuser.ProfileResponse{Username: "testuser", Email: "test@example.com"}, nil
-}
-func (m *mockUserService) UpdateProfile(ctx context.Context, profile domainuser.ProfileUpdateRequest, id string, lastUpdatedAt string) (*domainuser.ProfileResponse, error) {
-	if m.updateProfileFunc != nil {
-		return m.updateProfileFunc(ctx, profile, id, lastUpdatedAt)
-	}
-	return &domainuser.ProfileResponse{}, nil
-}
-func (m *mockUserService) ChangePassword(ctx context.Context, id string, currentPass string, pass string, confirmPass string) error {
-	if m.changePasswordFunc != nil {
-		return m.changePasswordFunc(ctx, id, currentPass, pass, confirmPass)
-	}
-	return nil
-}
-func (m *mockUserService) DeleteUser(ctx context.Context, id string, pass string) error {
-	if m.deleteUserFunc != nil {
-		return m.deleteUserFunc(ctx, id, pass)
-	}
-	return nil
-}
-func (m *mockUserService) GetQuota(ctx context.Context, id string) (*domainuser.Quota, error) {
-	if m.getQuotaFunc != nil {
-		return m.getQuotaFunc(ctx, id)
-	}
-	return &domainuser.Quota{UserID: uuid.New(), TotalBytes: 1000, GifCount: 10}, nil
+func newUserHarness(t *testing.T) *userHarness {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	svc := usersvcmocks.NewMockService(ctrl)
+	mws := middleware.NewMiddlewares(&config.Config{}, nil, jwtpkg.Jwt{})
+	return &userHarness{svc: svc, h: user.NewHandler(svc, mws, validator.New())}
 }
 
-func withUserAuth(r *http.Request, userId string) *http.Request {
-	claims := jwtpkg.Payload{
-		Fullname: "Jane Doe",
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: userId,
-		},
+func request(t *testing.T, method, target, body string, withAuth bool) *http.Request {
+	t.Helper()
+	var r *http.Request
+	if body == "" {
+		r = httptest.NewRequest(method, target, nil)
+	} else {
+		r = httptest.NewRequest(method, target, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
 	}
-	ctx := httputil.WithAuthContext(r.Context(), claims, "test-token")
-	return r.WithContext(ctx)
+	if withAuth {
+		claims := jwtpkg.Payload{
+			Fullname: "Alice", Email: "alice@example.com", Role: "user",
+			RegisteredClaims: gojwt.RegisteredClaims{
+				Subject:   userID,
+				ExpiresAt: gojwt.NewNumericDate(time.Now().Add(time.Hour)),
+			},
+		}
+		r = r.WithContext(httputil.WithAuthContext(r.Context(), claims, "tok"))
+	}
+	return r
 }
 
-func TestUserHandler_GetProfile_Success(t *testing.T) {
-	mockSvc := &mockUserService{
-		getProfileFunc: func(ctx context.Context, id string) (*domainuser.ProfileResponse, error) {
-			return &domainuser.ProfileResponse{
-				Username: "janedoe",
-				Email:    "jane@example.com",
-				Fullname: "Jane Doe",
-			}, nil
-		},
-	}
-	handler := user.NewHandler(mockSvc, nil, validator.New())
+// ===========================================================================
+// ChangePassword
+// ===========================================================================
 
-	req := httptest.NewRequest(http.MethodGet, "/users/profile/me", nil)
-	req = withUserAuth(req, "user-uuid-1")
+func TestChangePassword_ForwardsAllThreePasswordsAndTheTokenSubject(t *testing.T) {
+	h := newUserHarness(t)
+
+	h.svc.EXPECT().
+		ChangePassword(gomock.Any(),
+			gomock.Eq(userID),
+			gomock.Eq("old!pass"),
+			gomock.Eq("new!pass"),
+			gomock.Eq("new!pass")).
+		Return(nil).
+		Times(1)
+
 	rec := httptest.NewRecorder()
-
-	handler.GetProfile(rec, req)
+	h.h.ChangePassword(rec, request(t, http.MethodPost, "/me/password",
+		`{"current_password":"old!pass","password":"new!pass","confirm_password":"new!pass"}`, true))
 
 	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d. Body: %s", rec.Code, rec.Body.String())
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestUserHandler_GetProfile_Unauthenticated(t *testing.T) {
-	handler := user.NewHandler(&mockUserService{}, nil, validator.New())
+// The user id must come from the verified token, never from the request body —
+// otherwise anyone can change anyone's password.
+func TestChangePassword_IgnoresAUserIdInTheBody(t *testing.T) {
+	h := newUserHarness(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/users/profile/me", nil)
-	rec := httptest.NewRecorder()
-
-	handler.GetProfile(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status 401 Unauthorized, got %d", rec.Code)
-	}
-}
-
-func TestUserHandler_GetProfile_NotFound(t *testing.T) {
-	mockSvc := &mockUserService{
-		getProfileFunc: func(ctx context.Context, id string) (*domainuser.ProfileResponse, error) {
-			return nil, domainauth.ErrUserNotFound
-		},
-	}
-	handler := user.NewHandler(mockSvc, nil, validator.New())
-
-	req := httptest.NewRequest(http.MethodGet, "/users/profile/me", nil)
-	req = withUserAuth(req, "missing-user")
-	rec := httptest.NewRecorder()
-
-	handler.GetProfile(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected status 404 Not Found, got %d", rec.Code)
-	}
-}
-
-func TestUserHandler_UpdateProfile_Success(t *testing.T) {
-	mockSvc := &mockUserService{
-		updateProfileFunc: func(ctx context.Context, profile domainuser.ProfileUpdateRequest, id string, lastUpdatedAt string) (*domainuser.ProfileResponse, error) {
-			return &domainuser.ProfileResponse{
-				Username: *profile.Username,
-			}, nil
-		},
-	}
-	handler := user.NewHandler(mockSvc, nil, validator.New())
-
-	username := "janedoe_new"
-	body, _ := json.Marshal(domainuser.ProfileUpdateRequest{
-		Username: &username,
-	})
-	req := httptest.NewRequest(http.MethodPatch, "/users/profile/me", bytes.NewReader(body))
-	req.Header.Set("If-Match", "2026-09-07T12:00:00Z")
-	req = withUserAuth(req, "user-uuid-1")
-	rec := httptest.NewRecorder()
-
-	handler.UpdateProfile(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
-	}
-}
-
-func TestUserHandler_UpdateProfile_MissingIfMatch(t *testing.T) {
-	handler := user.NewHandler(&mockUserService{}, nil, validator.New())
-
-	username := "janedoe_new"
-	body, _ := json.Marshal(domainuser.ProfileUpdateRequest{
-		Username: &username,
-	})
-	req := httptest.NewRequest(http.MethodPatch, "/users/profile/me", bytes.NewReader(body))
-	req = withUserAuth(req, "user-uuid-1")
-	rec := httptest.NewRecorder()
-
-	handler.UpdateProfile(rec, req)
-	if rec.Code != http.StatusPreconditionFailed {
-		t.Errorf("expected status 412 Precondition Failed, got %d", rec.Code)
-	}
-}
-
-func TestUserHandler_UpdateProfile_ETagMismatch(t *testing.T) {
-	mockSvc := &mockUserService{
-		updateProfileFunc: func(ctx context.Context, profile domainuser.ProfileUpdateRequest, id string, lastUpdatedAt string) (*domainuser.ProfileResponse, error) {
-			return nil, domainmedia.ErrETagValidationFailed
-		},
-	}
-	handler := user.NewHandler(mockSvc, nil, validator.New())
-
-	username := "janedoe_new"
-	body, _ := json.Marshal(domainuser.ProfileUpdateRequest{
-		Username: &username,
-	})
-	req := httptest.NewRequest(http.MethodPatch, "/users/profile/me", bytes.NewReader(body))
-	req.Header.Set("If-Match", "outdated-etag")
-	req = withUserAuth(req, "user-uuid-1")
-	rec := httptest.NewRecorder()
-
-	handler.UpdateProfile(rec, req)
-	if rec.Code != http.StatusPreconditionFailed {
-		t.Errorf("expected status 412 Precondition Failed, got %d", rec.Code)
-	}
-}
-
-func TestUserHandler_UpdateProfile_BadJSON(t *testing.T) {
-	handler := user.NewHandler(&mockUserService{}, nil, validator.New())
-
-	req := httptest.NewRequest(http.MethodPatch, "/users/profile/me", bytes.NewReader([]byte("{bad")))
-	req = withUserAuth(req, "user-uuid-1")
-	rec := httptest.NewRecorder()
-
-	handler.UpdateProfile(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status 400 Bad Request, got %d", rec.Code)
-	}
-}
-
-func TestUserHandler_GetQuota_Success(t *testing.T) {
-	mockSvc := &mockUserService{
-		getQuotaFunc: func(ctx context.Context, id string) (*domainuser.Quota, error) {
-			return &domainuser.Quota{
-				GifCount:   25,
-				TotalBytes: 1024 * 1024,
-			}, nil
-		},
-	}
-	handler := user.NewHandler(mockSvc, nil, validator.New())
-
-	req := httptest.NewRequest(http.MethodGet, "/users/me/quota", nil)
-	req = withUserAuth(req, "user-uuid-1")
-	rec := httptest.NewRecorder()
-
-	handler.GetQuota(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
-	}
-}
-
-func TestUserHandler_GetQuota_Unauthenticated(t *testing.T) {
-	handler := user.NewHandler(&mockUserService{}, nil, validator.New())
-
-	req := httptest.NewRequest(http.MethodGet, "/users/me/quota", nil)
-	rec := httptest.NewRecorder()
-
-	handler.GetQuota(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status 401 Unauthorized, got %d", rec.Code)
-	}
-}
-
-func TestUserHandler_ChangePassword_Success(t *testing.T) {
-	mockSvc := &mockUserService{
-		changePasswordFunc: func(ctx context.Context, id string, currentPass string, pass string, confirmPass string) error {
+	h.svc.EXPECT().
+		ChangePassword(gomock.Any(), gomock.Eq(userID), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, id, _, _, _ string) error {
+			if id != userID {
+				t.Errorf("the handler used id %q from the request body instead of the token subject %q", id, userID)
+			}
 			return nil
-		},
-	}
-	handler := user.NewHandler(mockSvc, nil, validator.New())
+		}).
+		Times(1)
 
-	body, _ := json.Marshal(map[string]string{
-		"current_password": "OldPassword123!",
-		"password":         "NewPassword123!",
-		"confirm_password": "NewPassword123!",
-	})
-	req := httptest.NewRequest(http.MethodPatch, "/users/change-password", bytes.NewReader(body))
-	req = withUserAuth(req, "user-uuid-1")
 	rec := httptest.NewRecorder()
+	h.h.ChangePassword(rec, request(t, http.MethodPost, "/me/password",
+		`{"user_id":"victim-user-id","id":"victim-user-id",
+		  "current_password":"old!pass","password":"new!pass","confirm_password":"new!pass"}`, true))
 
-	handler.ChangePassword(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestUserHandler_ChangePassword_Mismatch(t *testing.T) {
-	handler := user.NewHandler(&mockUserService{}, nil, validator.New())
+func TestChangePassword_Validation(t *testing.T) {
+	tests := []struct {
+		name     string
+		withAuth bool
+		body     string
+		wantCode int
+	}{
+		{name: "unauthenticated", body: `{"current_password":"old!pass","password":"new!pass","confirm_password":"new!pass"}`, wantCode: http.StatusUnauthorized},
+		{name: "confirmation mismatch", withAuth: true, body: `{"current_password":"old!pass","password":"new!pass","confirm_password":"typo!pass"}`, wantCode: http.StatusUnprocessableEntity},
+		{name: "new password has no special character", withAuth: true, body: `{"current_password":"old!pass","password":"plainpass","confirm_password":"plainpass"}`, wantCode: http.StatusUnprocessableEntity},
+		{name: "missing current password", withAuth: true, body: `{"password":"new!pass","confirm_password":"new!pass"}`, wantCode: http.StatusUnprocessableEntity},
+		{name: "new password too short", withAuth: true, body: `{"current_password":"old!pass","password":"a!","confirm_password":"a!"}`, wantCode: http.StatusUnprocessableEntity},
+		{name: "malformed json", withAuth: true, body: `{"current_password":`, wantCode: http.StatusBadRequest},
+	}
 
-	body, _ := json.Marshal(map[string]string{
-		"current_password": "OldPassword123!",
-		"password":         "NewPassword123!",
-		"confirm_password": "DifferentPassword123!",
-	})
-	req := httptest.NewRequest(http.MethodPatch, "/users/change-password", bytes.NewReader(body))
-	req = withUserAuth(req, "user-uuid-1")
-	rec := httptest.NewRecorder()
-
-	handler.ChangePassword(rec, req)
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Errorf("expected status 422 Unprocessable Entity, got %d", rec.Code)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newUserHarness(t)
+			// the service must not be reached
+			rec := httptest.NewRecorder()
+			h.h.ChangePassword(rec, request(t, http.MethodPost, "/me/password", tc.body, tc.withAuth))
+			if rec.Code != tc.wantCode {
+				t.Errorf("status = %d, want %d; body = %s", rec.Code, tc.wantCode, rec.Body.String())
+			}
+		})
 	}
 }
 
-func TestUserHandler_ChangePassword_WrongCurrentPassword(t *testing.T) {
-	mockSvc := &mockUserService{
-		changePasswordFunc: func(ctx context.Context, id string, currentPass string, pass string, confirmPass string) error {
-			return domainauth.ErrInvalidCredential
-		},
+func TestChangePassword_ErrorMapping(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		wantCode int
+	}{
+		{"wrong current password", domainauth.ErrInvalidCredential, http.StatusUnauthorized},
+		{"passwords do not match", apperr.ErrPasswordMismatched, http.StatusUnprocessableEntity},
+		{"user gone", domainauth.ErrUserNotFound, http.StatusNotFound},
+		{"unexpected failure", errors.New("boom"), http.StatusInternalServerError},
 	}
-	handler := user.NewHandler(mockSvc, nil, validator.New())
 
-	body, _ := json.Marshal(map[string]string{
-		"current_password": "WrongPassword123!",
-		"password":         "NewPassword123!",
-		"confirm_password": "NewPassword123!",
-	})
-	req := httptest.NewRequest(http.MethodPatch, "/users/change-password", bytes.NewReader(body))
-	req = withUserAuth(req, "user-uuid-1")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newUserHarness(t)
+			h.svc.EXPECT().
+				ChangePassword(gomock.Any(), gomock.Eq(userID), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(tc.err).
+				Times(1)
+
+			rec := httptest.NewRecorder()
+			h.h.ChangePassword(rec, request(t, http.MethodPost, "/me/password",
+				`{"current_password":"old!pass","password":"new!pass","confirm_password":"new!pass"}`, true))
+
+			if rec.Code != tc.wantCode {
+				t.Errorf("status = %d, want %d", rec.Code, tc.wantCode)
+			}
+		})
+	}
+}
+
+// ===========================================================================
+// DeleteUser
+// ===========================================================================
+
+func TestDeleteUser_RequiresThePasswordAndUsesTheTokenSubject(t *testing.T) {
+	h := newUserHarness(t)
+
+	h.svc.EXPECT().
+		DeleteUser(gomock.Any(), gomock.Eq(userID), gomock.Eq("my!password")).
+		Return(nil).
+		Times(1)
+
 	rec := httptest.NewRecorder()
+	h.h.DeleteUser(rec, request(t, http.MethodDelete, "/me", `{"password":"my!password"}`, true))
 
-	handler.ChangePassword(rec, req)
+	if rec.Code != http.StatusOK && rec.Code != http.StatusNoContent {
+		t.Errorf("status = %d, want 200 or 204; body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDeleteUser_Rejections(t *testing.T) {
+	tests := []struct {
+		name     string
+		withAuth bool
+		body     string
+		wantCode int
+	}{
+		{name: "unauthenticated", body: `{"password":"my!password"}`, wantCode: http.StatusUnauthorized},
+		{name: "no password supplied", withAuth: true, body: `{}`, wantCode: http.StatusUnprocessableEntity},
+		{name: "empty password", withAuth: true, body: `{"password":""}`, wantCode: http.StatusUnprocessableEntity},
+		{name: "malformed json", withAuth: true, body: `{"password":`, wantCode: http.StatusBadRequest},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newUserHarness(t)
+			// the service must not be reached: deleting an account is irreversible
+			rec := httptest.NewRecorder()
+			h.h.DeleteUser(rec, request(t, http.MethodDelete, "/me", tc.body, tc.withAuth))
+			if rec.Code != tc.wantCode {
+				t.Errorf("status = %d, want %d; body = %s", rec.Code, tc.wantCode, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestDeleteUser_WrongPasswordIsUnauthorized(t *testing.T) {
+	h := newUserHarness(t)
+	h.svc.EXPECT().
+		DeleteUser(gomock.Any(), gomock.Eq(userID), gomock.Eq("wrong!pass")).
+		Return(domainauth.ErrInvalidCredential).
+		Times(1)
+
+	rec := httptest.NewRecorder()
+	h.h.DeleteUser(rec, request(t, http.MethodDelete, "/me", `{"password":"wrong!pass"}`, true))
+
 	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status 401 Unauthorized on invalid credential, got %d", rec.Code)
+		t.Errorf("status = %d, want 401", rec.Code)
 	}
 }
 
-func TestUserHandler_DeleteUser_Success(t *testing.T) {
-	mockSvc := &mockUserService{
-		deleteUserFunc: func(ctx context.Context, id string, pass string) error {
-			return nil
-		},
-	}
-	handler := user.NewHandler(mockSvc, nil, validator.New())
+// ===========================================================================
+// GetProfile / UpdateProfile
+// ===========================================================================
 
-	body, _ := json.Marshal(map[string]string{
-		"password": "Password123!",
-	})
-	req := httptest.NewRequest(http.MethodDelete, "/users/me", bytes.NewReader(body))
-	req = withUserAuth(req, "user-uuid-1")
+func TestGetProfile_ScopesToTheCallerAndOmitsSecrets(t *testing.T) {
+	h := newUserHarness(t)
+
+	h.svc.EXPECT().
+		GetProfile(gomock.Any(), gomock.Eq(userID)).
+		Return(&domainuser.ProfileResponse{
+			Username: "alice", Fullname: "Alice A", Email: "alice@example.com",
+			IsVerified: true, UpdatedAt: time.Now().UTC(),
+		}, nil).
+		Times(1)
+
 	rec := httptest.NewRecorder()
+	h.h.GetProfile(rec, request(t, http.MethodGet, "/me", "", true))
 
-	handler.DeleteUser(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	for _, secret := range []string{"password", "password_hash", "PasswordHash"} {
+		if strings.Contains(strings.ToLower(body), strings.ToLower(secret)) {
+			t.Errorf("the profile response mentions %q: %s", secret, body)
+		}
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got["username"] != "alice" {
+		t.Errorf("username = %v, want alice", got["username"])
 	}
 }
 
-func TestUserHandler_DeleteUser_InvalidPassword(t *testing.T) {
-	mockSvc := &mockUserService{
-		deleteUserFunc: func(ctx context.Context, id string, pass string) error {
-			return domainauth.ErrInvalidCredential
-		},
-	}
-	handler := user.NewHandler(mockSvc, nil, validator.New())
-
-	body, _ := json.Marshal(map[string]string{
-		"password": "WrongPassword123!",
-	})
-	req := httptest.NewRequest(http.MethodDelete, "/users/me", bytes.NewReader(body))
-	req = withUserAuth(req, "user-uuid-1")
+func TestGetProfile_Unauthenticated(t *testing.T) {
+	h := newUserHarness(t)
+	// the service must not be reached
 	rec := httptest.NewRecorder()
+	h.h.GetProfile(rec, request(t, http.MethodGet, "/me", "", false))
 
-	handler.DeleteUser(rec, req)
 	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status 401 Unauthorized, got %d", rec.Code)
+		t.Errorf("status = %d, want 401", rec.Code)
 	}
 }
 
-func TestUserHandler_DeleteUser_UserNotFound(t *testing.T) {
-	mockSvc := &mockUserService{
-		deleteUserFunc: func(ctx context.Context, id string, pass string) error {
-			return domainauth.ErrUserNotFound
-		},
-	}
-	handler := user.NewHandler(mockSvc, nil, validator.New())
+func TestUpdateProfile_RequiresIfMatchAndForwardsIt(t *testing.T) {
+	t.Run("with If-Match", func(t *testing.T) {
+		h := newUserHarness(t)
+		h.svc.EXPECT().
+			UpdateProfile(gomock.Any(), gomock.Any(), gomock.Eq(userID), gomock.Eq("etag-value")).
+			DoAndReturn(func(_ context.Context, req domainuser.ProfileUpdateRequest, _, _ string) (*domainuser.ProfileResponse, error) {
+				if req.Fullname == nil || *req.Fullname != "New Name" {
+					t.Errorf("Fullname = %v, want New Name", req.Fullname)
+				}
+				return &domainuser.ProfileResponse{Fullname: "New Name"}, nil
+			}).
+			Times(1)
 
-	body, _ := json.Marshal(map[string]string{
-		"password": "Password123!",
+		r := request(t, http.MethodPatch, "/me", `{"fullname":"New Name"}`, true)
+		r.Header.Set("If-Match", "etag-value")
+		rec := httptest.NewRecorder()
+		h.h.UpdateProfile(rec, r)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+		}
 	})
-	req := httptest.NewRequest(http.MethodDelete, "/users/me", bytes.NewReader(body))
-	req = withUserAuth(req, "user-uuid-1")
-	rec := httptest.NewRecorder()
 
-	handler.DeleteUser(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected status 404 Not Found, got %d", rec.Code)
+	t.Run("without If-Match", func(t *testing.T) {
+		h := newUserHarness(t)
+		// the service must not be reached: a blind write could clobber a concurrent edit
+		rec := httptest.NewRecorder()
+		h.h.UpdateProfile(rec, request(t, http.MethodPatch, "/me", `{"fullname":"New Name"}`, true))
+
+		if rec.Code == http.StatusOK {
+			t.Errorf("status = %d; a profile update without If-Match was accepted", rec.Code)
+		}
+	})
+}
+
+func TestUpdateProfile_StaleETagIsPreconditionFailed(t *testing.T) {
+	h := newUserHarness(t)
+	h.svc.EXPECT().
+		UpdateProfile(gomock.Any(), gomock.Any(), gomock.Eq(userID), gomock.Any()).
+		Return(nil, domainmedia.ErrETagValidationFailed).
+		Times(1)
+
+	r := request(t, http.MethodPatch, "/me", `{"fullname":"New Name"}`, true)
+	r.Header.Set("If-Match", "stale")
+	rec := httptest.NewRecorder()
+	h.h.UpdateProfile(rec, r)
+
+	if rec.Code != http.StatusPreconditionFailed {
+		t.Errorf("status = %d, want 412", rec.Code)
+	}
+}
+
+// ===========================================================================
+// GetQuota
+// ===========================================================================
+
+func TestGetQuota_ReturnsTheCallersOwnQuota(t *testing.T) {
+	h := newUserHarness(t)
+	id := uuid.MustParse(userID)
+
+	h.svc.EXPECT().
+		GetQuota(gomock.Any(), gomock.Eq(userID)).
+		Return(&domainuser.Quota{
+			UserID: id, UsedBytes: 2048, TotalBytes: 8192, GifCount: 4, GitCount: 50,
+		}, nil).
+		Times(1)
+
+	rec := httptest.NewRecorder()
+	h.h.GetQuota(rec, request(t, http.MethodGet, "/me/quota", "", true))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got["used_bytes"] != float64(2048) {
+		t.Errorf("used_bytes = %v, want 2048", got["used_bytes"])
+	}
+	if got["total_bytes"] != float64(8192) {
+		t.Errorf("total_bytes = %v, want 8192", got["total_bytes"])
+	}
+}
+
+func TestGetQuota_Unauthenticated(t *testing.T) {
+	h := newUserHarness(t)
+	// the service must not be reached
+	rec := httptest.NewRecorder()
+	h.h.GetQuota(rec, request(t, http.MethodGet, "/me/quota", "", false))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
+	}
+}
+
+func TestGetQuota_ServiceFailureIsAServerError(t *testing.T) {
+	h := newUserHarness(t)
+	h.svc.EXPECT().
+		GetQuota(gomock.Any(), gomock.Eq(userID)).
+		Return(nil, errors.New("db down")).
+		Times(1)
+
+	rec := httptest.NewRecorder()
+	h.h.GetQuota(rec, request(t, http.MethodGet, "/me/quota", "", true))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", rec.Code)
 	}
 }

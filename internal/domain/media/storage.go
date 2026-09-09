@@ -39,6 +39,7 @@ type StreamResult struct {
 	ExpireIn     int    `json:"expires_in"`
 }
 
+//go:generate mockgen -source=storage.go -destination=mocks/mock_storage_repository.go -package=mocks
 type StorageRepository interface {
 	Create(ctx context.Context, key string, expirey time.Duration) (*url.URL, error)
 	Download(ctx context.Context, key string, expirey time.Duration) (*url.URL, error)

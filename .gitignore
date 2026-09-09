@@ -10,3 +10,5 @@ api.md
 .markdown-collab/
 internal/infra/.DS_Store
 pkg/.DS_Store
+# project-local Go toolchain (see .devtools/go.cmd)
+.devtools/
