@@ -17,12 +17,14 @@ type Service interface {
 	Delete(ctx context.Context, userId, gifKey, shareId string) error
 	Get(ctx context.Context, user string) ([]share.GifResponse, error)
 	GetByToken(ctx context.Context, token string) (share.GifTokenResponse, error)
+	DownloadByToken(ctx context.Context, token string) (string, error)
 }
 
 type service struct {
 	authRepo  auth.AuthRepository
 	gifRepo   media.GifRepository
 	shareRepo share.ShareRepository
+	storage   media.StorageRepository
 	queue     queue.Queue
 }
 
@@ -30,12 +32,14 @@ func NewService(
 	authRepo auth.AuthRepository,
 	gifRepo media.GifRepository,
 	shareRepo share.ShareRepository,
+	storage media.StorageRepository,
 	queue queue.Queue,
 ) Service {
 	return &service{
 		authRepo:  authRepo,
 		gifRepo:   gifRepo,
 		shareRepo: shareRepo,
+		storage:   storage,
 		queue:     queue,
 	}
 }

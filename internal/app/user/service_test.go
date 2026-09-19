@@ -18,7 +18,6 @@ import (
 	domainuser "github.com/labib0x9/ffgif/internal/domain/user"
 	usermocks "github.com/labib0x9/ffgif/internal/domain/user/mocks"
 	dbmocks "github.com/labib0x9/ffgif/internal/port/db/mocks"
-	jwtpkg "github.com/labib0x9/ffgif/pkg/jwt"
 	"github.com/labib0x9/ffgif/pkg/apperr"
 	"github.com/labib0x9/ffgif/pkg/password"
 )
@@ -43,8 +42,7 @@ func newUserDeps(t *testing.T) *userDeps {
 		hasher:    password.NewHasher("pepper", bcrypt.MinCost),
 	}
 	d.svc = appuser.NewService(
-		d.userRepo, d.quotaRepo, d.authRepo, d.tnx,
-		*jwtpkg.NewJwt([]byte("test-secret-key-1234")), *d.hasher,
+		d.userRepo, d.quotaRepo, d.authRepo, d.tnx, *d.hasher,
 	)
 	return d
 }
@@ -433,7 +431,7 @@ func TestGetQuota_ScopesToTheRequestedUser(t *testing.T) {
 
 	d.quotaRepo.EXPECT().
 		GetById(gomock.Any(), gomock.Eq(id.String())).
-		Return(&domainuser.Quota{UserID: id, UsedBytes: 1024, TotalBytes: 4096, GifCount: 3, GitCount: 50}, nil).
+		Return(&domainuser.Quota{UserID: id, UsedBytes: 1024, TotalBytes: 4096, GifCount: 3, GitLimit: 50}, nil).
 		Times(1)
 
 	got, err := d.svc.GetQuota(context.Background(), id.String())

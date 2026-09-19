@@ -15,6 +15,10 @@ import (
 )
 
 func (s *service) CreateByToken(ctx context.Context, sharedBy string, gifKey string, sharedWithEmail string, expiresAt time.Time) (string, error) {
+	if !expiresAt.After(time.Now()) {
+		return "", share.ErrInvalidExpiry
+	}
+
 	owner, err := s.gifRepo.GetOwner(ctx, gifKey)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -27,28 +31,28 @@ func (s *service) CreateByToken(ctx context.Context, sharedBy string, gifKey str
 		return "", media.ErrGifOwnerMismatch
 	}
 
-	_token, _ := token.GenerateToken()
+	rawToken, tokenHash := token.GenerateToken()
 
-	share := share.ShareByToken{
+	sh := share.ShareByToken{
 		GifKey:    gifKey,
-		Token:     _token,
+		Token:     tokenHash,
 		Email:     sharedWithEmail,
 		ExpiresAt: &expiresAt,
 	}
 
-	if err := s.shareRepo.CreateByToken(ctx, share); err != nil {
+	if err := s.shareRepo.CreateByToken(ctx, sh); err != nil {
 		return "", fmt.Errorf("shareRepo.CreateByToken: %w", err)
 	}
 
 	smsg := queue.EmailMessage{
 		To:    sharedWithEmail,
 		Name:  "share",
-		Token: _token,
+		Token: rawToken,
 	}
 
 	if err := s.queue.PublishEmail(ctx, smsg); err != nil {
-		return _token, fmt.Errorf("queue.PublishEmail: %w: %w", apperr.ErrMessageQueueFailed, err)
+		return rawToken, fmt.Errorf("queue.PublishEmail: %w: %w", apperr.ErrMessageQueueFailed, err)
 	}
 
-	return _token, nil
+	return rawToken, nil
 }

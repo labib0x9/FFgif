@@ -18,7 +18,7 @@ var luaCode = `
 	local last_refill = tonumber(data[2])
 
 	if token == nil then
-		token = rate
+		token = capacity
 		last_refill = now
 	end
 
@@ -27,10 +27,13 @@ var luaCode = `
 	token = math.min(capacity, token + add_token)
 	last_refill = now
 
+	local fill_time_ms = math.ceil((capacity / rate) * 1000)
+	local ttl = math.max(fill_time_ms, 6000)
+
 	if token >= 1 then
 		token = token - 1
 		redis.call("HMSET", key, "token", token, "last_refill", last_refill)
-		redis.call("PEXPIRE", key, 6000)
+		redis.call("PEXPIRE", key, ttl)
 		return {1, 0, token}
 	end
 
@@ -38,7 +41,7 @@ var luaCode = `
 	local wait_ms = math.ceil((token_need / rate) * 1000) 
 
 	redis.call("HMSET", key, "token", token, "last_refill", last_refill)
-	redis.call("PEXPIRE", key, 6000)
+	redis.call("PEXPIRE", key, ttl)
 
 	return {0, wait_ms, token}
 `

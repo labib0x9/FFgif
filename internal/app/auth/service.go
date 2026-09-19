@@ -4,10 +4,10 @@ import (
 	"context"
 
 	"github.com/labib0x9/ffgif/internal/domain/auth"
+	"github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/internal/port/cache"
 	"github.com/labib0x9/ffgif/internal/port/db"
 	"github.com/labib0x9/ffgif/internal/port/queue"
-	"github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/pkg/jwt"
 	"github.com/labib0x9/ffgif/pkg/password"
 )
@@ -61,14 +61,4 @@ func NewService(
 		hasher:       hasher,
 		tnx:          tnx,
 	}
-}
-
-type Jwt interface {
-	Create(fullname string, id string, email string, role string) (string, error)
-	Verify(tokenStr string) (jwt.Payload, error)
-}
-
-type Hasher interface {
-	GenerateHash(pass string) (string, error)
-	CompareHashAndPassword(hashedPass string, pass string) bool
 }

@@ -39,6 +39,7 @@ type AuthRepository interface {
 	DeleteByEmail(ctx context.Context, email string) error
 	UpdatePassword(ctx context.Context, id uuid.UUID, passHash string) error
 	SetVerified(ctx context.Context, userId uuid.UUID) error
+	// To-Do
 	Upgrade(ctx context.Context, id string, user User) (User, error)
 	// CreateDemo(user AnonUser) (AnonUser, error)
 }

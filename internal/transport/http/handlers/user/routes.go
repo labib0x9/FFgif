@@ -8,9 +8,17 @@ import (
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager) {
 	mux.Handle(
-		"GET /users/profile/me",
+		"GET /users/me/profile",
 		manager.With(
 			http.HandlerFunc(h.GetProfile),
+			h.middlewares.Auth,
+		),
+	)
+
+	mux.Handle(
+		"GET /users/{userId}/profile",
+		manager.With(
+			http.HandlerFunc(h.GetProfileByID),
 			h.middlewares.Auth,
 		),
 	)
@@ -24,7 +32,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager
 	)
 
 	mux.Handle(
-		"PATCH /users/profile/me",
+		"PATCH /users/me/profile",
 		manager.With(
 			http.HandlerFunc(h.UpdateProfile),
 			h.middlewares.Auth,
@@ -32,20 +40,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager
 	)
 
 	mux.Handle(
-		"PATCH /users/change-password",
+		"PATCH /users/me/change-password",
 		manager.With(
 			http.HandlerFunc(h.ChangePassword),
 			h.middlewares.Auth,
 		),
 	)
-
-	// mux.Handle(
-	// 	"POST /users/profile",
-	// 	manager.With(
-	// 		http.HandlerFunc(),
-	// 		h.middlewares.Auth,
-	// 	),
-	// )
 
 	mux.Handle(
 		"DELETE /users/me",

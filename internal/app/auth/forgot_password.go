@@ -25,29 +25,24 @@ func (s *service) ForgotPassword(ctx context.Context, email string) error {
 		return auth.ErrUserNotVerified
 	}
 
-	var reseter auth.Reseter
-	oldToken, err := s.reseterRepo.GetById(ctx, user.Id)
+	_, err = s.reseterRepo.GetById(ctx, user.Id)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("reseterRepo.GetById: %w: %w", auth.ErrTokenFetchFailed, err)
 	}
 
-	if err == nil {
-		reseter = oldToken
-	} else {
-		resetToken, _ := token.GenerateToken()
-		reseter = auth.Reseter{
-			Token:  resetToken,
-			UserId: user.Id,
-		}
-		if err := s.reseterRepo.Create(ctx, reseter); err != nil {
-			return fmt.Errorf("reseterRepo.Create: %w: %w", auth.ErrCreateResetTokenFailed, err)
-		}
+	resetToken, resetTokenHash := token.GenerateToken()
+	reseter := auth.Reseter{
+		Token:  resetTokenHash,
+		UserId: user.Id,
+	}
+	if err := s.reseterRepo.Create(ctx, reseter); err != nil {
+		return fmt.Errorf("reseterRepo.Create: %w: %w", auth.ErrCreateResetTokenFailed, err)
 	}
 
 	mqMsg := queue.EmailMessage{
 		To:    user.Email,
 		Name:  "forgot-password",
-		Token: reseter.Token,
+		Token: resetToken,
 	}
 
 	if err := s.queue.PublishEmail(ctx, mqMsg); err != nil {

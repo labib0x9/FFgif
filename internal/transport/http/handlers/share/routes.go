@@ -23,7 +23,6 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager
 		),
 	)
 
-	//
 	mux.Handle(
 		"DELETE /gifs/me/{key}/shares/{shareWithId}",
 		manager.With(
@@ -40,11 +39,19 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager
 		),
 	)
 
-	// public token
+	// public token view
 	mux.Handle(
 		"GET /s/{token}",
 		manager.With(
 			http.HandlerFunc(h.GetByToken),
+		),
+	)
+
+	// public token download
+	mux.Handle(
+		"GET /s/{token}/download",
+		manager.With(
+			http.HandlerFunc(h.DownloadByToken),
 		),
 	)
 }

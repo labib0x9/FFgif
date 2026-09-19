@@ -2,9 +2,9 @@ package media
 
 import (
 	"context"
+	"sync"
 
 	"github.com/labib0x9/ffgif/config"
-	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/domain/media"
 	"github.com/labib0x9/ffgif/internal/domain/share"
 	"github.com/labib0x9/ffgif/internal/domain/user"
@@ -20,7 +20,7 @@ type Service interface {
 	Download(ctx context.Context, userId, key string) (string, error)
 	GetByKey(ctx context.Context, userId string, key string) (*media.GifResponse, error)
 	GetRecents(ctx context.Context, userId string) ([]media.GifResponse, error)
-	GetGifs(ctx context.Context, userId string, filter string) (*GifResult, error)
+	GetGifs(ctx context.Context, userId string, filter string, page int, limit int) (*GifResult, error)
 	LastVideo(ctx context.Context, userId string) (media.LastUploadResponse, error)
 	Save(ctx context.Context, userId, key string) error
 	Stream(ctx context.Context, userId string, key string) (*media.StreamResult, error)
@@ -31,7 +31,7 @@ type Service interface {
 	Status(ctx context.Context, userId, key string) (string, string, error)
 
 	Process(ctx context.Context, msg queue.VideoMessage) error
-	ConversionStatus(ctx context.Context, jobId string) (*StatusResult, error)
+	ConversionStatus(ctx context.Context, userId string, jobId string) (*StatusResult, error)
 	Convert(ctx context.Context, userId string, key string, start float32, end float32, fps int, width int, loop bool) (*ConvertResult, error)
 	SaveMetadata(ctx context.Context, msg queue.SaveVideoMessage) error
 
@@ -39,27 +39,26 @@ type Service interface {
 }
 
 type service struct {
-	authRepo      auth.AuthRepository
-	profileRepo   user.UserRepository
 	quotaRepo     user.QuotaRepository
 	gifRepo       media.GifRepository
 	shareRepo     share.ShareRepository
 	lastVideoRepo media.LastVideoRepository
+	jobRepo       media.JobRepository
 	storage       media.StorageRepository
 	tnx           db.TxManager
 	queue         queue.Queue
 	cache         cache.Cache
 	processor     processor.VideoProcessor
 	cnf           *config.Config
+	userConvertMu sync.Map
 }
 
 func NewService(
-	authRepo auth.AuthRepository,
-	profileRepo user.UserRepository,
 	quotaRepo user.QuotaRepository,
 	gifRepo media.GifRepository,
 	shareRepo share.ShareRepository,
 	lastVideoRepo media.LastVideoRepository,
+	jobRepo media.JobRepository,
 	storage media.StorageRepository,
 	tnx db.TxManager,
 	queue queue.Queue,
@@ -68,12 +67,11 @@ func NewService(
 	cnf *config.Config,
 ) Service {
 	return &service{
-		authRepo:      authRepo,
-		profileRepo:   profileRepo,
 		quotaRepo:     quotaRepo,
 		gifRepo:       gifRepo,
 		shareRepo:     shareRepo,
 		lastVideoRepo: lastVideoRepo,
+		jobRepo:       jobRepo,
 		storage:       storage,
 		tnx:           tnx,
 		queue:         queue,

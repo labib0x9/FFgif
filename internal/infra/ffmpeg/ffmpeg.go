@@ -44,7 +44,7 @@ func NewGifConverter(
 ) *GifConverter {
 
 	// paletteFilter := fmt.Sprintf("fps=%d,scale=%d:-1:flags=lanczos,palettegen", FPS, Width)
-	paletteFilter := fmt.Sprintf("fps=%d,scale=%d:-1:flags=lanczos,format=rgb24,palettegen", FPS, Width)
+	paletteFilter := fmt.Sprintf("fps=%d,scale=%d:-1:flags=lanczos,format=rgb24,palettegen=stats_mode=full", FPS, Width)
 	Pfilter := PaletteFilter{
 		Start:     Start,
 		Duration:  End - Start,
@@ -53,7 +53,7 @@ func NewGifConverter(
 		Path:      palettePath,
 	}
 
-	gifFilter := fmt.Sprintf("fps=%d,scale=%d:-1:flags=lanczos[x];[x][1:v]paletteuse", FPS, Width)
+	gifFilter := fmt.Sprintf("fps=%d,scale=%d:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=sierra2_4a", FPS, Width)
 	gFilter := GifFilter{
 		Start:       Start,
 		Duration:    End - Start,

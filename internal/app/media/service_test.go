@@ -25,8 +25,10 @@ import (
 	cachemocks "github.com/labib0x9/ffgif/internal/port/cache/mocks"
 	dbmocks "github.com/labib0x9/ffgif/internal/port/db/mocks"
 	processormocks "github.com/labib0x9/ffgif/internal/port/processor/mocks"
+	"github.com/labib0x9/ffgif/internal/port/processor"
 	"github.com/labib0x9/ffgif/internal/port/queue"
 	queuemocks "github.com/labib0x9/ffgif/internal/port/queue/mocks"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 )
 
 type mediaDeps struct {
@@ -36,6 +38,7 @@ type mediaDeps struct {
 	gifRepo       *mediamocks.MockGifRepository
 	shareRepo     *sharemocks.MockShareRepository
 	lastVideoRepo *mediamocks.MockLastVideoRepository
+	jobRepo       *mediamocks.MockJobRepository
 	storage       *mediamocks.MockStorageRepository
 	tnx           *dbmocks.MockTxManager
 	queue         *queuemocks.MockQueue
@@ -54,6 +57,7 @@ func newMediaDeps(t *testing.T) *mediaDeps {
 		gifRepo:       mediamocks.NewMockGifRepository(ctrl),
 		shareRepo:     sharemocks.NewMockShareRepository(ctrl),
 		lastVideoRepo: mediamocks.NewMockLastVideoRepository(ctrl),
+		jobRepo:       mediamocks.NewMockJobRepository(ctrl),
 		storage:       mediamocks.NewMockStorageRepository(ctrl),
 		tnx:           dbmocks.NewMockTxManager(ctrl),
 		queue:         queuemocks.NewMockQueue(ctrl),
@@ -61,8 +65,8 @@ func newMediaDeps(t *testing.T) *mediaDeps {
 		processor:     processormocks.NewMockVideoProcessor(ctrl),
 	}
 	d.svc = appmedia.NewService(
-		d.authRepo, d.profileRepo, d.quotaRepo, d.gifRepo, d.shareRepo,
-		d.lastVideoRepo, d.storage, d.tnx, d.queue, d.cache, d.processor,
+		d.quotaRepo, d.gifRepo, d.shareRepo,
+		d.lastVideoRepo, d.jobRepo, d.storage, d.tnx, d.queue, d.cache, d.processor,
 		&config.Config{},
 	)
 	return d
@@ -364,16 +368,18 @@ func TestConversionStatus_UnknownJobIsDistinguishableFromAnOutage(t *testing.T) 
 	t.Run("unknown job id", func(t *testing.T) {
 		d := newMediaDeps(t)
 		d.cache.EXPECT().
-			Get(gomock.Any(), gomock.Eq("messaage_queue:job_id:no-such-job")).
+			Get(gomock.Any(), gomock.Eq("messaage_queue_owner:job_id:no-such-job")).
 			Return("", portcache.ErrCacheMiss).
 			Times(1)
 		d.cache.EXPECT().Get(gomock.Any(), gomock.Any()).Return("", portcache.ErrCacheMiss).AnyTimes()
+		d.jobRepo.EXPECT().GetByID(gomock.Any(), gomock.Eq("no-such-job")).
+			Return(nil, domainmedia.ErrJobNotFound).Times(1)
 
-		_, err := d.svc.ConversionStatus(context.Background(), "no-such-job")
+		_, err := d.svc.ConversionStatus(context.Background(), "user-1", "no-such-job")
 		if err == nil {
 			t.Fatal("want an error for an unknown job id")
 		}
-		if !errors.Is(err, portcache.ErrCacheMiss) {
+		if !errors.Is(err, apperr.ErrCacheGetFailed) {
 			t.Errorf("err = %v; an unknown job id must stay distinguishable from a "+
 				"backend fault so the handler can answer 404 JOB_NOT_FOUND rather than 500", err)
 		}
@@ -383,9 +389,11 @@ func TestConversionStatus_UnknownJobIsDistinguishableFromAnOutage(t *testing.T) 
 		d := newMediaDeps(t)
 		outage := errors.New("connection refused")
 		d.cache.EXPECT().Get(gomock.Any(), gomock.Any()).Return("", outage).Times(1)
+		d.jobRepo.EXPECT().GetByID(gomock.Any(), gomock.Eq("job-1")).
+			Return(nil, outage).Times(1)
 
-		_, err := d.svc.ConversionStatus(context.Background(), "job-1")
-		if errors.Is(err, portcache.ErrCacheMiss) {
+		_, err := d.svc.ConversionStatus(context.Background(), "user-1", "job-1")
+		if errors.Is(err, apperr.ErrCacheGetFailed) {
 			t.Error("a backend outage was reported as a cache miss")
 		}
 	})
@@ -394,12 +402,14 @@ func TestConversionStatus_UnknownJobIsDistinguishableFromAnOutage(t *testing.T) 
 func TestConversionStatus_ReadsBothJobAndGifKeys(t *testing.T) {
 	d := newMediaDeps(t)
 
+	d.cache.EXPECT().Get(gomock.Any(), gomock.Eq("messaage_queue_owner:job_id:job-1")).
+		Return("user-1", nil).Times(1)
 	d.cache.EXPECT().Get(gomock.Any(), gomock.Eq("messaage_queue:job_id:job-1")).
 		Return("done", nil).Times(1)
 	d.cache.EXPECT().Get(gomock.Any(), gomock.Eq("messaage_queue_gif:job_id:job-1")).
 		Return("gif-42", nil).Times(1)
 
-	res, err := d.svc.ConversionStatus(context.Background(), "job-1")
+	res, err := d.svc.ConversionStatus(context.Background(), "user-1", "job-1")
 	if err != nil {
 		t.Fatalf("ConversionStatus: %v", err)
 	}
@@ -427,7 +437,7 @@ func TestUpload_IsRejectedWhenTheUserIsOverQuota(t *testing.T) {
 			UsedBytes:  500 * 1024 * 1024,
 			TotalBytes: 500 * 1024 * 1024, // completely full
 			GifCount:   50,
-			GitCount:   50,
+			GitLimit:   50,
 		}, nil).
 		AnyTimes()
 
@@ -459,7 +469,7 @@ func TestConvert_IsRejectedWhenTheUserIsAtTheirGifLimit(t *testing.T) {
 		Return(&domainuser.Quota{
 			UserID:   userID,
 			GifCount: 50,
-			GitCount: 50, // gif_limit reached
+			GitLimit: 50, // gif_limit reached
 		}, nil).
 		AnyTimes()
 
@@ -489,9 +499,10 @@ func TestConvert_ConcurrentJobsCannotDoubleSpendTheLastQuotaSlot(t *testing.T) {
 
 	d.quotaRepo.EXPECT().
 		GetById(gomock.Any(), gomock.Any()).
-		Return(&domainuser.Quota{UserID: userID, GifCount: 49, GitCount: 50}, nil).
+		Return(&domainuser.Quota{UserID: userID, GifCount: 49, GitLimit: 50}, nil).
 		AnyTimes()
 	d.cache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	d.jobRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	var published int64
 	d.queue.EXPECT().
@@ -525,13 +536,24 @@ func TestConvert_ConcurrentJobsCannotDoubleSpendTheLastQuotaSlot(t *testing.T) {
 func TestConvert_PublishesTheRequestedParametersVerbatim(t *testing.T) {
 	d := newMediaDeps(t)
 
+	d.quotaRepo.EXPECT().GetById(gomock.Any(), gomock.Any()).
+		Return(&domainuser.Quota{GitLimit: 100}, nil).
+		AnyTimes()
+
 	var jobID string
+	d.cache.EXPECT().
+		Set(gomock.Any(), gomock.Any(), gomock.Eq("user-1"), gomock.Eq(5*time.Minute)).
+		Return(nil).
+		Times(1)
+
 	d.cache.EXPECT().
 		Set(gomock.Any(), gomock.Any(), gomock.Eq("queued"), gomock.Eq(5*time.Minute)).
 		DoAndReturn(func(_ context.Context, key, _ string, _ time.Duration) error {
 			return nil
 		}).
 		Times(2) // one entry for the job, one for the resulting gif
+
+	d.jobRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 
 	d.queue.EXPECT().
 		PublishVideo(gomock.Any(), gomock.Any()).
@@ -576,6 +598,10 @@ func TestConvert_PublishesTheRequestedParametersVerbatim(t *testing.T) {
 func TestConvert_CacheFailureMeansNothingIsEnqueued(t *testing.T) {
 	d := newMediaDeps(t)
 
+	d.quotaRepo.EXPECT().GetById(gomock.Any(), gomock.Any()).
+		Return(&domainuser.Quota{GitLimit: 100}, nil).
+		AnyTimes()
+
 	d.cache.EXPECT().
 		Set(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(errors.New("redis down")).
@@ -594,6 +620,10 @@ func TestConvert_CacheFailureMeansNothingIsEnqueued(t *testing.T) {
 func TestConvert_PublishFailureDoesNotLeaveAPhantomQueuedJob(t *testing.T) {
 	d := newMediaDeps(t)
 
+	d.quotaRepo.EXPECT().GetById(gomock.Any(), gomock.Any()).
+		Return(&domainuser.Quota{GitLimit: 100}, nil).
+		AnyTimes()
+
 	written := map[string]string{}
 	var mu sync.Mutex
 	d.cache.EXPECT().
@@ -605,6 +635,9 @@ func TestConvert_PublishFailureDoesNotLeaveAPhantomQueuedJob(t *testing.T) {
 			return nil
 		}).
 		AnyTimes()
+
+	d.jobRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+	d.jobRepo.EXPECT().UpdateStatus(gomock.Any(), gomock.Any(), gomock.Eq(domainmedia.StatusFailed), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)
 
 	d.queue.EXPECT().
 		PublishVideo(gomock.Any(), gomock.Any()).
@@ -645,6 +678,10 @@ func TestUpload_KeyLayoutAndStatusSeeding(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			d := newMediaDeps(t)
 			var gotKey string
+
+			d.quotaRepo.EXPECT().GetById(gomock.Any(), gomock.Any()).
+				Return(&domainuser.Quota{TotalBytes: 100 * 1024 * 1024}, nil).
+				AnyTimes()
 
 			d.storage.EXPECT().
 				Create(gomock.Any(), gomock.Any(), gomock.Eq(5*time.Minute)).
@@ -714,6 +751,10 @@ func TestUpload_RejectsFilenameWithNoExtension(t *testing.T) {
 func TestUpload_StatusSeedFailureIsReported(t *testing.T) {
 	d := newMediaDeps(t)
 
+	d.quotaRepo.EXPECT().GetById(gomock.Any(), gomock.Any()).
+		Return(&domainuser.Quota{TotalBytes: 100 * 1024 * 1024}, nil).
+		AnyTimes()
+
 	d.storage.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(mustURL(t, "https://storage/put"), nil).Times(1)
 	d.cache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -756,6 +797,10 @@ func TestDownload(t *testing.T) {
 				Times(1)
 
 			if tc.wantAllowed {
+				d.gifRepo.EXPECT().
+					IncrementDownload(gomock.Any(), gomock.Eq("gif-1")).
+					Return(nil).
+					Times(1)
 				d.storage.EXPECT().
 					Download(gomock.Any(), gomock.Eq("gif-1"), gomock.Eq(5*time.Minute)).
 					Return(mustURL(t, "https://storage/get?sig=x"), nil).
@@ -888,6 +933,7 @@ func TestDelete_OwnerDeletesTheirOwnGif(t *testing.T) {
 	d := newMediaDeps(t)
 	d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Eq("gif-1")).Return("user-1", nil).Times(1)
 	d.gifRepo.EXPECT().Delete(gomock.Any(), gomock.Eq("gif-1")).Return(nil).Times(1)
+	d.storage.EXPECT().Delete(gomock.Any(), gomock.Eq("gif-1")).Return(nil).Times(1)
 
 	if err := d.svc.Delete(context.Background(), "user-1", "gif-1"); err != nil {
 		t.Fatalf("Delete: %v", err)
@@ -927,11 +973,11 @@ func TestGetGifs_ScopesToTheCallerAndForwardsTheFilter(t *testing.T) {
 	rows := []domainmedia.GifResponse{{Key: "a"}, {Key: "b"}}
 
 	d.gifRepo.EXPECT().
-		Get(gomock.Any(), gomock.Eq("user-1"), gomock.Eq("ready")).
+		Get(gomock.Any(), gomock.Eq("user-1"), gomock.Eq("ready"), gomock.Eq(20), gomock.Eq(0)).
 		Return(rows, nil).
 		Times(1)
 
-	res, err := d.svc.GetGifs(context.Background(), "user-1", "ready")
+	res, err := d.svc.GetGifs(context.Background(), "user-1", "ready", 1, 20)
 	if err != nil {
 		t.Fatalf("GetGifs: %v", err)
 	}
@@ -968,3 +1014,98 @@ func TestLastVideo_MissingRowIsReportedAsNotFound(t *testing.T) {
 func hasSuffix(s, suffix string) bool {
 	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
 }
+
+func TestConvert_PersistsJobToPostgresWhenJobRepoConfigured(t *testing.T) {
+	d := newMediaDeps(t)
+
+	d.quotaRepo.EXPECT().GetById(gomock.Any(), gomock.Any()).
+		Return(&domainuser.Quota{GitLimit: 100}, nil).AnyTimes()
+
+	d.cache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil).AnyTimes()
+
+	d.jobRepo.EXPECT().Create(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, j domainmedia.Job) error {
+			if j.UserID != "user-1" {
+				t.Errorf("UserID = %q, want user-1", j.UserID)
+			}
+			if j.Status != "queued" {
+				t.Errorf("Status = %q, want queued", j.Status)
+			}
+			return nil
+		}).Times(1)
+
+	d.queue.EXPECT().PublishVideo(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+
+	res, err := d.svc.Convert(context.Background(), "user-1", "upload-1", 0, 5, 24, 640, true)
+	if err != nil {
+		t.Fatalf("Convert: %v", err)
+	}
+	if res.Status != "queued" {
+		t.Errorf("res.Status = %q, want queued", res.Status)
+	}
+}
+
+func TestConversionStatus_FallsBackToPostgresOnCacheMiss(t *testing.T) {
+	d := newMediaDeps(t)
+
+	// Redis cache misses
+	d.cache.EXPECT().Get(gomock.Any(), gomock.Any()).
+		Return("", portcache.ErrCacheMiss).AnyTimes()
+
+	// PostgreSQL returns persisted job
+	now := time.Now()
+	d.jobRepo.EXPECT().GetByID(gomock.Any(), gomock.Eq("job-123")).
+		Return(&domainmedia.Job{
+			ID:        "job-123",
+			UserID:    "user-1",
+			Status:    "done",
+			ResultKey: "gif-123.gif",
+			Progress:  100,
+			UpdatedAt: now,
+		}, nil).Times(1)
+
+	res, err := d.svc.ConversionStatus(context.Background(), "user-1", "job-123")
+	if err != nil {
+		t.Fatalf("ConversionStatus: %v", err)
+	}
+	if res.Status != "done" {
+		t.Errorf("Status = %q, want done", res.Status)
+	}
+	if res.GifId != "gif-123.gif" {
+		t.Errorf("GifId = %q, want gif-123.gif", res.GifId)
+	}
+	if res.Progress != 100 {
+		t.Errorf("Progress = %d, want 100", res.Progress)
+	}
+}
+
+func TestProcess_UpdatesJobStatusInPostgres(t *testing.T) {
+	d := newMediaDeps(t)
+
+	d.cache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil).AnyTimes()
+
+	d.jobRepo.EXPECT().UpdateStatus(gomock.Any(), gomock.Eq("job-1"), gomock.Eq("processing"), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil).Times(1)
+
+	d.processor.EXPECT().Process(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(&processor.JobResult{GifKey: "out.gif", ThumbKey: "out.jpg"}, nil).Times(1)
+
+	d.jobRepo.EXPECT().UpdateStatus(gomock.Any(), gomock.Eq("job-1"), gomock.Eq("done"), gomock.Eq(100), gomock.Eq("out.gif"), gomock.Any()).
+		Return(nil).Times(1)
+
+	d.gifRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+	d.quotaRepo.EXPECT().IncrementUsage(gomock.Any(), gomock.Eq("user-1"), gomock.Any(), gomock.Any()).
+		Return(true, nil).Times(1)
+
+	err := d.svc.Process(context.Background(), queue.VideoMessage{
+		JobId:  "job-1",
+		UserID: "user-1",
+		Key:    "raw.mp4",
+	})
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+}
+

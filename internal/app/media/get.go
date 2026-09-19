@@ -14,16 +14,23 @@ type GifResult struct {
 	Limit int                 `json:"limit"`
 }
 
-func (s *service) GetGifs(ctx context.Context, userId string, filter string) (*GifResult, error) {
-	gifs, err := s.gifRepo.Get(ctx, userId, filter)
+func (s *service) GetGifs(ctx context.Context, userId string, filter string, page int, limit int) (*GifResult, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+	gifs, err := s.gifRepo.Get(ctx, userId, filter, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("gifRepo.Get: %w: %w", media.ErrGifFetchFailed, err)
 	}
 
 	return &GifResult{
 		Data:  gifs,
-		Page:  1,
-		Limit: 20,
+		Page:  page,
+		Limit: limit,
 		Total: len(gifs),
 	}, nil
 }

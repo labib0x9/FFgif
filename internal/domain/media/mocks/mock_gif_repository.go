@@ -70,18 +70,18 @@ func (mr *MockGifRepositoryMockRecorder) Delete(ctx, key any) *gomock.Call {
 }
 
 // Get mocks base method.
-func (m *MockGifRepository) Get(ctx context.Context, user_id, status string) ([]media.GifResponse, error) {
+func (m *MockGifRepository) Get(ctx context.Context, user_id, status string, limit, offset int) ([]media.GifResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", ctx, user_id, status)
+	ret := m.ctrl.Call(m, "Get", ctx, user_id, status, limit, offset)
 	ret0, _ := ret[0].([]media.GifResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Get indicates an expected call of Get.
-func (mr *MockGifRepositoryMockRecorder) Get(ctx, user_id, status any) *gomock.Call {
+func (mr *MockGifRepositoryMockRecorder) Get(ctx, user_id, status, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockGifRepository)(nil).Get), ctx, user_id, status)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockGifRepository)(nil).Get), ctx, user_id, status, limit, offset)
 }
 
 // GetByKey mocks base method.
@@ -143,6 +143,20 @@ func (mr *MockGifRepositoryMockRecorder) SaveRecent(ctx, key any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveRecent", reflect.TypeOf((*MockGifRepository)(nil).SaveRecent), ctx, key)
 }
 
+// IncrementDownload mocks base method.
+func (m *MockGifRepository) IncrementDownload(ctx context.Context, key string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IncrementDownload", ctx, key)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// IncrementDownload indicates an expected call of IncrementDownload.
+func (mr *MockGifRepositoryMockRecorder) IncrementDownload(ctx, key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncrementDownload", reflect.TypeOf((*MockGifRepository)(nil).IncrementDownload), ctx, key)
+}
+
 // Update mocks base method.
 func (m *MockGifRepository) Update(ctx context.Context, key string, req media.GifUpdateRequest) (media.GifResponse, error) {
 	m.ctrl.T.Helper()
@@ -157,3 +171,4 @@ func (mr *MockGifRepositoryMockRecorder) Update(ctx, key, req any) *gomock.Call 
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockGifRepository)(nil).Update), ctx, key, req)
 }
+

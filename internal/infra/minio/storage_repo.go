@@ -60,8 +60,8 @@ func (u *storageRepo) IsExists(ctx context.Context, key string) (bool, error) {
 	return true, nil
 }
 
-func (u *storageRepo) Delete() error {
-	return nil
+func (u *storageRepo) Delete(ctx context.Context, key string) error {
+	return u.client.RemoveObject(ctx, u.cnf.StorageBucket, key, minio_go.RemoveObjectOptions{})
 }
 
 func (u *storageRepo) Status(ctx context.Context, key string) (media.Info, error) {
@@ -83,10 +83,21 @@ func (u *storageRepo) DownloadLocal(ctx context.Context, key, destPath string) e
 }
 
 func (u *storageRepo) Upload(ctx context.Context, key, filePath, contentType string) error {
-	_, err := u.client.FPutObject(ctx, u.cnf.StorageBucket, key, filePath,
-		minio_go.PutObjectOptions{
-			ContentType: contentType,
-		},
-	)
+	var err error
+	backoff := 100 * time.Millisecond
+	for attempt := 0; attempt < 3; attempt++ {
+		_, err = u.client.FPutObject(ctx, u.cnf.StorageBucket, key, filePath,
+			minio_go.PutObjectOptions{
+				ContentType: contentType,
+			},
+		)
+		if err == nil {
+			return nil
+		}
+		if attempt < 2 {
+			time.Sleep(backoff)
+			backoff *= 2
+		}
+	}
 	return err
 }

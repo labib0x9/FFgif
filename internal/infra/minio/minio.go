@@ -22,7 +22,7 @@ func NewMinio(cnf *config.Minio) *minio.Client {
 				cnf.RootPass,
 				"",
 			),
-			Secure: false,
+			Secure: cnf.Secure,
 			Region: "us-east-1",
 		},
 	)
@@ -38,11 +38,11 @@ func NewPublicMinio(cnf *config.Minio) *minio.Client {
 		cnf.PublicEndpoint,
 		&minio.Options{
 			Creds: credentials.NewStaticV4(
-				cnf.RootUser,
-				cnf.RootPass,
+				cnf.PresignedUser,
+				cnf.PresignedPass,
 				"",
 			),
-			Secure: false,
+			Secure: cnf.Secure,
 			Region: "us-east-1",
 		},
 	)

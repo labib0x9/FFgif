@@ -29,6 +29,10 @@ func (s *service) ChangePassword(ctx context.Context, id string, currentPass str
 		return apperr.ErrPasswordMismatched
 	}
 
+	if currentPass == pass {
+		return errors.New("new password cannot be the same as current password")
+	}
+
 	if !s.hasher.CompareHashAndPassword(found.PasswordHash, currentPass) {
 		return auth.ErrInvalidCredential
 	}

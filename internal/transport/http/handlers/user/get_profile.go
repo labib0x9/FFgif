@@ -37,3 +37,25 @@ func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
 
 	httputil.SendJson(w, found, http.StatusOK)
 }
+
+func (h *Handler) GetProfileByID(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
+	targetID := r.PathValue("userId")
+	if targetID == "" || targetID == "me" {
+		h.GetProfile(w, r)
+		return
+	}
+	found, err := h.srv.GetProfile(r.Context(), targetID)
+	if err != nil {
+		switch {
+		case errors.Is(err, auth.ErrUserNotFound):
+			httputil.SendError(w, auth.AUTH_USER_NOT_FOUND, "user not found", http.StatusNotFound)
+		default:
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
+		}
+		slog.Error("user handler - GetProfileByID()", "request_id", reqId, "err", err)
+		return
+	}
+
+	httputil.SendJson(w, found, http.StatusOK)
+}

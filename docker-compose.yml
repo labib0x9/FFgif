@@ -1,7 +1,10 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
     container_name: ffgif-postgres
+    command: ["postgres", "-c", "shared_preload_libraries=pg_cron", "-c", "cron.database_name=${PG_NAME}"]
     environment:
       - POSTGRES_USER=${PG_SUPERUSER}
       - POSTGRES_DB=${PG_SUPERDB}
@@ -83,7 +86,7 @@ services:
     volumes:
       - miniodata:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:9000/minio/health/live || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 5

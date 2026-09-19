@@ -4,15 +4,22 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/labib0x9/ffgif/config"
+	"github.com/lib/pq"
 )
 
 func SetupDatabase(cnf *config.PostgreSQL) error {
 	superDbConn := NewPostgresSuperConn(cnf)
 	defer superDbConn.Close()
+
+	userIdent := pq.QuoteIdentifier(cnf.User)
+	dbIdent := pq.QuoteIdentifier(cnf.DatabaseName)
+	escapedPass := strings.ReplaceAll(cnf.Pass, "'", "''")
+	escapedUserLiteral := strings.ReplaceAll(cnf.User, "'", "''")
 
 	_, err := superDbConn.Exec(fmt.Sprintf(`
 		DO $$
@@ -22,7 +29,7 @@ func SetupDatabase(cnf *config.PostgreSQL) error {
 			END IF;
 		END
 		$$;
-	`, cnf.User, cnf.User, cnf.Pass))
+	`, escapedUserLiteral, userIdent, escapedPass))
 	if err != nil {
 		return err
 	}
@@ -39,7 +46,7 @@ func SetupDatabase(cnf *config.PostgreSQL) error {
 	if !exists {
 		_, err = superDbConn.Exec(fmt.Sprintf(
 			`CREATE DATABASE %s OWNER %s`,
-			cnf.DatabaseName, cnf.User,
+			dbIdent, userIdent,
 		))
 		if err != nil {
 			return err
@@ -48,10 +55,35 @@ func SetupDatabase(cnf *config.PostgreSQL) error {
 
 	_, err = superDbConn.Exec(fmt.Sprintf(
 		`GRANT ALL PRIVILEGES ON DATABASE %s TO %s`,
-		cnf.DatabaseName, cnf.User,
+		dbIdent, userIdent,
 	))
 	if err != nil {
 		return err
+	}
+
+	targetSuperDSN := fmt.Sprintf(
+		"postgres://%s@%s:%s/%s?sslmode=%s",
+		cnf.SuperUser,
+		cnf.Addr,
+		cnf.Port,
+		cnf.DatabaseName,
+		cnf.SslMode,
+	)
+	if targetSuperDB, err := sql.Open("postgres", targetSuperDSN); err == nil {
+		defer targetSuperDB.Close()
+		_, _ = targetSuperDB.Exec(fmt.Sprintf(`
+			ALTER DATABASE %[2]s OWNER TO %[1]s;
+			ALTER SCHEMA public OWNER TO %[1]s;
+			GRANT ALL ON SCHEMA public TO %[1]s;
+			GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO %[1]s;
+			GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO %[1]s;
+			GRANT ALL PRIVILEGES ON ALL ROUTINES IN SCHEMA public TO %[1]s;
+			CREATE EXTENSION IF NOT EXISTS pg_cron;
+			GRANT USAGE ON SCHEMA cron TO %[1]s;
+			GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA cron TO %[1]s;
+			GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA cron TO %[1]s;
+			GRANT ALL PRIVILEGES ON ALL ROUTINES IN SCHEMA cron TO %[1]s;
+		`, userIdent, dbIdent))
 	}
 
 	slog.Info("Database setup complete, run migration to create tables")

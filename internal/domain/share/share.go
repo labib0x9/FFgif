@@ -9,6 +9,7 @@ import (
 var (
 	ErrNotFound      = errors.New("not found")
 	ErrNotAuthorized = errors.New("not authorized")
+	ErrInvalidExpiry = errors.New("expiry must be in the future")
 )
 
 type Share struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/url"
 	"sync"
 	"testing"
 	"time"
@@ -27,6 +28,7 @@ type shareDeps struct {
 	authRepo  *authmocks.MockAuthRepository
 	gifRepo   *mediamocks.MockGifRepository
 	shareRepo *sharemocks.MockShareRepository
+	storage   *mediamocks.MockStorageRepository
 	queue     *queuemocks.MockQueue
 	svc       appshare.Service
 }
@@ -38,9 +40,10 @@ func newShareDeps(t *testing.T) *shareDeps {
 		authRepo:  authmocks.NewMockAuthRepository(ctrl),
 		gifRepo:   mediamocks.NewMockGifRepository(ctrl),
 		shareRepo: sharemocks.NewMockShareRepository(ctrl),
+		storage:   mediamocks.NewMockStorageRepository(ctrl),
 		queue:     queuemocks.NewMockQueue(ctrl),
 	}
-	d.svc = appshare.NewService(d.authRepo, d.gifRepo, d.shareRepo, d.queue)
+	d.svc = appshare.NewService(d.authRepo, d.gifRepo, d.shareRepo, d.storage, d.queue)
 	return d
 }
 
@@ -531,6 +534,47 @@ func TestGetByToken_ForwardsTokenAndPropagatesMiss(t *testing.T) {
 		}
 		if resp.Url != "" {
 			t.Errorf("a GIF url (%q) was handed out for an expired token", resp.Url)
+		}
+	})
+}
+
+func TestDownloadByToken(t *testing.T) {
+	t.Run("valid token increments download and returns url", func(t *testing.T) {
+		d := newShareDeps(t)
+		d.shareRepo.EXPECT().
+			GetByToken(gomock.Any(), gomock.Eq("valid-token")).
+			Return(domainshare.GifTokenResponse{GifKey: "gif-1", Name: "one.gif"}, nil).
+			Times(1)
+		d.gifRepo.EXPECT().
+			IncrementDownload(gomock.Any(), gomock.Eq("gif-1")).
+			Return(nil).
+			Times(1)
+
+		downloadURL, _ := url.Parse("https://minio.local/download/gif-1?sig=xyz")
+		d.storage.EXPECT().
+			Download(gomock.Any(), gomock.Eq("gif-1"), gomock.Eq(5*time.Minute)).
+			Return(downloadURL, nil).
+			Times(1)
+
+		got, err := d.svc.DownloadByToken(context.Background(), "valid-token")
+		if err != nil {
+			t.Fatalf("DownloadByToken: %v", err)
+		}
+		if got != downloadURL.String() {
+			t.Errorf("got %q, want %q", got, downloadURL.String())
+		}
+	})
+
+	t.Run("unknown or expired token returns not found", func(t *testing.T) {
+		d := newShareDeps(t)
+		d.shareRepo.EXPECT().
+			GetByToken(gomock.Any(), gomock.Eq("bad-token")).
+			Return(domainshare.GifTokenResponse{}, sql.ErrNoRows).
+			Times(1)
+
+		_, err := d.svc.DownloadByToken(context.Background(), "bad-token")
+		if !errors.Is(err, domainshare.ErrNotFound) {
+			t.Errorf("got %v, want ErrNotFound", err)
 		}
 	})
 }

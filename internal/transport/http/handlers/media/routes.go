@@ -16,6 +16,14 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, manager *middleware.Manager
 	)
 
 	mux.Handle(
+		"GET /gifs/user/{userId}",
+		manager.With(
+			http.HandlerFunc(h.GetGifsByUserID),
+			h.middlewares.Auth,
+		),
+	)
+
+	mux.Handle(
 		"GET /gifs/me/{key}",
 		manager.With(
 			http.HandlerFunc(h.GetByKey),

@@ -346,7 +346,7 @@ func TestGetQuota_ReturnsTheCallersOwnQuota(t *testing.T) {
 	h.svc.EXPECT().
 		GetQuota(gomock.Any(), gomock.Eq(userID)).
 		Return(&domainuser.Quota{
-			UserID: id, UsedBytes: 2048, TotalBytes: 8192, GifCount: 4, GitCount: 50,
+			UserID: id, UsedBytes: 2048, TotalBytes: 8192, GifCount: 4, GitLimit: 50,
 		}, nil).
 		Times(1)
 

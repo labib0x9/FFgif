@@ -10,17 +10,21 @@ import (
 )
 
 func (s *service) ResetPasswordGet(ctx context.Context, token string) (string, error) {
-	oldToken, err := s.reseterRepo.GetByToken(ctx, token)
+	_, err := s.reseterRepo.GetByToken(ctx, token)
 	if err != nil {
 		return "", fmt.Errorf("reseterRepo.GetByToken: %w: %w", auth.ErrReseterTokenFatchFailed, err)
 	}
-	return oldToken.Token, nil
+	return token, nil
 }
 
 func (s *service) ResetPasswordPost(ctx context.Context, token string, pass string, confirmPass string) error {
 	oldToken, err := s.reseterRepo.GetByToken(ctx, token)
 	if err != nil {
 		return fmt.Errorf("reseterRepo.GetByToken: %w: %w", auth.ErrReseterTokenFatchFailed, err)
+	}
+
+	if pass != confirmPass {
+		return fmt.Errorf("password and confirm_password do not match")
 	}
 
 	user, err := s.authRepo.GetById(ctx, oldToken.UserId)

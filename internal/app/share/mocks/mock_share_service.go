@@ -114,3 +114,19 @@ func (mr *MockServiceMockRecorder) GetByToken(ctx, token any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByToken", reflect.TypeOf((*MockService)(nil).GetByToken), ctx, token)
 }
+
+// DownloadByToken mocks base method.
+func (m *MockService) DownloadByToken(ctx context.Context, token string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DownloadByToken", ctx, token)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DownloadByToken indicates an expected call of DownloadByToken.
+func (mr *MockServiceMockRecorder) DownloadByToken(ctx, token any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DownloadByToken", reflect.TypeOf((*MockService)(nil).DownloadByToken), ctx, token)
+}
+

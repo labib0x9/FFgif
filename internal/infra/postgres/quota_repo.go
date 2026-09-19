@@ -36,6 +36,26 @@ func (r *quotaRepo) GetById(ctx context.Context, userId string) (*user.Quota, er
 	return &quota, nil
 }
 
+func (r *quotaRepo) IncrementUsage(ctx context.Context, userId string, addBytes int, addGifCount int) (bool, error) {
+	db := getDBFromCtx(ctx, r.db)
+	query := `
+		UPDATE quota
+		SET used_bytes = used_bytes + $1, gif_count = gif_count + $2
+		WHERE user_id = $3
+		  AND used_bytes + $1 <= total_bytes
+		  AND gif_count + $2 <= gif_limit
+	`
+	res, err := db.ExecContext(ctx, query, addBytes, addGifCount, userId)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rowsAffected > 0, nil
+}
+
 type anonQuotaRepo struct {
 	db *sqlx.DB
 }

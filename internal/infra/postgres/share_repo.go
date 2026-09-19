@@ -54,7 +54,7 @@ func (s *shareRepo) Get(ctx context.Context, userID string) ([]share.GifResponse
 		join
 			gifs g on g.key = s.gif_key
 		where
-			s.owner_id = $1 OR s.shared_with = $1 and expires_at > now()
+			(s.owner_id = $1) OR (s.shared_with = $1 AND expires_at > now())
 		`
 
 	var val []share.GifResponse

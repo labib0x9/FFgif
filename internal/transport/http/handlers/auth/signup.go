@@ -36,7 +36,7 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.srv.Signup(r.Context(), req.Email, req.Username, req.Fullname, req.Password)
+	res, err := h.srv.Signup(r.Context(), req.Email, req.Username, req.Fullname, req.Password)
 	if err != nil && !errors.Is(err, apperr.ErrMessageQueueFailed) {
 		switch {
 		case errors.Is(err, auth.ErrUserExists):
@@ -48,7 +48,9 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Location", "/users/"+"res.Id")
+	if res != nil {
+		w.Header().Set("Location", "/users/"+res.Id.String())
+	}
 
 	httputil.SendJson(w, "user created", http.StatusCreated)
 }

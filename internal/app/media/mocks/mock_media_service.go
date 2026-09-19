@@ -44,18 +44,18 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 }
 
 // ConversionStatus mocks base method.
-func (m *MockService) ConversionStatus(ctx context.Context, jobId string) (*media.StatusResult, error) {
+func (m *MockService) ConversionStatus(ctx context.Context, userId, jobId string) (*media.StatusResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ConversionStatus", ctx, jobId)
+	ret := m.ctrl.Call(m, "ConversionStatus", ctx, userId, jobId)
 	ret0, _ := ret[0].(*media.StatusResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ConversionStatus indicates an expected call of ConversionStatus.
-func (mr *MockServiceMockRecorder) ConversionStatus(ctx, jobId any) *gomock.Call {
+func (mr *MockServiceMockRecorder) ConversionStatus(ctx, userId, jobId any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConversionStatus", reflect.TypeOf((*MockService)(nil).ConversionStatus), ctx, jobId)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConversionStatus", reflect.TypeOf((*MockService)(nil).ConversionStatus), ctx, userId, jobId)
 }
 
 // Convert mocks base method.
@@ -133,18 +133,18 @@ func (mr *MockServiceMockRecorder) GetGifThumbnail(ctx, userId, key any) *gomock
 }
 
 // GetGifs mocks base method.
-func (m *MockService) GetGifs(ctx context.Context, userId, filter string) (*media.GifResult, error) {
+func (m *MockService) GetGifs(ctx context.Context, userId, filter string, page, limit int) (*media.GifResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetGifs", ctx, userId, filter)
+	ret := m.ctrl.Call(m, "GetGifs", ctx, userId, filter, page, limit)
 	ret0, _ := ret[0].(*media.GifResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetGifs indicates an expected call of GetGifs.
-func (mr *MockServiceMockRecorder) GetGifs(ctx, userId, filter any) *gomock.Call {
+func (mr *MockServiceMockRecorder) GetGifs(ctx, userId, filter, page, limit any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGifs", reflect.TypeOf((*MockService)(nil).GetGifs), ctx, userId, filter)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGifs", reflect.TypeOf((*MockService)(nil).GetGifs), ctx, userId, filter, page, limit)
 }
 
 // GetRecents mocks base method.

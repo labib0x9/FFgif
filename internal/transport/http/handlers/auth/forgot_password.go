@@ -31,12 +31,10 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := h.srv.ForgotPassword(r.Context(), req.Email)
-	if err != nil && !errors.Is(err, apperr.ErrMessageQueueFailed) {
+	if err != nil && !errors.Is(err, apperr.ErrMessageQueueFailed) && !errors.Is(err, auth.ErrUserNotFound) {
 		switch {
 		case errors.Is(err, auth.ErrUserNotVerified):
 			httputil.SendError(w, auth.AUTH_USER_NOT_VERIFIED, "user is not varified", http.StatusForbidden)
-		case errors.Is(err, auth.ErrUserNotFound):
-			httputil.SendError(w, auth.AUTH_USER_NOT_FOUND, "user not found", http.StatusNotFound)
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}

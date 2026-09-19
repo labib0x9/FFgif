@@ -28,6 +28,10 @@ func (s *service) Download(ctx context.Context, userId, key string) (string, err
 		return "", media.ErrGifOwnerMismatch
 	}
 
+	if err := s.gifRepo.IncrementDownload(ctx, key); err != nil {
+		return "", fmt.Errorf("gifRepo.IncrementDownload: %w", err)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 

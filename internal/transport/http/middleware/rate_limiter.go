@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"strconv"
@@ -56,7 +57,10 @@ func (rl *RateLimiter) Limit() Middleware {
 			w.Header().Set("X-RateLimit-Reset", strconv.Itoa(int(res.last_refill)))
 
 			if !res.allowed {
-				retryAfterSecs := res.wait_ms / 1000
+				retryAfterSecs := (res.wait_ms + 999) / 1000
+				if retryAfterSecs < 1 {
+					retryAfterSecs = 1
+				}
 				w.Header().Set("Retry-After", strconv.FormatInt(retryAfterSecs, 10))
 				httputil.SendError(w, httputil.RATE_LIMITED, "too many request", http.StatusTooManyRequests)
 				return
@@ -74,10 +78,43 @@ func (rl *RateLimiter) setLimit(ctx context.Context, key string) (Result, error)
 		return Result{}, err
 	}
 
-	data := res.([]interface{})
-	allowed := data[0].(int64)
-	wait_ms := data[1].(int64)
-	token := data[2].(int64)
+	var data []any
+	switch v := res.(type) {
+	case []any:
+		data = v
+	default:
+		return Result{}, errors.New("rate limiter: unexpected response type")
+	}
+
+	if len(data) < 3 {
+		return Result{}, errors.New("rate limiter: response slice has fewer than 3 elements")
+	}
+
+	toInt64 := func(v any) (int64, error) {
+		switch n := v.(type) {
+		case int64:
+			return n, nil
+		case int:
+			return int64(n), nil
+		case float64:
+			return int64(n), nil
+		default:
+			return 0, errors.New("rate limiter: unsupported element type")
+		}
+	}
+
+	allowed, err := toInt64(data[0])
+	if err != nil {
+		return Result{}, err
+	}
+	wait_ms, err := toInt64(data[1])
+	if err != nil {
+		return Result{}, err
+	}
+	token, err := toInt64(data[2])
+	if err != nil {
+		return Result{}, err
+	}
 
 	return Result{
 		allowed:     allowed == 1,

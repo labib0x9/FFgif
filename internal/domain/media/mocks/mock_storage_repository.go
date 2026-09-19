@@ -174,3 +174,17 @@ func (mr *MockStorageRepositoryMockRecorder) Upload(ctx, key, filePath, contentT
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Upload", reflect.TypeOf((*MockStorageRepository)(nil).Upload), ctx, key, filePath, contentType)
 }
+
+// Delete mocks base method.
+func (m *MockStorageRepository) Delete(ctx context.Context, key string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Delete", ctx, key)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Delete indicates an expected call of Delete.
+func (mr *MockStorageRepositoryMockRecorder) Delete(ctx, key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockStorageRepository)(nil).Delete), ctx, key)
+}

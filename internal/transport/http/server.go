@@ -10,6 +10,7 @@ import (
 	"github.com/labib0x9/ffgif/config"
 	"github.com/labib0x9/ffgif/internal/port/cache"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/auth"
+	"github.com/labib0x9/ffgif/internal/transport/http/handlers/friend"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/media"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/share"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/static"
@@ -22,6 +23,7 @@ type Server struct {
 	AuthHandler   *auth.Handler
 	MediaHandler  *media.Handler
 	ShareHandler  *share.Handler
+	FriendHandler *friend.Handler
 	UserHandler   *user.Handler
 	staticHandler *static.Handler
 }
@@ -30,6 +32,7 @@ func NewServer(
 	AuthHandler *auth.Handler,
 	MediaHandler *media.Handler,
 	ShareHandler *share.Handler,
+	FriendHandler *friend.Handler,
 	UserHandler *user.Handler,
 	staticHandler *static.Handler,
 ) *Server {
@@ -37,6 +40,7 @@ func NewServer(
 		AuthHandler:   AuthHandler,
 		MediaHandler:  MediaHandler,
 		ShareHandler:  ShareHandler,
+		FriendHandler: FriendHandler,
 		UserHandler:   UserHandler,
 		staticHandler: staticHandler,
 	}
@@ -61,6 +65,7 @@ func (s *Server) Start(rate cache.RateLimiter, cnf *config.Config) {
 	s.AuthHandler.RegisterRoutes(mux, manager)
 	s.MediaHandler.RegisterRoutes(mux, manager)
 	s.ShareHandler.RegisterRoutes(mux, manager)
+	s.FriendHandler.RegisterRoutes(mux, manager)
 	s.UserHandler.RegisterRoutes(mux, manager)
 	s.staticHandler.RegisterRoutes(mux, manager)
 

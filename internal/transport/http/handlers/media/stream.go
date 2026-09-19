@@ -20,7 +20,7 @@ func (h *Handler) Stream(w http.ResponseWriter, r *http.Request) {
 	userId := httputil.GetUserId(r.Context())
 	if userId == "" {
 		httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
-		slog.Error("media handler - Convert() = user_id not found", "request_id", reqId, "err", "user_id not found")
+		slog.Error("media handler - Stream() = user_id not found", "request_id", reqId, "err", "user_id not found")
 		return
 	}
 
@@ -30,7 +30,7 @@ func (h *Handler) Stream(w http.ResponseWriter, r *http.Request) {
 		default:
 			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
 		}
-		slog.Error("media handler - Convert()", "request_id", reqId, "err", err)
+		slog.Error("media handler - Stream()", "request_id", reqId, "err", err)
 		return
 	}
 

@@ -9,6 +9,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/labib0x9/ffgif/config"
 	authapp "github.com/labib0x9/ffgif/internal/app/auth"
+	friendapp "github.com/labib0x9/ffgif/internal/app/friend"
 	mediaapp "github.com/labib0x9/ffgif/internal/app/media"
 	shareapp "github.com/labib0x9/ffgif/internal/app/share"
 	userapp "github.com/labib0x9/ffgif/internal/app/user"
@@ -21,6 +22,7 @@ import (
 	ratelimitter "github.com/labib0x9/ffgif/internal/infra/redis/rate_limiter"
 	rest "github.com/labib0x9/ffgif/internal/transport/http"
 	authhandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/auth"
+	friendhandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/friend"
 	mediahandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/media"
 	sharehandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/share"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/static"
@@ -59,6 +61,8 @@ func main() {
 	lastUploadRepo := postgres.NewLastVideoRepository(dbConn)
 	gifRepo := postgres.NewGifRepository(dbConn) // ?? db + bucket
 	shareRepo := postgres.NewShareRepository(dbConn)
+	friendRepo := postgres.NewFriendRepository(dbConn)
+	jobRepo := postgres.NewJobRepository(dbConn)
 
 	jwtProvider := jwt.NewJwt(cnf.JwtSecret)
 	hasher := password.NewHasher(cnf.HashPepper, cnf.BcryptCost)
@@ -69,9 +73,10 @@ func main() {
 	tnx := postgres.NewTxManager(dbConn)
 
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rabbitMq, *jwtProvider, *hasher, tnx)
-	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, shareRepo, lastUploadRepo, storageRepo, tnx, rabbitMq, cacheRepo, ffmpeg, cnf)
-	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo, rabbitMq)
-	userService := userapp.NewService(userRepo, quotaRepo, authRepo, tnx, *jwtProvider, *hasher)
+	mediaService := mediaapp.NewService(quotaRepo, gifRepo, shareRepo, lastUploadRepo, jobRepo, storageRepo, tnx, rabbitMq, cacheRepo, ffmpeg, cnf)
+	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo, storageRepo, rabbitMq)
+	friendService := friendapp.NewService(friendRepo)
+	userService := userapp.NewService(userRepo, quotaRepo, authRepo, tnx, *hasher)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -79,13 +84,15 @@ func main() {
 	authHandler := authhandler.NewHandler(authService, middlewares, validate)
 	mediaHandler := mediahandler.NewHandler(mediaService, middlewares, validate)
 	shareHandler := sharehandler.NewHandler(shareService, middlewares, validate)
+	friendHandler := friendhandler.NewHandler(friendService, middlewares, validate)
 	userHandler := userhandler.NewHandler(userService, middlewares, validate)
-	staticHandler := static.NewHandler()
+	staticHandler := static.NewHandler(storageRepo, dbConn, rabbitMq, cacheRepo)
 
 	server := rest.NewServer(
 		authHandler,
 		mediaHandler,
 		shareHandler,
+		friendHandler,
 		userHandler,
 		staticHandler,
 	)

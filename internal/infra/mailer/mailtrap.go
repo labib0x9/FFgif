@@ -84,3 +84,27 @@ func (m *Mailtrap) SendResetNotification(email string) error {
 
 	return smtp.SendMail(smtpHost+":"+smtpPort, auth, from, []string{email}, msg)
 }
+
+func (m *Mailtrap) SendShareNotification(email string, token string) error {
+	from := m.email
+	username := m.mailtrapUser
+	password := m.mailtrapPass
+
+	smtpHost := "sandbox.smtp.mailtrap.io"
+	smtpPort := "587"
+
+	subject := "Share gif"
+	body := sendShareBody(token)
+
+	msg := []byte(
+		"From: " + from + "\r\n" +
+			"To: " + email + "\r\n" +
+			"Subject: " + subject + "\r\n" +
+			"\r\n" +
+			body + "\r\n",
+	)
+
+	auth := smtp.PlainAuth("", username, password, smtpHost)
+
+	return smtp.SendMail(smtpHost+":"+smtpPort, auth, from, []string{email}, msg)
+}

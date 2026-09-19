@@ -66,16 +66,18 @@ func (w *SaveVideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 
 	err = w.srv.SaveMetadata(ctx, msg)
 	if err != nil {
-		switch {
-		case errors.Is(err, jobdomain.ErrInvalidUserID):
+		if errors.Is(err, jobdomain.ErrInvalidUserID) || err.Error() == "invalid user id" {
 			slog.Error("invalid user id", "user_id", msg.UserID, "key", msg.Key)
 			d.Nack(false, false)
 			return
-		default:
-			slog.Error("save video metadata failed", "error", err, "key", msg.Key, "user_id", msg.UserID)
-			d.Nack(false, false)
-			return
 		}
+		slog.Error("save video metadata failed", "error", err, "key", msg.Key, "user_id", msg.UserID)
+		if retryCount(d.Headers) < int64(w.maxRetries) {
+			_ = d.Nack(false, true)
+		} else {
+			_ = d.Nack(false, false)
+		}
+		return
 	}
 
 	err = d.Ack(false)
@@ -86,3 +88,4 @@ func (w *SaveVideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 
 	slog.Info("video metadata saved", "key", msg.Key, "user_id", msg.UserID)
 }
+

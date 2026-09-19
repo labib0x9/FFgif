@@ -70,6 +70,21 @@ func (mr *MockQuotaRepositoryMockRecorder) GetById(ctx, userId any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetById", reflect.TypeOf((*MockQuotaRepository)(nil).GetById), ctx, userId)
 }
 
+// IncrementUsage mocks base method.
+func (m *MockQuotaRepository) IncrementUsage(ctx context.Context, userId string, addBytes, addGifCount int) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IncrementUsage", ctx, userId, addBytes, addGifCount)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IncrementUsage indicates an expected call of IncrementUsage.
+func (mr *MockQuotaRepositoryMockRecorder) IncrementUsage(ctx, userId, addBytes, addGifCount any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IncrementUsage", reflect.TypeOf((*MockQuotaRepository)(nil).IncrementUsage), ctx, userId, addBytes, addGifCount)
+}
+
 // MockAnonQuotaRepository is a mock of AnonQuotaRepository interface.
 type MockAnonQuotaRepository struct {
 	ctrl     *gomock.Controller
