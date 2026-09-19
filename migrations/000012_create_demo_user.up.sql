@@ -1,4 +1,3 @@
-BEGIN TRANSACTION;
 INSERT INTO users (id, username, fullname, email, password_hash, is_verified, role, created_at, updated_at)
 VALUES (
     '00000000-0000-0000-0000-000000000001',
@@ -31,4 +30,3 @@ VALUES (
     100
 )
 ON CONFLICT (user_id) DO NOTHING;
-COMMIT;

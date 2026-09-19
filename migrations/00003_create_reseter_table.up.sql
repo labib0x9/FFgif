@@ -6,3 +6,5 @@ CREATE TABLE IF NOT EXISTS reseter (
     created_at TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     expire_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW() + INTERVAL '15 minutes'
 );
+
+CREATE INDEX IF NOT EXISTS idx_reseter_expire_at ON reseter(expire_at);
