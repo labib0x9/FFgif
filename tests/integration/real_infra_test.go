@@ -153,6 +153,7 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 	lastUploadRepo := postgresinfra.NewLastVideoRepository(dbConn)
 	gifRepo := postgresinfra.NewGifRepository(dbConn)
 	shareRepo := postgresinfra.NewShareRepository(dbConn)
+	jobRepo := postgresinfra.NewJobRepository(dbConn)
 	txManager := postgresinfra.NewTxManager(dbConn)
 
 	storageRepo := minioinfra.NewStorageRepository(minioClient, minioPublicClient, cfg.Minio)
@@ -167,16 +168,16 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 
 	// 7. Real App Services
 	authService := authapp.NewService(authRepo, verifierRepo, userRepo, reseterRepo, quotaRepo, cacheRepo, rmq, *jwtProvider, *hasher, txManager)
-	mediaService := mediaapp.NewService(authRepo, userRepo, quotaRepo, gifRepo, shareRepo, lastUploadRepo, storageRepo, txManager, rmq, cacheRepo, ffmpegProcessor, cfg)
-	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo, rmq)
-	userService := userapp.NewService(userRepo, quotaRepo, authRepo, txManager, *jwtProvider, *hasher)
+	mediaService := mediaapp.NewService(quotaRepo, gifRepo, shareRepo, lastUploadRepo, jobRepo, storageRepo, txManager, rmq, cacheRepo, ffmpegProcessor, cfg)
+	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo, storageRepo, rmq)
+	userService := userapp.NewService(userRepo, quotaRepo, authRepo, txManager, *hasher)
 
 	// 8. Real Handlers & Routing
 	authH := authhandler.NewHandler(authService, middlewares, val)
 	mediaH := mediahandler.NewHandler(mediaService, middlewares, val)
 	shareH := sharehandler.NewHandler(shareService, middlewares, val)
 	userH := userhandler.NewHandler(userService, middlewares, val)
-	staticH := static.NewHandler()
+	staticH := static.NewHandler(nil, nil, nil, nil)
 
 	manager := middleware.NewManager()
 	rateLimiter := middleware.NewRateLimiter(limiterRepo, 100, 200)

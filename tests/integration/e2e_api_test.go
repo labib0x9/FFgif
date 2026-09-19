@@ -15,17 +15,21 @@ import (
 	"github.com/google/uuid"
 	"github.com/labib0x9/ffgif/config"
 	authapp "github.com/labib0x9/ffgif/internal/app/auth"
+	friendapp "github.com/labib0x9/ffgif/internal/app/friend"
 	mediaapp "github.com/labib0x9/ffgif/internal/app/media"
 	shareapp "github.com/labib0x9/ffgif/internal/app/share"
 	userapp "github.com/labib0x9/ffgif/internal/app/user"
 	domainauth "github.com/labib0x9/ffgif/internal/domain/auth"
+	domainfriend "github.com/labib0x9/ffgif/internal/domain/friend"
 	domainmedia "github.com/labib0x9/ffgif/internal/domain/media"
 	domainshare "github.com/labib0x9/ffgif/internal/domain/share"
 	domainuser "github.com/labib0x9/ffgif/internal/domain/user"
+	portcache "github.com/labib0x9/ffgif/internal/port/cache"
 	domainprocessor "github.com/labib0x9/ffgif/internal/port/processor"
 	domainqueue "github.com/labib0x9/ffgif/internal/port/queue"
 	rest "github.com/labib0x9/ffgif/internal/transport/http"
 	authhandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/auth"
+	friendhandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/friend"
 	mediahandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/media"
 	sharehandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/share"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/static"
@@ -53,7 +57,7 @@ func (c *inMemoryCache) Get(ctx context.Context, key string) (string, error) {
 	if v, ok := c.store[key]; ok {
 		return v, nil
 	}
-	return "", domainauth.ErrTokenFetchFailed
+	return "", portcache.ErrCacheMiss
 }
 
 type inMemoryQueue struct {
@@ -223,7 +227,10 @@ type inMemoryQuotaRepo struct{}
 
 func (r *inMemoryQuotaRepo) Create(ctx context.Context, quota domainuser.Quota) error { return nil }
 func (r *inMemoryQuotaRepo) GetById(ctx context.Context, userId string) (*domainuser.Quota, error) {
-	return &domainuser.Quota{TotalBytes: 1024 * 1024 * 100, GifCount: 20}, nil
+	return &domainuser.Quota{TotalBytes: 1024 * 1024 * 100, GifCount: 20, GitLimit: 50}, nil
+}
+func (r *inMemoryQuotaRepo) IncrementUsage(ctx context.Context, userId string, addBytes, addGifCount int) (bool, error) {
+	return true, nil
 }
 
 type inMemoryGifRepo struct {
@@ -234,15 +241,23 @@ func (r *inMemoryGifRepo) Create(ctx context.Context, gif domainmedia.Gif) error
 	r.gifs[gif.Key] = gif
 	return nil
 }
-func (r *inMemoryGifRepo) Get(ctx context.Context, user_id string, status string) ([]domainmedia.GifResponse, error) {
+func (r *inMemoryGifRepo) Get(ctx context.Context, user_id string, status string, limit int, offset int) ([]domainmedia.GifResponse, error) {
 	var results []domainmedia.GifResponse
 	for _, g := range r.gifs {
 		if g.UserId == user_id {
 			results = append(results, domainmedia.GifResponse{
-				Key: g.Key,
-				Url: "https://minio.local/gifs/" + g.Key,
+				Key:      g.Key,
+				Url:      "https://minio.local/gifs/" + g.Key,
+				Download: g.Download,
 			})
 		}
+	}
+	if offset > len(results) {
+		return []domainmedia.GifResponse{}, nil
+	}
+	results = results[offset:]
+	if limit > 0 && len(results) > limit {
+		results = results[:limit]
 	}
 	return results, nil
 }
@@ -255,6 +270,7 @@ func (r *inMemoryGifRepo) GetByKey(ctx context.Context, key string, forUpdate bo
 			Persist:      g.Persist,
 			Url:          "https://minio.local/gifs/" + g.Key,
 			ThumbnailUrl: g.ThumbnailUrl,
+			Download:     g.Download,
 			CreatedAt:    g.CreatedAt,
 			UpdatedAt:    g.UpdatedAt,
 		}, nil
@@ -262,7 +278,7 @@ func (r *inMemoryGifRepo) GetByKey(ctx context.Context, key string, forUpdate bo
 	return domainmedia.GifResponse{}, sql.ErrNoRows
 }
 func (r *inMemoryGifRepo) GetRecents(ctx context.Context, user_id string) ([]domainmedia.GifResponse, error) {
-	return r.Get(ctx, user_id, "all")
+	return r.Get(ctx, user_id, "all", 10, 0)
 }
 func (r *inMemoryGifRepo) Delete(ctx context.Context, key string) error {
 	delete(r.gifs, key)
@@ -288,6 +304,7 @@ func (r *inMemoryGifRepo) Update(ctx context.Context, key string, req domainmedi
 			Persist:      g.Persist,
 			Url:          "https://minio.local/gifs/" + g.Key,
 			ThumbnailUrl: g.ThumbnailUrl,
+			Download:     g.Download,
 			CreatedAt:    g.CreatedAt,
 			UpdatedAt:    g.UpdatedAt,
 		}, nil
@@ -295,6 +312,15 @@ func (r *inMemoryGifRepo) Update(ctx context.Context, key string, req domainmedi
 	return domainmedia.GifResponse{}, sql.ErrNoRows
 }
 func (r *inMemoryGifRepo) SaveRecent(ctx context.Context, key string) error { return nil }
+func (r *inMemoryGifRepo) IncrementDownload(ctx context.Context, key string) error {
+	if g, ok := r.gifs[key]; ok {
+		g.Download++
+		g.UpdatedAt = time.Now()
+		r.gifs[key] = g
+		return nil
+	}
+	return sql.ErrNoRows
+}
 func (r *inMemoryGifRepo) GetOwner(ctx context.Context, key string) (string, error) {
 	if g, ok := r.gifs[key]; ok {
 		return g.UserId, nil
@@ -357,6 +383,84 @@ func (r *inMemoryShareRepo) Delete(ctx context.Context, key, shareWithId string)
 	return nil
 }
 
+type inMemoryFriendRepo struct {
+	friendships map[string]domainfriend.Friendship
+}
+
+func (r *inMemoryFriendRepo) Create(ctx context.Context, requesterID, addresseeID string) (domainfriend.Friendship, error) {
+	if r.friendships == nil {
+		r.friendships = make(map[string]domainfriend.Friendship)
+	}
+	f := domainfriend.Friendship{
+		ID:          uuid.New().String(),
+		RequesterID: requesterID,
+		AddresseeID: addresseeID,
+		Status:      domainfriend.StatusPending,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	r.friendships[f.ID] = f
+	return f, nil
+}
+func (r *inMemoryFriendRepo) Exists(ctx context.Context, userA, userB string) (bool, error) {
+	for _, f := range r.friendships {
+		if (f.RequesterID == userA && f.AddresseeID == userB) || (f.RequesterID == userB && f.AddresseeID == userA) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (r *inMemoryFriendRepo) UpdateStatus(ctx context.Context, id string, status string, actingUserID string) (domainfriend.Friendship, error) {
+	if f, ok := r.friendships[id]; ok {
+		if f.AddresseeID != actingUserID {
+			return domainfriend.Friendship{}, domainfriend.ErrNotAuthorized
+		}
+		f.Status = status
+		f.UpdatedAt = time.Now()
+		r.friendships[id] = f
+		return f, nil
+	}
+	return domainfriend.Friendship{}, sql.ErrNoRows
+}
+func (r *inMemoryFriendRepo) Delete(ctx context.Context, id string, actingUserID string) error {
+	if f, ok := r.friendships[id]; ok {
+		if f.RequesterID != actingUserID && f.AddresseeID != actingUserID {
+			return domainfriend.ErrNotAuthorized
+		}
+		delete(r.friendships, id)
+		return nil
+	}
+	return sql.ErrNoRows
+}
+func (r *inMemoryFriendRepo) ListFriends(ctx context.Context, userID string) ([]domainfriend.FriendResponse, error) {
+	var list []domainfriend.FriendResponse
+	for _, f := range r.friendships {
+		if f.Status == domainfriend.StatusAccepted {
+			if f.RequesterID == userID {
+				list = append(list, domainfriend.FriendResponse{UserID: f.AddresseeID, Status: f.Status, CreatedAt: f.CreatedAt})
+			} else if f.AddresseeID == userID {
+				list = append(list, domainfriend.FriendResponse{UserID: f.RequesterID, Status: f.Status, CreatedAt: f.CreatedAt})
+			}
+		}
+	}
+	return list, nil
+}
+func (r *inMemoryFriendRepo) ListPendingIncoming(ctx context.Context, userID string) ([]domainfriend.FriendResponse, error) {
+	var list []domainfriend.FriendResponse
+	for _, f := range r.friendships {
+		if f.Status == domainfriend.StatusPending && f.AddresseeID == userID {
+			list = append(list, domainfriend.FriendResponse{UserID: f.RequesterID, Status: f.Status, CreatedAt: f.CreatedAt})
+		}
+	}
+	return list, nil
+}
+func (r *inMemoryFriendRepo) GetByID(ctx context.Context, id string) (domainfriend.Friendship, error) {
+	if f, ok := r.friendships[id]; ok {
+		return f, nil
+	}
+	return domainfriend.Friendship{}, sql.ErrNoRows
+}
+
 type inMemoryStorageRepo struct{}
 
 func (s *inMemoryStorageRepo) Create(ctx context.Context, key string, expirey time.Duration) (*url.URL, error) {
@@ -412,6 +516,44 @@ func (r *inMemoryLastVideoRepo) GetLastVideo(ctx context.Context, user_id string
 	return domainmedia.LastUploadResponse{}, sql.ErrNoRows
 }
 
+type inMemoryJobRepo struct {
+	jobs map[string]*domainmedia.Job
+}
+
+func (r *inMemoryJobRepo) Create(ctx context.Context, job domainmedia.Job) error {
+	r.jobs[job.ID] = &job
+	return nil
+}
+
+func (r *inMemoryJobRepo) GetByID(ctx context.Context, id string) (*domainmedia.Job, error) {
+	if j, ok := r.jobs[id]; ok {
+		return j, nil
+	}
+	return nil, domainmedia.ErrJobNotFound
+}
+
+func (r *inMemoryJobRepo) UpdateStatus(ctx context.Context, id string, status string, progress int, resultKey string, errMsg string) error {
+	if j, ok := r.jobs[id]; ok {
+		j.Status = status
+		j.Progress = progress
+		j.ResultKey = resultKey
+		j.ErrorMessage = errMsg
+		j.UpdatedAt = time.Now()
+		return nil
+	}
+	return domainmedia.ErrJobNotFound
+}
+
+func (r *inMemoryJobRepo) GetByUserID(ctx context.Context, userID string, limit, offset int) ([]domainmedia.Job, error) {
+	var res []domainmedia.Job
+	for _, j := range r.jobs {
+		if j.UserID == userID {
+			res = append(res, *j)
+		}
+	}
+	return res, nil
+}
+
 type inMemoryProcessor struct{}
 
 func (p *inMemoryProcessor) Process(ctx context.Context, JobId string, Key string, Start float32, End float32, Width int, FPS int, Loop bool) (*domainprocessor.JobResult, error) {
@@ -454,6 +596,7 @@ func TestE2E_FullUserAndJobLifecycle(t *testing.T) {
 	quotaRepo := &inMemoryQuotaRepo{}
 	gifRepo := &inMemoryGifRepo{gifs: make(map[string]domainmedia.Gif)}
 	shareRepo := &inMemoryShareRepo{shares: make(map[string]domainshare.Share)}
+	jobRepo := &inMemoryJobRepo{jobs: make(map[string]*domainmedia.Job)}
 	storage := &inMemoryStorageRepo{}
 	lastVideoRepo := &inMemoryLastVideoRepo{lastUploads: make(map[string]domainmedia.LastUploadResponse)}
 	proc := &inMemoryProcessor{}
@@ -472,17 +615,20 @@ func TestE2E_FullUserAndJobLifecycle(t *testing.T) {
 		authRepo, verifierRepo, profileRepo, nil, quotaRepo,
 		cache, queue, *jwtProvider, *hasher, txManager,
 	)
-	userService := userapp.NewService(profileRepo, quotaRepo, authRepo, txManager, *jwtProvider, *hasher)
-	mediaService := mediaapp.NewService(authRepo, profileRepo, quotaRepo, gifRepo, shareRepo, lastVideoRepo, storage, txManager, queue, cache, proc, cnf)
-	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo, queue)
+	userService := userapp.NewService(profileRepo, quotaRepo, authRepo, txManager, *hasher)
+	mediaService := mediaapp.NewService(quotaRepo, gifRepo, shareRepo, lastVideoRepo, jobRepo, storage, txManager, queue, cache, proc, cnf)
+	shareService := shareapp.NewService(authRepo, gifRepo, shareRepo, storage, queue)
+	friendRepo := &inMemoryFriendRepo{friendships: make(map[string]domainfriend.Friendship)}
+	friendService := friendapp.NewService(friendRepo)
 
 	authH := authhandler.NewHandler(authService, middlewares, val)
 	userH := userhandler.NewHandler(userService, middlewares, val)
 	mediaH := mediahandler.NewHandler(mediaService, middlewares, val)
 	shareH := sharehandler.NewHandler(shareService, middlewares, val)
-	staticH := static.NewHandler()
+	friendH := friendhandler.NewHandler(friendService, middlewares, val)
+	staticH := static.NewHandler(nil, nil, nil, nil)
 
-	_ = rest.NewServer(authH, mediaH, shareH, userH, staticH)
+	_ = rest.NewServer(authH, mediaH, shareH, friendH, userH, staticH)
 
 	// 1. Signup User 1
 	signupPayload, _ := json.Marshal(map[string]string{
@@ -740,7 +886,7 @@ func TestE2E_UnauthorizedAndEdgeCases(t *testing.T) {
 	val := validator.New()
 
 	authRepo := &inMemoryAuthRepo{users: make(map[string]domainauth.User)}
-	userService := userapp.NewService(&inMemoryProfileRepo{}, &inMemoryQuotaRepo{}, authRepo, &inMemoryTx{}, *jwtProvider, *password.NewHasher("p", 10))
+	userService := userapp.NewService(&inMemoryProfileRepo{}, &inMemoryQuotaRepo{}, authRepo, &inMemoryTx{}, *password.NewHasher("p", 10))
 	userH := userhandler.NewHandler(userService, middlewares, val)
 
 	// 1. Unauthenticated Request to Protected Route
