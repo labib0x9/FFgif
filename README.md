@@ -367,6 +367,48 @@ Option 2: Real SMTP (e.g. Gmail app password)
 
 ---
 
+## Running Tests
+
+### Unit & Package Tests (No Docker Required)
+
+Runs domain, application, transport, and utility unit tests using mocks:
+
+```bash
+# Run all unit and package tests
+go test ./internal/... ./pkg/...
+
+# Run with verbose output and coverage
+go test -v -cover ./internal/... ./pkg/...
+
+# Run specific package tests
+go test -v ./internal/transport/http/...
+go test -v ./internal/app/auth/...
+go test -v ./internal/app/media/...
+go test -v ./internal/infra/ffmpeg/...
+```
+
+### Architecture Tests
+
+Validates clean architecture package boundaries and import rules:
+
+```bash
+go test -v ./tests/architecture/...
+```
+
+### Integration Tests (Docker Required)
+
+Integration tests interact with real PostgreSQL, Redis, RabbitMQ, and MinIO instances:
+
+```bash
+# 1. Ensure Docker infrastructure services are running
+docker compose up -d
+
+# 2. Run the integration test suite
+go test -v ./tests/integration/...
+```
+
+---
+
 ## API Reference
 
 ### Auth
@@ -374,7 +416,7 @@ Option 2: Real SMTP (e.g. Gmail app password)
 ```
 POST   /auth/signup
 POST   /auth/login
-GET    /auth/logout              (auth required)
+POST   /auth/logout                     (auth required)
 GET    /auth/verify?token=
 POST   /auth/verify/resend
 POST   /auth/forgot-password
@@ -385,85 +427,93 @@ POST   /auth/reset
 ### User
 
 ```
-GET    /users/profile/me         (auth required)
-PATCH  /users/profile/me         (auth required)
-GET    /users/me/quota           (auth required)
-PATCH  /users/change-password    (auth required)
-DELETE /users/me                 (auth required)
+GET    /users/me/profile                (auth required)
+PATCH  /users/me/profile                (auth required)
+GET    /users/{userId}/profile
+GET    /users/me/quota                  (auth required)
+PATCH  /users/me/change-password        (auth required)
+DELETE /users/me                        (auth required)
+```
+
+### Friends
+
+```
+POST   /friends/requests                send friend request (auth required)
+GET    /friends/requests                list incoming friend requests (auth required)
+PATCH  /friends/requests/{id}           accept friend request (auth required)
+DELETE /friends/requests/{id}           reject friend request (auth required)
+GET    /friends                         list all accepted friends (auth required)
+DELETE /friends/{id}                    remove friend (auth required)
 ```
 
 ### Uploads
 
 ```
-POST   /uploads                  presigned URL generation
-GET    /uploads/{key}/status     poll upload status from Redis
-GET    /uploads/{key}/stream     presigned URL streaming
-GET    /uploads/last             last uploaded video metadata
+POST   /uploads                         presigned URL generation (auth required)
+GET    /uploads/{key}/status            poll upload status (auth required)
+GET    /uploads/{key}/stream            presigned URL streaming (auth required)
+GET    /uploads/last                    last uploaded video metadata (auth required)
 ```
 
-### Convert
+### Convert & Jobs
 
 ```
-POST   /jobs                  enqueue conversion job
-GET    /jobs/{jobId}/status   poll job status from Redis
+POST   /jobs                            enqueue conversion job (auth required)
+GET    /jobs/{jobId}/status             poll job status (auth required)
 ```
 
 ### GIFs
 
 ```
-GET    /gifs/me
-GET    /gifs/me/recents
-GET    /gifs/me/{key}
-GET    /gifs/me/{key}/download
-GET    /gifs/me/{key}/thumbnail        (get presigned MinIO URL for GIF thumbnail)
-PATCH  /gifs/me/{key}
-DELETE /gifs/me/{key}
-POST   /gifs/me/recents/{key}/save
+GET    /gifs/me                         list my GIFs (auth required)
+GET    /gifs/me/recents                 list recently converted GIFs (auth required)
+GET    /gifs/user/{userId}              list public GIFs of a user (auth required)
+GET    /gifs/me/{key}                   get GIF metadata (auth required)
+GET    /gifs/me/{key}/download          presigned download URL (auth required)
+GET    /gifs/me/{key}/thumbnail         presigned thumbnail URL (auth required)
+PATCH  /gifs/me/{key}                   update GIF metadata / visibility (auth required)
+DELETE /gifs/me/{key}                   delete GIF (auth required)
+POST   /gifs/me/recents/{key}/save      persist temporary recent GIF (auth required)
 ```
 
 ### Shares
 
 ```
-POST   /gifs/me/{key}/shares                    (share a GIF with a user by email & expiry)
-GET    /gifs/me/shares                          (list all GIFs shared by / with authenticated user)
-DELETE /gifs/me/{key}/shares/{shareWithId}      (revoke shared access for a user)
-POST /s                                         (share a GIF publicly)
-POST /s/{token}                                 (Get the public share, no auth needed)
+POST   /gifs/me/{key}/shares                    share a GIF with a user (auth required)
+GET    /gifs/me/shares                          list all GIFs shared by / with user (auth required)
+DELETE /gifs/me/{key}/shares/{shareWithId}      revoke shared access for a user (auth required)
+POST   /s                                       create public share token (auth required)
+GET    /s/{token}                               view public shared GIF (auth required)
+GET    /s/{token}/download                      download public shared GIF (auth required)
+```
+
+### System
+
+```
+GET    /health                          health check endpoint
 ```
 
 ---
 
 ## Known Limitations
 
-- **Limited frontend**: minimal frontend is built for testing using claude.
-- **Anonymous user flow is incomplete**: The demo/guest account path exists in the schema and some repo code but is commented out at the handler layer.
-- **`OneTimePerEmail` and `BlockIP` middlewares are stubs**: The rate-limiting middleware for sensitive auth endpoints is not yet implemented (currently pass-through).
-- **No HTTPS / TLS**: Local dev only, no TLS configuration.
-- **Job status stored only in Redis with 5-minute TTL**: If a client polls after expiry, the status is gone. There is no persistent job record in Postgres.
-- **Limited transaction**: Currently only Auth service is using transaction.
-- **PATCH UPDATE**: Setting a non-null value to null is incomplete.
-- **Retry Worker**: Retry logic in workers(from queue) is also incomplete, currently failed messages goes to DLQ, no proper DLQ handling.
-- **Documentation**: No proper API documentation
-- **Misleading Location Header**: 201 and 202 responses, Location header may mislead
-- **REST API**: no userId on gif APIS, only `gifs/me`, `/users/me/profile`. need to add `gifs/{userId}`, `/users/{userId}/profile`.
-- **Error on streaming**: Currently range streaming is incomplete for a large video.
-- **Database cleanup**: No proper cleanup methods for expired rows.
-- **No public download**: Currently publicly shared gif has no download option.
-- **No quota**: quota is incomplete, currently unlimited quota.  
-- **Confusion**: Every gif has thumbnailUrl column, but it is thumbnailKey. All gifs are currently private no public gifs.
-- **Need to Enchange Quality**: GIF quality is not that much..
+- **Presigned Upload Ceilings**: MinIO presigned PUT URLs currently lack content-length-range enforcement; large uploads rely on client compliance before processing.
+- **Polling-Based Status**: Clients currently poll `GET /jobs/{jobId}/status` and `GET /uploads/{key}/status` rather than receiving real-time push events.
+- **Pagination**: List endpoints (`/gifs/me`, `/gifs/me/shares`) currently return unpaginated datasets.
+- **Ephemeral GIF Retention**: Unpersisted (`persist = false`) GIFs do not yet have an automated MinIO lifecycle eviction rule after 24 hours.
+- **Guest Session Scope**: Anonymous accounts have temporary 24-hour quotas and cannot access email-based features (password resets, notifications) without account registration.
+- **Local Development TLS**: Local Docker environment runs over HTTP; production deployments require an SSL/TLS reverse proxy (e.g., Caddy or Nginx).
+- **Health Check**: Currently health check endpoint is stub.
+- **GIF**: Public share is stub.
 
 ---
 
 ## Planned / Future Work
 
-- Per-user quota tracking (storage bytes, GIF count)
-- Implement frontend (Next.js)
-- GIF metadata enrichment: file size, dimensions, duration stored in the gifs table
-- Friendship domain (user can be friends)
-- Gif sharing should be two types, one with friends, other with email (without having shared with account, send as a email)
-- Add monitoring
-- Webhook callbacks on job completation
-- WebP or APNG output format alongside GIF
-- GIF-to-MP4 reverse conversion
-- Add subtitle on GIF
+- **Real-Time Updates**: Replace polling with WebSockets or Server-Sent Events (SSE) for conversion job progress.
+- **Export Formats**: Support WebP, APNG, and reverse GIF-to-MP4 conversions.
+- **Rich GIF Editing**: Add text overlays, captions, speed adjustments, and filters via FFmpeg.
+- **Smart Discovery**: AI/vector-based semantic search and GIF recommendations.
+- **Webhooks**: Outbound webhooks on job completion for third-party integrations.
+- **Observability**: Prometheus metrics export and Grafana dashboard for conversion latency, queue depth, and storage usage.
+- **Full Next.js Frontend Integration**: Complete the web UI with drag-and-drop video trimmer, share link previews, and friendship management.
