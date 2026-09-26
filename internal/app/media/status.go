@@ -5,19 +5,26 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/labib0x9/ffgif/internal/domain/media"
+	"github.com/labib0x9/ffgif/internal/port/cache"
 )
 
 // streaming key, status, error
 func (s *service) Status(ctx context.Context, userId, key string) (string, string, error) {
+	if strings.Contains(key, ":") && !strings.HasPrefix(key, userId+":") {
+		return "", "", media.ErrGifOwnerMismatch
+	}
+
 	lookupKey := "uploading:" + key
 	status, err := s.cache.Get(ctx, lookupKey)
 	if err != nil {
-		return "", "", err
-	}
-	if status == "" {
-		status = "failed"
+		if errors.Is(err, cache.ErrCacheMiss) {
+			status = "failed"
+		} else {
+			return "", "", err
+		}
 	}
 	if status != "ok" {
 		return "", status, nil

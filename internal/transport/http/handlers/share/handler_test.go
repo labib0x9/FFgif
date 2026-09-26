@@ -1,493 +1,374 @@
 package share_test
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"database/sql"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/golang-jwt/jwt/v5"
+	gojwt "github.com/golang-jwt/jwt/v5"
+	"go.uber.org/mock/gomock"
+
+	"github.com/labib0x9/ffgif/config"
+	sharesvcmocks "github.com/labib0x9/ffgif/internal/app/share/mocks"
+	domainmedia "github.com/labib0x9/ffgif/internal/domain/media"
 	domainshare "github.com/labib0x9/ffgif/internal/domain/share"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/share"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 	jwtpkg "github.com/labib0x9/ffgif/pkg/jwt"
 )
 
-type mockShareService struct {
-	createFunc        func(ctx context.Context, sharedBy string, gifKey string, sharedWith string, expiresAt time.Time) error
-	createByTokenFunc func(ctx context.Context, sharedBy string, gifKey string, sharedWithEmail string, expiresAt time.Time) (string, error)
-	deleteFunc        func(ctx context.Context, userId, gifKey, shareWithId string) error
-	getFunc           func(ctx context.Context, user string) ([]domainshare.GifResponse, error)
-	getByTokenFunc    func(ctx context.Context, token string) (domainshare.GifTokenResponse, error)
+const callerID = "22222222-2222-2222-2222-222222222222"
+
+type shareHarness struct {
+	svc *sharesvcmocks.MockService
+	h   *share.Handler
 }
 
-func (m *mockShareService) Create(ctx context.Context, sharedBy string, gifKey string, sharedWith string, expiresAt time.Time) error {
-	if m.createFunc != nil {
-		return m.createFunc(ctx, sharedBy, gifKey, sharedWith, expiresAt)
-	}
-	return nil
-}
-func (m *mockShareService) CreateByToken(ctx context.Context, sharedBy string, gifKey string, sharedWithEmail string, expiresAt time.Time) (string, error) {
-	if m.createByTokenFunc != nil {
-		return m.createByTokenFunc(ctx, sharedBy, gifKey, sharedWithEmail, expiresAt)
-	}
-	return "test-token", nil
-}
-func (m *mockShareService) Delete(ctx context.Context, userId, gifKey, shareWithId string) error {
-	if m.deleteFunc != nil {
-		return m.deleteFunc(ctx, userId, gifKey, shareWithId)
-	}
-	return nil
-}
-func (m *mockShareService) Get(ctx context.Context, user string) ([]domainshare.GifResponse, error) {
-	if m.getFunc != nil {
-		return m.getFunc(ctx, user)
-	}
-	return []domainshare.GifResponse{}, nil
-}
-func (m *mockShareService) GetByToken(ctx context.Context, token string) (domainshare.GifTokenResponse, error) {
-	if m.getByTokenFunc != nil {
-		return m.getByTokenFunc(ctx, token)
-	}
-	return domainshare.GifTokenResponse{}, nil
+func newShareHarness(t *testing.T) *shareHarness {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	svc := sharesvcmocks.NewMockService(ctrl)
+	mws := middleware.NewMiddlewares(&config.Config{}, nil, jwtpkg.Jwt{})
+	return &shareHarness{svc: svc, h: share.NewHandler(svc, mws, validator.New())}
 }
 
-func withUserAuth(r *http.Request, userId string) *http.Request {
-	claims := jwtpkg.Payload{
-		Fullname: "Test User",
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: userId,
-		},
+func req(t *testing.T, method, target, body string, withAuth bool) *http.Request {
+	t.Helper()
+	var r *http.Request
+	if body == "" {
+		r = httptest.NewRequest(method, target, nil)
+	} else {
+		r = httptest.NewRequest(method, target, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
 	}
-	ctx := httputil.WithAuthContext(r.Context(), claims, "test-token")
-	return r.WithContext(ctx)
+	if withAuth {
+		claims := jwtpkg.Payload{
+			Fullname: "Caller", Email: "caller@example.com", Role: "user",
+			RegisteredClaims: gojwt.RegisteredClaims{
+				Subject:   callerID,
+				ExpiresAt: gojwt.NewNumericDate(time.Now().Add(time.Hour)),
+			},
+		}
+		r = r.WithContext(httputil.WithAuthContext(r.Context(), claims, "tok"))
+	}
+	return r
 }
 
-func TestShareHandler_Create_Success(t *testing.T) {
-	mockSvc := &mockShareService{
-		createFunc: func(ctx context.Context, sharedBy string, gifKey string, sharedWith string, expiresAt time.Time) error {
+// ===========================================================================
+// Create
+// ===========================================================================
+
+// The gif key comes from the path and the sharer id from the token — never
+// from the body, which the caller controls.
+func TestCreate_UsesThePathKeyAndTheTokenSubject(t *testing.T) {
+	h := newShareHarness(t)
+	expiry := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
+
+	h.svc.EXPECT().
+		Create(gomock.Any(), gomock.Eq(callerID), gomock.Eq("gif-1"),
+			gomock.Eq("friend@example.com"), gomock.Any()).
+		DoAndReturn(func(_ context.Context, sharedBy, key, with string, exp time.Time) error {
+			if !exp.Equal(expiry) {
+				t.Errorf("expiry = %v, want %v", exp, expiry)
+			}
 			return nil
-		},
-	}
-	handler := share.NewHandler(mockSvc, nil, validator.New())
+		}).
+		Times(1)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /gifs/me/{key}/shares", handler.Create)
+	r := req(t, http.MethodPost, "/gifs/gif-1/shares",
+		`{"shared_with":"friend@example.com","expire_at":"`+expiry.Format(time.RFC3339)+`",
+		  "owner_id":"attacker-supplied","gif_key":"attacker-supplied"}`, true)
+	r.SetPathValue("key", "gif-1")
 
-	body, _ := json.Marshal(map[string]any{
-		"shared_with": "friend@example.com",
-		"expire_at":   time.Now().Add(24 * time.Hour),
-	})
-
-	req := httptest.NewRequest(http.MethodPost, "/gifs/me/my-gif.gif/shares", bytes.NewReader(body))
-	req = withUserAuth(req, "owner-1")
 	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
+	h.h.Create(rec, r)
 
 	if rec.Code != http.StatusCreated {
-		t.Errorf("expected status 201 Created, got %d. Body: %s", rec.Code, rec.Body.String())
+		t.Fatalf("status = %d, want 201; body = %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestShareHandler_Create_Unauthenticated(t *testing.T) {
-	handler := share.NewHandler(&mockShareService{}, nil, validator.New())
+func TestCreate_Preconditions(t *testing.T) {
+	tests := []struct {
+		name     string
+		withAuth bool
+		key      string
+		body     string
+		wantCode int
+	}{
+		{name: "unauthenticated", key: "gif-1", body: `{"shared_with":"f@example.com"}`, wantCode: http.StatusUnauthorized},
+		{name: "missing gif key", withAuth: true, body: `{"shared_with":"f@example.com"}`, wantCode: http.StatusBadRequest},
+		{name: "malformed json", withAuth: true, key: "gif-1", body: `{"shared_with":`, wantCode: http.StatusBadRequest},
+	}
 
-	req := httptest.NewRequest(http.MethodPost, "/gifs/me/key-1/shares", bytes.NewReader([]byte("{}")))
-	rec := httptest.NewRecorder()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newShareHarness(t)
+			// the service must not be reached
+			r := req(t, http.MethodPost, "/gifs/"+tc.key+"/shares", tc.body, tc.withAuth)
+			if tc.key != "" {
+				r.SetPathValue("key", tc.key)
+			}
+			rec := httptest.NewRecorder()
+			h.h.Create(rec, r)
 
-	handler.Create(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status 401 Unauthorized, got %d", rec.Code)
+			if rec.Code != tc.wantCode {
+				t.Errorf("status = %d, want %d; body = %s", rec.Code, tc.wantCode, rec.Body.String())
+			}
+		})
 	}
 }
 
-func TestShareHandler_Create_MissingKey(t *testing.T) {
-	handler := share.NewHandler(&mockShareService{}, nil, validator.New())
+// EXPECTED TO FAIL: reqCreate in
+// internal/transport/http/handlers/share/create.go carries no validate tags and
+// the handler never calls h.validate.Struct on it — unlike every other write
+// handler in the codebase. An empty or malformed recipient, and a zero-value
+// expire_at, go straight to the service.
+func TestCreate_ValidatesTheRecipientAndExpiry(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"empty recipient", `{"shared_with":"","expire_at":"2030-01-01T00:00:00Z"}`},
+		{"recipient is not an email", `{"shared_with":"not-an-email","expire_at":"2030-01-01T00:00:00Z"}`},
+		{"missing recipient entirely", `{"expire_at":"2030-01-01T00:00:00Z"}`},
+		{"zero-value expiry", `{"shared_with":"f@example.com"}`},
+		{"expiry in the past", `{"shared_with":"f@example.com","expire_at":"2000-01-01T00:00:00Z"}`},
+	}
 
-	req := httptest.NewRequest(http.MethodPost, "/gifs/me//shares", bytes.NewReader([]byte("{}")))
-	req = withUserAuth(req, "owner-1")
-	rec := httptest.NewRecorder()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newShareHarness(t)
 
-	handler.Create(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status 400 Bad Request on missing key, got %d", rec.Code)
+			h.svc.EXPECT().
+				Create(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, _, _, with string, exp time.Time) error {
+					t.Errorf("the handler forwarded shared_with=%q expire_at=%v without validating it", with, exp)
+					return nil
+				}).
+				AnyTimes()
+
+			r := req(t, http.MethodPost, "/gifs/gif-1/shares", tc.body, true)
+			r.SetPathValue("key", "gif-1")
+			rec := httptest.NewRecorder()
+			h.h.Create(rec, r)
+
+			if rec.Code != http.StatusUnprocessableEntity && rec.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want 422 or 400; body = %s", rec.Code, rec.Body.String())
+			}
+		})
 	}
 }
 
-func TestShareHandler_Create_BadJSON(t *testing.T) {
-	handler := share.NewHandler(&mockShareService{}, nil, validator.New())
+func TestCreate_ErrorMapping(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		wantCode int
+	}{
+		{"gif not found", domainmedia.ErrGifNotFound, http.StatusNotFound},
+		{"caller does not own the gif", domainmedia.ErrGifOwnerMismatch, http.StatusForbidden},
+		{"unexpected failure", errors.New("boom"), http.StatusInternalServerError},
+	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /gifs/me/{key}/shares", handler.Create)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newShareHarness(t)
+			h.svc.EXPECT().
+				Create(gomock.Any(), gomock.Eq(callerID), gomock.Eq("gif-1"), gomock.Any(), gomock.Any()).
+				Return(tc.err).
+				Times(1)
 
-	req := httptest.NewRequest(http.MethodPost, "/gifs/me/gif-1/shares", bytes.NewReader([]byte("{bad")))
-	req = withUserAuth(req, "owner-1")
-	rec := httptest.NewRecorder()
+			r := req(t, http.MethodPost, "/gifs/gif-1/shares",
+				`{"shared_with":"f@example.com","expire_at":"2030-01-01T00:00:00Z"}`, true)
+			r.SetPathValue("key", "gif-1")
+			rec := httptest.NewRecorder()
+			h.h.Create(rec, r)
 
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status 400 Bad Request on malformed JSON, got %d", rec.Code)
+			if rec.Code != tc.wantCode {
+				t.Errorf("status = %d, want %d", rec.Code, tc.wantCode)
+			}
+		})
 	}
 }
 
-func TestShareHandler_Create_ServiceError(t *testing.T) {
-	mockSvc := &mockShareService{
-		createFunc: func(ctx context.Context, sharedBy string, gifKey string, sharedWith string, expiresAt time.Time) error {
-			return errors.New("db error")
-		},
-	}
-	handler := share.NewHandler(mockSvc, nil, validator.New())
+// ===========================================================================
+// Delete
+// ===========================================================================
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /gifs/me/{key}/shares", handler.Create)
+func TestDelete_ForwardsBothPathSegmentsAndTheCallerId(t *testing.T) {
+	h := newShareHarness(t)
 
-	body, _ := json.Marshal(map[string]any{
-		"shared_with": "friend@example.com",
-		"expire_at":   time.Now().Add(24 * time.Hour),
-	})
-	req := httptest.NewRequest(http.MethodPost, "/gifs/me/gif-1/shares", bytes.NewReader(body))
-	req = withUserAuth(req, "owner-1")
+	h.svc.EXPECT().
+		Delete(gomock.Any(), gomock.Eq(callerID), gomock.Eq("gif-1"), gomock.Eq("recipient-9")).
+		Return(nil).
+		Times(1)
+
+	r := req(t, http.MethodDelete, "/gifs/gif-1/shares/recipient-9", "", true)
+	r.SetPathValue("key", "gif-1")
+	r.SetPathValue("shareWithId", "recipient-9")
+
 	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected status 500 Internal Server Error, got %d", rec.Code)
-	}
-}
-
-func TestShareHandler_Get_Success(t *testing.T) {
-	mockSvc := &mockShareService{
-		getFunc: func(ctx context.Context, user string) ([]domainshare.GifResponse, error) {
-			return []domainshare.GifResponse{
-				{Name: "Gif 1", GifKey: "k1", SharedWith: "user-2"},
-			}, nil
-		},
-	}
-	handler := share.NewHandler(mockSvc, nil, validator.New())
-
-	req := httptest.NewRequest(http.MethodGet, "/gifs/me/shares", nil)
-	req = withUserAuth(req, "user-uuid-1")
-	rec := httptest.NewRecorder()
-
-	handler.Get(rec, req)
+	h.h.Delete(rec, r)
 
 	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d. Body: %s", rec.Code, rec.Body.String())
+		t.Errorf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestShareHandler_Get_Unauthenticated(t *testing.T) {
-	handler := share.NewHandler(&mockShareService{}, nil, validator.New())
+func TestDelete_ErrorMapping(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		wantCode int
+	}{
+		{"share belongs to someone else", domainshare.ErrNotAuthorized, http.StatusForbidden},
+		{"already deleted", domainshare.ErrNotFound, http.StatusNotFound},
+		{"unexpected failure", errors.New("boom"), http.StatusInternalServerError},
+	}
 
-	req := httptest.NewRequest(http.MethodGet, "/gifs/me/shares", nil)
-	rec := httptest.NewRecorder()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newShareHarness(t)
+			h.svc.EXPECT().
+				Delete(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(tc.err).
+				Times(1)
 
-	handler.Get(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status 401 Unauthorized, got %d", rec.Code)
+			r := req(t, http.MethodDelete, "/gifs/gif-1/shares/recipient-9", "", true)
+			r.SetPathValue("key", "gif-1")
+			r.SetPathValue("shareWithId", "recipient-9")
+			rec := httptest.NewRecorder()
+			h.h.Delete(rec, r)
+
+			if rec.Code != tc.wantCode {
+				t.Errorf("status = %d, want %d", rec.Code, tc.wantCode)
+			}
+		})
 	}
 }
 
-func TestShareHandler_Get_ServiceError(t *testing.T) {
-	mockSvc := &mockShareService{
-		getFunc: func(ctx context.Context, user string) ([]domainshare.GifResponse, error) {
-			return nil, errors.New("db query error")
-		},
+func TestDelete_Preconditions(t *testing.T) {
+	tests := []struct {
+		name        string
+		withAuth    bool
+		key         string
+		shareWithID string
+		wantCode    int
+	}{
+		{name: "unauthenticated", key: "gif-1", shareWithID: "r-9", wantCode: http.StatusUnauthorized},
+		{name: "missing gif key", withAuth: true, shareWithID: "r-9", wantCode: http.StatusBadRequest},
+		{name: "missing recipient id", withAuth: true, key: "gif-1", wantCode: http.StatusBadRequest},
 	}
-	handler := share.NewHandler(mockSvc, nil, validator.New())
 
-	req := httptest.NewRequest(http.MethodGet, "/gifs/me/shares", nil)
-	req = withUserAuth(req, "user-uuid-1")
-	rec := httptest.NewRecorder()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newShareHarness(t)
+			// the service must not be reached
+			r := req(t, http.MethodDelete, "/gifs/x/shares/y", "", tc.withAuth)
+			if tc.key != "" {
+				r.SetPathValue("key", tc.key)
+			}
+			if tc.shareWithID != "" {
+				r.SetPathValue("shareWithId", tc.shareWithID)
+			}
+			rec := httptest.NewRecorder()
+			h.h.Delete(rec, r)
 
-	handler.Get(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected status 500 Internal Server Error, got %d", rec.Code)
+			if rec.Code != tc.wantCode {
+				t.Errorf("status = %d, want %d", rec.Code, tc.wantCode)
+			}
+		})
 	}
 }
 
-func TestShareHandler_Delete_Success(t *testing.T) {
-	mockSvc := &mockShareService{
-		deleteFunc: func(ctx context.Context, userId, gifKey, shareWithId string) error {
-			return nil
-		},
-	}
-	handler := share.NewHandler(mockSvc, nil, validator.New())
+// ===========================================================================
+// Get / GetByToken
+// ===========================================================================
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("DELETE /gifs/me/{key}/shares/{shareWithId}", handler.Delete)
+func TestGet_ScopesToTheAuthenticatedCaller(t *testing.T) {
+	h := newShareHarness(t)
 
-	req := httptest.NewRequest(http.MethodDelete, "/gifs/me/gif-123/shares/user-456", nil)
-	req = withUserAuth(req, "owner-1")
+	h.svc.EXPECT().
+		Get(gomock.Any(), gomock.Eq(callerID)).
+		Return([]domainshare.GifResponse{{GifKey: "k1", Name: "one.gif"}}, nil).
+		Times(1)
+
+	r := req(t, http.MethodGet, "/shares", "", true)
 	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
+	h.h.Get(rec, r)
 
 	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d. Body: %s", rec.Code, rec.Body.String())
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestShareHandler_Delete_Unauthenticated(t *testing.T) {
-	handler := share.NewHandler(&mockShareService{}, nil, validator.New())
-
-	req := httptest.NewRequest(http.MethodDelete, "/gifs/me/gif-123/shares/user-456", nil)
+func TestGet_UnauthenticatedIsRefused(t *testing.T) {
+	h := newShareHarness(t)
+	// the service must not be reached
 	rec := httptest.NewRecorder()
+	h.h.Get(rec, req(t, http.MethodGet, "/shares", "", false))
 
-	handler.Delete(rec, req)
 	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status 401 Unauthorized, got %d", rec.Code)
+		t.Errorf("status = %d, want 401", rec.Code)
 	}
 }
 
-func TestShareHandler_Delete_MissingKey(t *testing.T) {
-	handler := share.NewHandler(&mockShareService{}, nil, validator.New())
+// The token link is public by design, so it must not require auth — but an
+// unknown or expired token must be a plain 404 that reveals nothing.
+func TestGetByToken(t *testing.T) {
+	t.Run("valid token", func(t *testing.T) {
+		h := newShareHarness(t)
+		h.svc.EXPECT().
+			GetByToken(gomock.Any(), gomock.Eq("share-token")).
+			Return(domainshare.GifTokenResponse{GifKey: "gif-1", Name: "one.gif", Url: "https://storage/one.gif"}, nil).
+			Times(1)
 
-	req := httptest.NewRequest(http.MethodDelete, "/gifs/me//shares/user-456", nil)
-	req = withUserAuth(req, "owner-1")
-	rec := httptest.NewRecorder()
+		r := req(t, http.MethodGet, "/s/share-token", "", false)
+		r.SetPathValue("token", "share-token")
+		rec := httptest.NewRecorder()
+		h.h.GetByToken(rec, r)
 
-	handler.Delete(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status 400 Bad Request on missing key, got %d", rec.Code)
-	}
-}
-
-func TestShareHandler_Delete_NotAuthorized(t *testing.T) {
-	mockSvc := &mockShareService{
-		deleteFunc: func(ctx context.Context, userId, gifKey, shareWithId string) error {
-			return domainshare.ErrNotAuthorized
-		},
-	}
-	handler := share.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("DELETE /gifs/me/{key}/shares/{shareWithId}", handler.Delete)
-
-	req := httptest.NewRequest(http.MethodDelete, "/gifs/me/gif-123/shares/user-456", nil)
-	req = withUserAuth(req, "attacker")
-	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("expected status 403 Forbidden for unauthorized delete, got %d", rec.Code)
-	}
-}
-
-func TestShareHandler_Delete_NotFound(t *testing.T) {
-	mockSvc := &mockShareService{
-		deleteFunc: func(ctx context.Context, userId, gifKey, shareWithId string) error {
-			return domainshare.ErrNotFound
-		},
-	}
-	handler := share.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("DELETE /gifs/me/{key}/shares/{shareWithId}", handler.Delete)
-
-	req := httptest.NewRequest(http.MethodDelete, "/gifs/me/missing-gif/shares/user-456", nil)
-	req = withUserAuth(req, "owner-1")
-	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected status 404 Not Found, got %d", rec.Code)
-	}
-}
-
-func TestShareHandler_Delete_ServiceError(t *testing.T) {
-	mockSvc := &mockShareService{
-		deleteFunc: func(ctx context.Context, userId, gifKey, shareWithId string) error {
-			return errors.New("db error")
-		},
-	}
-	handler := share.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("DELETE /gifs/me/{key}/shares/{shareWithId}", handler.Delete)
-
-	req := httptest.NewRequest(http.MethodDelete, "/gifs/me/gif-123/shares/user-456", nil)
-	req = withUserAuth(req, "owner-1")
-	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected status 500 Internal Server Error, got %d", rec.Code)
-	}
-}
-
-func TestShareHandler_CreateByToken_Success(t *testing.T) {
-	mockSvc := &mockShareService{
-		createByTokenFunc: func(ctx context.Context, sharedBy string, gifKey string, sharedWithEmail string, expiresAt time.Time) (string, error) {
-			return "generated-token-xyz", nil
-		},
-	}
-	handler := share.NewHandler(mockSvc, nil, validator.New())
-
-	body, _ := json.Marshal(map[string]any{
-		"gif_key":   "my-gif.gif",
-		"email":     "friend@example.com",
-		"expire_at": time.Now().Add(24 * time.Hour),
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+		}
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/s", bytes.NewReader(body))
-	req = withUserAuth(req, "owner-1")
-	rec := httptest.NewRecorder()
+	t.Run("expired or unknown token", func(t *testing.T) {
+		h := newShareHarness(t)
+		h.svc.EXPECT().
+			GetByToken(gomock.Any(), gomock.Eq("expired")).
+			Return(domainshare.GifTokenResponse{}, sql.ErrNoRows).
+			Times(1)
 
-	handler.CreateByToken(rec, req)
+		r := req(t, http.MethodGet, "/s/expired", "", false)
+		r.SetPathValue("token", "expired")
+		rec := httptest.NewRecorder()
+		h.h.GetByToken(rec, r)
 
-	if rec.Code != http.StatusCreated {
-		t.Errorf("expected status 201 Created, got %d. Body: %s", rec.Code, rec.Body.String())
-	}
-	if loc := rec.Header().Get("Location"); loc != "/s/generated-token-xyz" {
-		t.Errorf("expected Location /s/generated-token-xyz, got %s", loc)
-	}
-}
-
-func TestShareHandler_CreateByToken_Unauthenticated(t *testing.T) {
-	handler := share.NewHandler(&mockShareService{}, nil, validator.New())
-
-	req := httptest.NewRequest(http.MethodPost, "/s", bytes.NewReader([]byte("{}")))
-	rec := httptest.NewRecorder()
-
-	handler.CreateByToken(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status 401 Unauthorized, got %d", rec.Code)
-	}
-}
-
-func TestShareHandler_CreateByToken_BadJSON(t *testing.T) {
-	handler := share.NewHandler(&mockShareService{}, nil, validator.New())
-
-	req := httptest.NewRequest(http.MethodPost, "/s", bytes.NewReader([]byte("{bad")))
-	req = withUserAuth(req, "owner-1")
-	rec := httptest.NewRecorder()
-
-	handler.CreateByToken(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status 400 Bad Request on malformed JSON, got %d", rec.Code)
-	}
-}
-
-func TestShareHandler_CreateByToken_ValidationFailed(t *testing.T) {
-	handler := share.NewHandler(&mockShareService{}, nil, validator.New())
-
-	body, _ := json.Marshal(map[string]any{
-		"gif_key": "",
-		"email":   "invalid-email",
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want 404", rec.Code)
+		}
+		if strings.Contains(rec.Body.String(), "storage") {
+			t.Errorf("a storage URL leaked in the 404 body: %s", rec.Body.String())
+		}
 	})
-	req := httptest.NewRequest(http.MethodPost, "/s", bytes.NewReader(body))
-	req = withUserAuth(req, "owner-1")
-	rec := httptest.NewRecorder()
 
-	handler.CreateByToken(rec, req)
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Errorf("expected status 422 Unprocessable Entity, got %d", rec.Code)
-	}
-}
+	t.Run("missing token segment", func(t *testing.T) {
+		h := newShareHarness(t)
+		// the service must not be reached
+		rec := httptest.NewRecorder()
+		h.h.GetByToken(rec, req(t, http.MethodGet, "/s/", "", false))
 
-func TestShareHandler_CreateByToken_ServiceError(t *testing.T) {
-	mockSvc := &mockShareService{
-		createByTokenFunc: func(ctx context.Context, sharedBy string, gifKey string, sharedWithEmail string, expiresAt time.Time) (string, error) {
-			return "", errors.New("db insert error")
-		},
-	}
-	handler := share.NewHandler(mockSvc, nil, validator.New())
-
-	body, _ := json.Marshal(map[string]any{
-		"gif_key":   "my-gif.gif",
-		"email":     "friend@example.com",
-		"expire_at": time.Now().Add(24 * time.Hour),
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400", rec.Code)
+		}
 	})
-	req := httptest.NewRequest(http.MethodPost, "/s", bytes.NewReader(body))
-	req = withUserAuth(req, "owner-1")
-	rec := httptest.NewRecorder()
-
-	handler.CreateByToken(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected status 500 Internal Server Error, got %d", rec.Code)
-	}
 }
-
-func TestShareHandler_GetByToken_Success(t *testing.T) {
-	mockSvc := &mockShareService{
-		getByTokenFunc: func(ctx context.Context, token string) (domainshare.GifTokenResponse, error) {
-			return domainshare.GifTokenResponse{
-				GifKey: "gif-key-123",
-				Name:   "awesome.gif",
-				Url:    "https://example.com/awesome.gif",
-			}, nil
-		},
-	}
-	handler := share.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /s/{token}", handler.GetByToken)
-
-	req := httptest.NewRequest(http.MethodGet, "/s/valid-token-123", nil)
-	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d. Body: %s", rec.Code, rec.Body.String())
-	}
-}
-
-func TestShareHandler_GetByToken_MissingToken(t *testing.T) {
-	handler := share.NewHandler(&mockShareService{}, nil, validator.New())
-
-	req := httptest.NewRequest(http.MethodGet, "/s/", nil)
-	rec := httptest.NewRecorder()
-
-	handler.GetByToken(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status 400 Bad Request on missing token, got %d", rec.Code)
-	}
-}
-
-func TestShareHandler_GetByToken_NotFound(t *testing.T) {
-	mockSvc := &mockShareService{
-		getByTokenFunc: func(ctx context.Context, token string) (domainshare.GifTokenResponse, error) {
-			return domainshare.GifTokenResponse{}, domainshare.ErrNotFound
-		},
-	}
-	handler := share.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /s/{token}", handler.GetByToken)
-
-	req := httptest.NewRequest(http.MethodGet, "/s/expired-or-missing-token", nil)
-	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected status 404 Not Found, got %d", rec.Code)
-	}
-}
-
-func TestShareHandler_GetByToken_ServiceError(t *testing.T) {
-	mockSvc := &mockShareService{
-		getByTokenFunc: func(ctx context.Context, token string) (domainshare.GifTokenResponse, error) {
-			return domainshare.GifTokenResponse{}, errors.New("database connection failed")
-		},
-	}
-	handler := share.NewHandler(mockSvc, nil, validator.New())
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /s/{token}", handler.GetByToken)
-
-	req := httptest.NewRequest(http.MethodGet, "/s/some-token", nil)
-	rec := httptest.NewRecorder()
-
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected status 500 Internal Server Error, got %d", rec.Code)
-	}
-}
-

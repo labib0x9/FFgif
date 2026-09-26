@@ -18,9 +18,9 @@ func ping(client *redis.Client) error {
 func Client(cnf *config.Redis) *redis.Client {
 	client := redis.NewClient(
 		&redis.Options{
-			Addr: cnf.Addr,
-			// Username: cnf.User,
-			// Password: cnf.Pass,
+			Addr:     cnf.Addr,
+			Username: cnf.User,
+			Password: cnf.Pass,
 		},
 	)
 	if err := ping(client); err != nil {

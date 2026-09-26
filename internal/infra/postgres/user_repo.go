@@ -28,7 +28,7 @@ func (r *userRepo) GetProfile(ctx context.Context, id string, forUpdate bool) (u
 		 	u.id = $1
 	`
 	if forUpdate {
-		query += "for update"
+		query += " for update"
 	}
 	var profile user.ProfileResponse
 	if err := sqlx.GetContext(ctx, db, &profile, query, id); err != nil {

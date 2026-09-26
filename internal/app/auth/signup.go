@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/domain/user"
 	"github.com/labib0x9/ffgif/internal/port/queue"
@@ -12,10 +13,16 @@ import (
 )
 
 type SignupResult struct {
+	Id uuid.UUID
+}
+
+type signupTxResult struct {
+	UserID uuid.UUID
+	Msg    queue.EmailMessage
 }
 
 func (s *service) Signup(ctx context.Context, email string, username string, fullname string, password string) (*SignupResult, error) {
-	msg, err := s.tnx.With(ctx, func(ctx context.Context) (any, error) {
+	res, err := s.tnx.With(ctx, func(ctx context.Context) (any, error) {
 		_, err := s.authRepo.GetByEmail(ctx, email)
 		if err == nil {
 			return nil, auth.ErrUserExists
@@ -68,10 +75,13 @@ func (s *service) Signup(ctx context.Context, email string, username string, ful
 			return nil, fmt.Errorf("quotaRepo.Create: %w: %w", auth.ErrQuotaCreateFailed, err)
 		}
 
-		return queue.EmailMessage{
-			To:    newUser.Email,
-			Name:  "signup",
-			Token: verifyToken,
+		return signupTxResult{
+			UserID: createdUser.Id,
+			Msg: queue.EmailMessage{
+				To:    newUser.Email,
+				Name:  "signup",
+				Token: verifyToken,
+			},
 		}, nil
 	})
 
@@ -79,13 +89,13 @@ func (s *service) Signup(ctx context.Context, email string, username string, ful
 		return nil, err
 	}
 
-	smsg, ok := msg.(queue.EmailMessage)
+	txRes, ok := res.(signupTxResult)
 	if !ok {
-		return nil, fmt.Errorf("msg type assetion failed")
+		return nil, fmt.Errorf("msg type assertion failed")
 	}
 
-	if err := s.queue.PublishEmail(ctx, smsg); err != nil {
+	if err := s.queue.PublishEmail(ctx, txRes.Msg); err != nil {
 		return nil, fmt.Errorf("queue.PublishEmail: %w: %w", apperr.ErrMessageQueueFailed, err)
 	}
-	return &SignupResult{}, nil
+	return &SignupResult{Id: txRes.UserID}, nil
 }

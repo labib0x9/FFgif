@@ -13,8 +13,8 @@ import (
 )
 
 type reqCreate struct {
-	SharedWith string    `json:"shared_with"`
-	ExpireAt   time.Time `json:"expire_at"`
+	SharedWith string    `json:"shared_with" validate:"required,email"`
+	ExpireAt   time.Time `json:"expire_at" validate:"required"`
 }
 
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
@@ -38,6 +38,18 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.SendError(w, httputil.BAD_REQUEST, "bad request", http.StatusBadRequest)
 		slog.Warn("share handler - Create() = bad json body", "request_id", reqId, "error", err)
+		return
+	}
+
+	if err := h.validate.Struct(req); err != nil {
+		httputil.SendError(w, httputil.VALIDATION_FAILED, "validation failed", http.StatusUnprocessableEntity)
+		slog.Warn("share handler - Create() = struct validation failed", "request_id", reqId, "error", err)
+		return
+	}
+
+	if req.ExpireAt.IsZero() || req.ExpireAt.Before(time.Now()) {
+		httputil.SendError(w, httputil.VALIDATION_FAILED, "expiry must be in the future", http.StatusUnprocessableEntity)
+		slog.Warn("share handler - Create() = expiry in past", "request_id", reqId)
 		return
 	}
 

@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/labib0x9/ffgif/internal/port/cache"
@@ -28,5 +29,12 @@ func (r *redis) Set(ctx context.Context, key string, value string, expire time.D
 }
 
 func (r *redis) Get(ctx context.Context, key string) (string, error) {
-	return r.client.Get(ctx, key).Result()
+	val, err := r.client.Get(ctx, key).Result()
+	if err != nil {
+		if errors.Is(err, go_redis.Nil) {
+			return "", cache.ErrCacheMiss
+		}
+		return "", err
+	}
+	return val, nil
 }

@@ -1,13 +1,13 @@
 package config
 
 import (
+	"errors"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/joho/godotenv"
+	"github.com/spf13/viper"
 )
 
 type PostgreSQL struct {
@@ -32,9 +32,13 @@ type Minio struct {
 	PublicEndpoint string
 	RootUser       string
 	RootPass       string
+	PresignedUser  string
+	PresignedPass  string
 	TempBucket     string
 	StorageBucket  string
 	TTL            int
+	MaxUploadBytes int64
+	Secure         bool
 	ExchangeQueue  string
 	Allowed        []string
 }
@@ -80,93 +84,102 @@ var (
 )
 
 func loadConfig() {
-	if err := godotenv.Load(".env"); err != nil {
-		if !os.IsNotExist(err) {
-			log.Panic(err)
+	viper.SetConfigFile(".env")
+	if err := viper.ReadInConfig(); err != nil {
+		if !os.IsNotExist(err) && !errors.As(err, &viper.ConfigFileNotFoundError{}) {
+			var pathErr *os.PathError
+			if !errors.As(err, &pathErr) {
+				log.Panic(err)
+			}
 		}
 	}
 
-	fn := func(name string) string {
-		value := os.Getenv(name)
-		if value == "" {
-			log.Panic(name)
+	viper.AutomaticEnv()
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	// defaults for optional values
+	viper.SetDefault("BCRYPT_COST", 12)
+	viper.SetDefault("PG_SSLMODE", "disable")
+	viper.SetDefault("MINIO_TEMP_BUCKET_TTL_DAYS", 1)
+	viper.SetDefault("ADDR", "0.0.0.0")
+	viper.SetDefault("MINIO_MAX_UPLOAD_BYTES", int64(104857600)) // 100MB
+	viper.SetDefault("MINIO_USE_TLS", false)
+
+	required := func(key string) string {
+		val := viper.GetString(key)
+		if val == "" {
+			log.Panic(key)
 		}
-		return value
+		return val
 	}
 
-	port, err := strconv.Atoi(fn("PORT"))
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	bcryptCost, err := strconv.Atoi(fn("BCRYPT_COST"))
-	if err != nil {
-		log.Panic(err)
-	}
-
-	minioTTL, err := strconv.Atoi(fn("MINIO_TEMP_BUCKET_TTL_DAYS"))
-	if err != nil {
-		log.Panic(err)
-	}
-
-	origins := strings.Split(fn("MINIO_API_CORS_ALLOW_ORIGIN"), ",")
-
+	origins := strings.Split(required("MINIO_API_CORS_ALLOW_ORIGIN"), ",")
 	for i := range origins {
 		origins[i] = strings.TrimSpace(origins[i])
 	}
 
-	smtpPort, err := strconv.Atoi(fn("SMTP_PORT"))
-	if err != nil {
-		log.Fatalln(err)
+	presignedUser := viper.GetString("MINIO_PRESIGNED_USER")
+	if presignedUser == "" {
+		presignedUser = required("MINIO_ROOT_USER")
+	}
+	presignedPass := viper.GetString("MINIO_PRESIGNED_PASSWORD")
+	if presignedPass == "" {
+		presignedPass = required("MINIO_ROOT_PASSWORD")
 	}
 
 	configuration = &Config{
-		Version:    fn("VERSION"),
-		Addr:       fn("ADDR"),
-		Port:       port,
-		Service:    fn("SERVICE_NAME"),
-		JwtSecret:  []byte(fn("JWT_SECRET")),
-		BcryptCost: bcryptCost,
-		HashPepper: fn("HASH_PEPPER"),
+		Version:    required("VERSION"),
+		Addr:       viper.GetString("ADDR"),
+		Port:       viper.GetInt("PORT"),
+		Service:    required("SERVICE_NAME"),
+		JwtSecret:  []byte(required("JWT_SECRET")),
+		BcryptCost: viper.GetInt("BCRYPT_COST"),
+		HashPepper: required("HASH_PEPPER"),
 		PostgreSQL: &PostgreSQL{
-			User:          fn("PG_USER"),
-			Pass:          fn("PG_PASSWORD"),
-			Port:          fn("PG_PORT"),
-			Addr:          fn("PG_ADDRESS"),
-			DatabaseName:  fn("PG_NAME"),
-			SslMode:       fn("PG_SSLMODE"),
-			SuperUser:     fn("PG_SUPERUSER"),
-			SuperDatabase: fn("PG_SUPERDB"),
+			User:          required("PG_USER"),
+			Pass:          required("PG_PASSWORD"),
+			Port:          required("PG_PORT"),
+			Addr:          required("PG_ADDRESS"),
+			DatabaseName:  required("PG_NAME"),
+			SslMode:       viper.GetString("PG_SSLMODE"),
+			SuperUser:     required("PG_SUPERUSER"),
+			SuperDatabase: required("PG_SUPERDB"),
 		},
 		Redis: &Redis{
-			Addr: fn("REDIS_ADDR"),
+			Addr: required("REDIS_ADDR"),
+			User: viper.GetString("REDIS_USER"),
+			Pass: viper.GetString("REDIS_PASSWORD"),
 		},
-		Email: fn("EMAIL"),
+		Email: required("EMAIL"),
 		Mailtrap: &Mailtrap{
-			User: fn("MAILTRAP_USERNAME"),
-			Pass: fn("MAILTRAP_PASSWORD"),
+			User: required("MAILTRAP_USERNAME"),
+			Pass: required("MAILTRAP_PASSWORD"),
 		},
 		Minio: &Minio{
-			Endpoint:       fn("MINIO_ADDR"),
-			PublicEndpoint: fn("MINIO_PUBLIC_ENDPOINT"),
-			RootUser:       fn("MINIO_ROOT_USER"),
-			RootPass:       fn("MINIO_ROOT_PASSWORD"),
-			StorageBucket:  fn("MINIO_PERSIST_BUCKET"),
-			TempBucket:     fn("MINIO_TEMP_BUCKET"),
-			TTL:            minioTTL,
-			ExchangeQueue:  fn("MINIO_NOTIFY_EXCHANGE"),
+			Endpoint:       required("MINIO_ADDR"),
+			PublicEndpoint: required("MINIO_PUBLIC_ENDPOINT"),
+			RootUser:       required("MINIO_ROOT_USER"),
+			RootPass:       required("MINIO_ROOT_PASSWORD"),
+			PresignedUser:  presignedUser,
+			PresignedPass:  presignedPass,
+			StorageBucket:  required("MINIO_PERSIST_BUCKET"),
+			TempBucket:     required("MINIO_TEMP_BUCKET"),
+			TTL:            viper.GetInt("MINIO_TEMP_BUCKET_TTL_DAYS"),
+			MaxUploadBytes: viper.GetInt64("MINIO_MAX_UPLOAD_BYTES"),
+			Secure:         viper.GetBool("MINIO_USE_TLS"),
+			ExchangeQueue:  required("MINIO_NOTIFY_EXCHANGE"),
 			Allowed:        origins,
 		},
 		RabbitMq: &RabbitMq{
-			Addr: fn("RMQ_ADDR"),
-			User: fn("RMQ_USER"),
-			Pass: fn("RMQ_PASS"),
+			Addr: required("RMQ_ADDR"),
+			User: required("RMQ_USER"),
+			Pass: required("RMQ_PASS"),
 		},
 		SMTP: &SMTP{
-			Host: fn("SMTP_HOST"),
-			Port: smtpPort,
-			User: fn("SMTP_USER"),
-			Pass: fn("SMTP_PASS"),
+			Host: required("SMTP_HOST"),
+			Port: viper.GetInt("SMTP_PORT"),
+			User: required("SMTP_USER"),
+			Pass: required("SMTP_PASS"),
 		},
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/labib0x9/ffgif/internal/domain/media"
 )
@@ -22,6 +23,9 @@ func (s *service) Delete(ctx context.Context, userId string, key string) error {
 	}
 	if err := s.gifRepo.Delete(ctx, key); err != nil {
 		return fmt.Errorf("gifRepo.Delete: %w: %w", media.ErrDeleteByKeyFailed, err)
+	}
+	if err := s.storage.Delete(ctx, key); err != nil {
+		slog.Warn("gif deleted from db but storage delete failed", "key", key, "err", err)
 	}
 	return nil
 }

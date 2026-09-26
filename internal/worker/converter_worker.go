@@ -67,10 +67,10 @@ func (w *VideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 	err = w.srv.Process(ctx, msg)
 	if err != nil {
 		slog.Error("video conversion failed", "error", err, "job_id", msg.JobId)
-
-		err := d.Nack(false, false)
-		if err != nil {
-			slog.Error("nack dead-letter failed", "error", err, "job_id", msg.JobId)
+		if retryCount(d.Headers) < int64(w.maxRetries) {
+			_ = d.Nack(false, true)
+		} else {
+			_ = d.Nack(false, false)
 		}
 		return
 	}
@@ -84,15 +84,49 @@ func (w *VideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 	slog.Info("video processed successfully", "job_id", msg.JobId)
 }
 
-// func retryCount(d amqp.Delivery) int {
-// 	deaths, ok := d.Headers["x-death"].([]interface{})
-// 	if !ok || len(deaths) == 0 {
-// 		return 0
-// 	}
-// 	entry, ok := deaths[0].(amqp.Table)
-// 	if !ok {
-// 		return 0
-// 	}
-// 	count, _ := entry["count"].(int64)
-// 	return int(count)
-// }
+func retryCount(headers amqp.Table) int64 {
+	if headers == nil {
+		return 0
+	}
+	raw, ok := headers["x-death"]
+	if !ok || raw == nil {
+		return 0
+	}
+	var firstEntry any
+	switch v := raw.(type) {
+	case []any:
+		if len(v) > 0 {
+			firstEntry = v[0]
+		}
+	case []amqp.Table:
+		if len(v) > 0 {
+			firstEntry = v[0]
+		}
+	case []map[string]any:
+		if len(v) > 0 {
+			firstEntry = v[0]
+		}
+	}
+
+	if firstEntry == nil {
+		return 0
+	}
+
+	switch entry := firstEntry.(type) {
+	case amqp.Table:
+		if c, ok := entry["count"].(int64); ok {
+			return c
+		}
+		if c, ok := entry["count"].(int); ok {
+			return int64(c)
+		}
+	case map[string]any:
+		if c, ok := entry["count"].(int64); ok {
+			return c
+		}
+		if c, ok := entry["count"].(int); ok {
+			return int64(c)
+		}
+	}
+	return 0
+}

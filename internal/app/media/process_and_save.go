@@ -33,6 +33,10 @@ func (s *service) ProcessAndSave(ctx context.Context, key string) error {
 		return fmt.Errorf("strconv failed")
 	}
 
+	if size > s.cnf.Minio.MaxUploadBytes {
+		return fmt.Errorf("uploaded file exceeds max allowed size of %d bytes", s.cnf.Minio.MaxUploadBytes)
+	}
+
 	userID, err := uuid.Parse(userId)
 	if err != nil {
 		return fmt.Errorf("user id uuid convertion failed")

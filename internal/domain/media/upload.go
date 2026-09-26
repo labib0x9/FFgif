@@ -43,6 +43,7 @@ type LastUploadResponse struct {
 	ThumbnailURL *string   `db:"thumbnail_url" json:"thumbnail_url,omitempty"`
 }
 
+//go:generate mockgen -source=upload.go -destination=mocks/mock_last_video_repository.go -package=mocks
 type LastVideoRepository interface {
 	Create(ctx context.Context, upload LastUpload) error
 	GetLastVideo(ctx context.Context, user_id string) (LastUploadResponse, error)

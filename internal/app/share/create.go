@@ -14,9 +14,16 @@ import (
 
 // shareBy = id of user, sharedWith = email of user
 func (s *service) Create(ctx context.Context, sharedBy string, gifKey string, sharedWith string, expiresAt time.Time) error {
+	if !expiresAt.After(time.Now()) {
+		return share.ErrInvalidExpiry
+	}
+
 	sharedUser, err := s.authRepo.GetByEmail(ctx, sharedWith)
 	if err != nil {
-		return fmt.Errorf("authRepo.GetByEmail: %w: %w", auth.ErrUserNotFound, err)
+		if errors.Is(err, auth.ErrInvalidCredential) || errors.Is(err, sql.ErrNoRows) || errors.Is(err, auth.ErrUserNotFound) {
+			return fmt.Errorf("authRepo.GetByEmail: %w: %w", auth.ErrUserNotFound, err)
+		}
+		return fmt.Errorf("authRepo.GetByEmail: %w", err)
 	}
 
 	owner, err := s.gifRepo.GetOwner(ctx, gifKey)
@@ -31,12 +38,12 @@ func (s *service) Create(ctx context.Context, sharedBy string, gifKey string, sh
 		return media.ErrGifOwnerMismatch
 	}
 
-	share := share.Share{
+	sh := share.Share{
 		GifKey:     gifKey,
 		OwnerID:    sharedBy,
 		SharedWith: sharedUser.Id.String(),
 		ExpiresAt:  &expiresAt,
 	}
 
-	return s.shareRepo.Create(ctx, share)
+	return s.shareRepo.Create(ctx, sh)
 }

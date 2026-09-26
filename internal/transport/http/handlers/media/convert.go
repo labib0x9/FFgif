@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/labib0x9/ffgif/internal/domain/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 )
 
@@ -33,9 +34,16 @@ func (h *Handler) Convert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.End <= req.Start {
+		httputil.SendError(w, httputil.VALIDATION_FAILED, "end_time must be greater than start_time", http.StatusUnprocessableEntity)
+		slog.Warn("media handler - Convert() = end_time <= start_time", "request_id", reqId)
+		return
+	}
+
 	userId := httputil.GetUserId(r.Context())
 	if userId == "" {
-		httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
+		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
+		httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "unauthorized", http.StatusUnauthorized)
 		slog.Error("media handler - Convert() = user_id not found", "request_id", reqId, "err", "user_id not found")
 		return
 	}

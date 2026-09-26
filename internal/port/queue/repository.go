@@ -6,6 +6,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+//go:generate mockgen -source=repository.go -destination=mocks/mock_queue.go -package=mocks
 type Queue interface {
 	PublishEmail(ctx context.Context, msg EmailMessage) error
 	PublishVideo(ctx context.Context, msg VideoMessage) error

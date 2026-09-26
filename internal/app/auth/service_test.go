@@ -9,732 +9,862 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"go.uber.org/mock/gomock"
+	"golang.org/x/crypto/bcrypt"
+
 	appauth "github.com/labib0x9/ffgif/internal/app/auth"
 	domainauth "github.com/labib0x9/ffgif/internal/domain/auth"
+	authmocks "github.com/labib0x9/ffgif/internal/domain/auth/mocks"
 	domainuser "github.com/labib0x9/ffgif/internal/domain/user"
+	usermocks "github.com/labib0x9/ffgif/internal/domain/user/mocks"
+	cachemocks "github.com/labib0x9/ffgif/internal/port/cache/mocks"
+	dbmocks "github.com/labib0x9/ffgif/internal/port/db/mocks"
 	"github.com/labib0x9/ffgif/internal/port/queue"
-	"github.com/labib0x9/ffgif/pkg/apperr"
+	queuemocks "github.com/labib0x9/ffgif/internal/port/queue/mocks"
 	jwtpkg "github.com/labib0x9/ffgif/pkg/jwt"
 	"github.com/labib0x9/ffgif/pkg/password"
 	tokenpkg "github.com/labib0x9/ffgif/pkg/token"
-	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-// --- Mocks ---
+// ---------------------------------------------------------------------------
+// harness
+// ---------------------------------------------------------------------------
 
-type mockTxManager struct {
-	withFunc   func(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error)
-	withRCFunc func(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error)
-}
-
-func (m *mockTxManager) With(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
-	if m.withFunc != nil {
-		return m.withFunc(ctx, fn)
-	}
-	return fn(ctx)
-}
-
-func (m *mockTxManager) WithRC(ctx context.Context, fn func(ctx context.Context) (any, error)) (any, error) {
-	if m.withRCFunc != nil {
-		return m.withRCFunc(ctx, fn)
-	}
-	return fn(ctx)
+type authDeps struct {
+	authRepo     *authmocks.MockAuthRepository
+	verifierRepo *authmocks.MockVerifierRepository
+	profileRepo  *usermocks.MockUserRepository
+	reseterRepo  *authmocks.MockReseterRepository
+	quotaRepo    *usermocks.MockQuotaRepository
+	cache        *cachemocks.MockCache
+	queue        *queuemocks.MockQueue
+	tnx          *dbmocks.MockTxManager
+	jwt          *jwtpkg.Jwt
+	svc          appauth.Service
 }
 
-type mockAuthRepo struct {
-	getByEmailFunc     func(ctx context.Context, email string) (domainauth.User, error)
-	getByIdFunc        func(ctx context.Context, id uuid.UUID) (domainauth.User, error)
-	createFunc         func(ctx context.Context, user domainauth.User) (domainauth.User, error)
-	deleteByIdFunc     func(ctx context.Context, id uuid.UUID) error
-	deleteByEmailFunc  func(ctx context.Context, email string) error
-	updatePasswordFunc func(ctx context.Context, id uuid.UUID, passHash string) error
-	setVerifiedFunc    func(ctx context.Context, userId uuid.UUID) error
-	upgradeFunc        func(ctx context.Context, id string, user domainauth.User) (domainauth.User, error)
-}
+const testSecret = "test-secret-key-1234"
 
-func (m *mockAuthRepo) GetByEmail(ctx context.Context, email string) (domainauth.User, error) {
-	if m.getByEmailFunc != nil {
-		return m.getByEmailFunc(ctx, email)
-	}
-	return domainauth.User{}, errors.New("not implemented")
-}
-func (m *mockAuthRepo) GetById(ctx context.Context, id uuid.UUID) (domainauth.User, error) {
-	if m.getByIdFunc != nil {
-		return m.getByIdFunc(ctx, id)
-	}
-	return domainauth.User{}, errors.New("not implemented")
-}
-func (m *mockAuthRepo) Create(ctx context.Context, user domainauth.User) (domainauth.User, error) {
-	if m.createFunc != nil {
-		return m.createFunc(ctx, user)
-	}
-	user.Id = uuid.New()
-	return user, nil
-}
-func (m *mockAuthRepo) DeleteById(ctx context.Context, id uuid.UUID) error {
-	if m.deleteByIdFunc != nil {
-		return m.deleteByIdFunc(ctx, id)
-	}
-	return nil
-}
-func (m *mockAuthRepo) DeleteByEmail(ctx context.Context, email string) error {
-	if m.deleteByEmailFunc != nil {
-		return m.deleteByEmailFunc(ctx, email)
-	}
-	return nil
-}
-func (m *mockAuthRepo) UpdatePassword(ctx context.Context, id uuid.UUID, passHash string) error {
-	if m.updatePasswordFunc != nil {
-		return m.updatePasswordFunc(ctx, id, passHash)
-	}
-	return nil
-}
-func (m *mockAuthRepo) SetVerified(ctx context.Context, userId uuid.UUID) error {
-	if m.setVerifiedFunc != nil {
-		return m.setVerifiedFunc(ctx, userId)
-	}
-	return nil
-}
-func (m *mockAuthRepo) Upgrade(ctx context.Context, id string, user domainauth.User) (domainauth.User, error) {
-	if m.upgradeFunc != nil {
-		return m.upgradeFunc(ctx, id, user)
-	}
-	return user, nil
-}
+func newAuthDeps(t *testing.T) *authDeps {
+	t.Helper()
+	ctrl := gomock.NewController(t)
 
-type mockVerifierRepo struct {
-	createFunc    func(ctx context.Context, verifier domainauth.Verifier) error
-	getByHashFunc func(ctx context.Context, tokenHash string) (domainauth.Verifier, error)
-	getByIdFunc   func(ctx context.Context, userId uuid.UUID) (domainauth.Verifier, error)
-	deleteFunc    func(ctx context.Context, id int64) error
-}
+	d := &authDeps{
+		authRepo:     authmocks.NewMockAuthRepository(ctrl),
+		verifierRepo: authmocks.NewMockVerifierRepository(ctrl),
+		profileRepo:  usermocks.NewMockUserRepository(ctrl),
+		reseterRepo:  authmocks.NewMockReseterRepository(ctrl),
+		quotaRepo:    usermocks.NewMockQuotaRepository(ctrl),
+		cache:        cachemocks.NewMockCache(ctrl),
+		queue:        queuemocks.NewMockQueue(ctrl),
+		tnx:          dbmocks.NewMockTxManager(ctrl),
+		jwt:          jwtpkg.NewJwt([]byte(testSecret)),
+	}
 
-func (m *mockVerifierRepo) Create(ctx context.Context, verifier domainauth.Verifier) error {
-	if m.createFunc != nil {
-		return m.createFunc(ctx, verifier)
-	}
-	return nil
-}
-func (m *mockVerifierRepo) GetByHash(ctx context.Context, tokenHash string) (domainauth.Verifier, error) {
-	if m.getByHashFunc != nil {
-		return m.getByHashFunc(ctx, tokenHash)
-	}
-	return domainauth.Verifier{}, errors.New("not found")
-}
-func (m *mockVerifierRepo) GetById(ctx context.Context, userId uuid.UUID) (domainauth.Verifier, error) {
-	if m.getByIdFunc != nil {
-		return m.getByIdFunc(ctx, userId)
-	}
-	return domainauth.Verifier{}, errors.New("not found")
-}
-func (m *mockVerifierRepo) Delete(ctx context.Context, id int64) error {
-	if m.deleteFunc != nil {
-		return m.deleteFunc(ctx, id)
-	}
-	return nil
-}
-
-type mockProfileRepo struct {
-	getProfileFunc    func(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error)
-	updateProfileFunc func(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error)
-	setProfileFunc    func(ctx context.Context, profile domainuser.Profile) error
-}
-
-func (m *mockProfileRepo) GetProfile(ctx context.Context, id string, forUpdate bool) (domainuser.ProfileResponse, error) {
-	if m.getProfileFunc != nil {
-		return m.getProfileFunc(ctx, id, forUpdate)
-	}
-	return domainuser.ProfileResponse{}, nil
-}
-func (m *mockProfileRepo) UpdateProfile(ctx context.Context, req domainuser.ProfileUpdateRequest, id string) (domainuser.ProfileResponse, error) {
-	if m.updateProfileFunc != nil {
-		return m.updateProfileFunc(ctx, req, id)
-	}
-	return domainuser.ProfileResponse{}, nil
-}
-func (m *mockProfileRepo) SetProfile(ctx context.Context, profile domainuser.Profile) error {
-	if m.setProfileFunc != nil {
-		return m.setProfileFunc(ctx, profile)
-	}
-	return nil
-}
-func (m *mockProfileRepo) ChangePassword(ctx context.Context, userId string, hash string) error {
-	return nil
-}
-
-type mockReseterRepo struct {
-	createFunc     func(ctx context.Context, reseter domainauth.Reseter) error
-	getByTokenFunc func(ctx context.Context, token string) (domainauth.Reseter, error)
-	getByIdFunc    func(ctx context.Context, id uuid.UUID) (domainauth.Reseter, error)
-	deleteByIdFunc func(ctx context.Context, id int64) error
-	updateFunc     func(ctx context.Context, reseter domainauth.Reseter) error
-}
-
-func (m *mockReseterRepo) Create(ctx context.Context, reseter domainauth.Reseter) error {
-	if m.createFunc != nil {
-		return m.createFunc(ctx, reseter)
-	}
-	return nil
-}
-func (m *mockReseterRepo) GetByToken(ctx context.Context, token string) (domainauth.Reseter, error) {
-	if m.getByTokenFunc != nil {
-		return m.getByTokenFunc(ctx, token)
-	}
-	return domainauth.Reseter{}, errors.New("not found")
-}
-func (m *mockReseterRepo) GetById(ctx context.Context, id uuid.UUID) (domainauth.Reseter, error) {
-	if m.getByIdFunc != nil {
-		return m.getByIdFunc(ctx, id)
-	}
-	return domainauth.Reseter{}, errors.New("not found")
-}
-func (m *mockReseterRepo) DeleteById(ctx context.Context, id int64) error {
-	if m.deleteByIdFunc != nil {
-		return m.deleteByIdFunc(ctx, id)
-	}
-	return nil
-}
-func (m *mockReseterRepo) Update(ctx context.Context, reseter domainauth.Reseter) error {
-	if m.updateFunc != nil {
-		return m.updateFunc(ctx, reseter)
-	}
-	return nil
-}
-
-type mockQuotaRepo struct {
-	createFunc  func(ctx context.Context, quota domainuser.Quota) error
-	getByIdFunc func(ctx context.Context, id string) (*domainuser.Quota, error)
-}
-
-func (m *mockQuotaRepo) Create(ctx context.Context, quota domainuser.Quota) error {
-	if m.createFunc != nil {
-		return m.createFunc(ctx, quota)
-	}
-	return nil
-}
-func (m *mockQuotaRepo) GetById(ctx context.Context, id string) (*domainuser.Quota, error) {
-	if m.getByIdFunc != nil {
-		return m.getByIdFunc(ctx, id)
-	}
-	return &domainuser.Quota{}, nil
-}
-
-type mockCache struct {
-	setFunc func(ctx context.Context, key string, value string, expiration time.Duration) error
-	getFunc func(ctx context.Context, key string) (string, error)
-}
-
-func (m *mockCache) Set(ctx context.Context, key string, value string, expiration time.Duration) error {
-	if m.setFunc != nil {
-		return m.setFunc(ctx, key, value, expiration)
-	}
-	return nil
-}
-func (m *mockCache) Get(ctx context.Context, key string) (string, error) {
-	if m.getFunc != nil {
-		return m.getFunc(ctx, key)
-	}
-	return "", nil
-}
-
-type mockQueue struct {
-	publishEmailFunc func(ctx context.Context, msg queue.EmailMessage) error
-	publishVideoFunc func(ctx context.Context, msg queue.VideoMessage) error
-}
-
-func (m *mockQueue) PublishEmail(ctx context.Context, msg queue.EmailMessage) error {
-	if m.publishEmailFunc != nil {
-		return m.publishEmailFunc(ctx, msg)
-	}
-	return nil
-}
-func (m *mockQueue) PublishVideo(ctx context.Context, msg queue.VideoMessage) error {
-	if m.publishVideoFunc != nil {
-		return m.publishVideoFunc(ctx, msg)
-	}
-	return nil
-}
-func (m *mockQueue) PublishSaveVideo(ctx context.Context, msg queue.SaveVideoMessage) error      { return nil }
-func (m *mockQueue) PublishRetrySaveVideo(ctx context.Context, msg queue.SaveVideoMessage) error { return nil }
-func (m *mockQueue) ConsumeEmail(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error) {
-	return nil, nil
-}
-func (m *mockQueue) ConsumeSave(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error) {
-	return nil, nil
-}
-func (m *mockQueue) ConsumeVideo(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error) {
-	return nil, nil
-}
-func (m *mockQueue) ConsumeRawVideo(ctx context.Context, name string, concurrency int) (<-chan amqp.Delivery, error) {
-	return nil, nil
-}
-func (m *mockQueue) Close() error                           { return nil }
-func (m *mockQueue) CloseConsumerChannel(name string) error { return nil }
-
-func newTestAuthService(
-	authRepo domainauth.AuthRepository,
-	verifierRepo domainauth.VerifierRepository,
-	profileRepo domainuser.UserRepository,
-	reseterRepo domainauth.ReseterRepository,
-	quotaRepo domainuser.QuotaRepository,
-	cache *mockCache,
-	queue *mockQueue,
-	txManager *mockTxManager,
-) appauth.Service {
-	if cache == nil {
-		cache = &mockCache{}
-	}
-	if queue == nil {
-		queue = &mockQueue{}
-	}
-	if txManager == nil {
-		txManager = &mockTxManager{}
-	}
-	jwtProvider := jwtpkg.NewJwt([]byte("test-auth-secret-12345"))
-	hasher := password.NewHasher("test-pepper", 10)
-	return appauth.NewService(
-		authRepo, verifierRepo, profileRepo, reseterRepo, quotaRepo,
-		cache, queue, *jwtProvider, *hasher, txManager,
+	hasher := password.NewHasher("pepper", bcrypt.MinCost)
+	d.svc = appauth.NewService(
+		d.authRepo, d.verifierRepo, d.profileRepo, d.reseterRepo, d.quotaRepo,
+		d.cache, d.queue, *d.jwt, *hasher, d.tnx,
 	)
+	return d
 }
 
-// --- Tests ---
+// passthroughTx makes the mocked TxManager actually run the closure it is given,
+// so a rollback in the service is observable as "the later mocks were never called".
+func (d *authDeps) passthroughTx(times int) {
+	d.tnx.EXPECT().
+		With(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, fn func(context.Context) (any, error)) (any, error) {
+			return fn(ctx)
+		}).
+		Times(times)
+}
 
-func TestAuthService_Signup_Success(t *testing.T) {
-	authRepo := &mockAuthRepo{
-		getByEmailFunc: func(ctx context.Context, email string) (domainauth.User, error) {
-			return domainauth.User{}, errors.New("not found")
-		},
-		createFunc: func(ctx context.Context, user domainauth.User) (domainauth.User, error) {
-			user.Id = uuid.New()
-			return user, nil
-		},
+func hashOf(raw string) string { return tokenpkg.GetTokenHash(raw) }
+
+// ---------------------------------------------------------------------------
+// custom gomock matchers — assert on struct *fields*, not just "some struct"
+// ---------------------------------------------------------------------------
+
+// reseterWithToken matches an auth.Reseter whose UserId matches and whose Token
+// field satisfies tokenCheck. Used to assert what is actually persisted.
+type reseterWithToken struct {
+	userID     uuid.UUID
+	tokenCheck func(string) bool
+	desc       string
+	got        string
+}
+
+func (m *reseterWithToken) Matches(x any) bool {
+	r, ok := x.(domainauth.Reseter)
+	if !ok {
+		return false
 	}
-	emailPublished := false
-	queueMock := &mockQueue{
-		publishEmailFunc: func(ctx context.Context, msg queue.EmailMessage) error {
-			emailPublished = true
+	m.got = r.Token
+	return r.UserId == m.userID && m.tokenCheck(r.Token)
+}
+
+func (m *reseterWithToken) String() string {
+	return "auth.Reseter{UserId: " + m.userID.String() + ", Token: " + m.desc + "} (got Token=" + m.got + ")"
+}
+
+// userMatcher asserts the exact field values handed to AuthRepository.Create.
+type userMatcher struct {
+	email, username, fullname, role string
+	plaintextPassword               string
+	got                             domainauth.User
+}
+
+func (m *userMatcher) Matches(x any) bool {
+	u, ok := x.(domainauth.User)
+	if !ok {
+		return false
+	}
+	m.got = u
+	if u.Email != m.email || u.Username != m.username || u.Fullname != m.fullname {
+		return false
+	}
+	if u.Role != m.role || u.IsVerified {
+		return false
+	}
+	// the password must be hashed, never stored or passed in the clear
+	if u.PasswordHash == "" || u.PasswordHash == m.plaintextPassword {
+		return false
+	}
+	return true
+}
+
+func (m *userMatcher) String() string {
+	return "auth.User{Email:" + m.email + ", Role:" + m.role + ", IsVerified:false, PasswordHash: bcrypt(not plaintext)}"
+}
+
+// ===========================================================================
+// ForgotPassword
+// ===========================================================================
+
+// EXPECTED TO FAIL: internal/app/auth/forgot_password.go discards the hash
+// returned by token.GenerateToken() ("resetToken, _ := token.GenerateToken()")
+// and stores the RAW token in Reseter.Token, which is persisted to the
+// reseter.token_hash column. pkg/token returns (raw, hash) precisely so the
+// raw token goes to the user's inbox and only the SHA-256 hash is stored.
+// As written, anyone with read access to the DB can reset any account.
+//
+// Contract: the value handed to ReseterRepository.Create MUST equal
+// sha256(the token that is emailed).
+func TestForgotPassword_StoresHashOfEmailedToken(t *testing.T) {
+	d := newAuthDeps(t)
+	userID := uuid.New()
+
+	d.authRepo.EXPECT().
+		GetByEmail(gomock.Any(), gomock.Eq("user@example.com")).
+		Return(domainauth.User{Id: userID, Email: "user@example.com", IsVerified: true}, nil).
+		Times(1)
+
+	// no pre-existing reset token
+	d.reseterRepo.EXPECT().
+		GetById(gomock.Any(), gomock.Eq(userID)).
+		Return(domainauth.Reseter{}, sql.ErrNoRows).
+		Times(1)
+
+	var storedToken string
+	d.reseterRepo.EXPECT().
+		Create(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, r domainauth.Reseter) error {
+			storedToken = r.Token
+			return nil
+		}).
+		Times(1)
+
+	var emailedToken string
+	d.queue.EXPECT().
+		PublishEmail(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, msg queue.EmailMessage) error {
 			if msg.To != "user@example.com" {
-				t.Errorf("expected email to user@example.com, got %s", msg.To)
+				t.Errorf("email addressed to %q, want user@example.com", msg.To)
+			}
+			if msg.Name != "forgot-password" {
+				t.Errorf("email job type %q, want forgot-password", msg.Name)
+			}
+			emailedToken = msg.Token
+			return nil
+		}).
+		Times(1)
+
+	if err := d.svc.ForgotPassword(context.Background(), "user@example.com"); err != nil {
+		t.Fatalf("ForgotPassword: %v", err)
+	}
+
+	if emailedToken == "" {
+		t.Fatal("no token was emailed to the user")
+	}
+	if storedToken == emailedToken {
+		t.Errorf("raw reset token was persisted verbatim (%q); "+
+			"a DB reader can take over any account", storedToken)
+	}
+	if want := hashOf(emailedToken); storedToken != want {
+		t.Errorf("persisted token = %q, want sha256(emailed token) = %q", storedToken, want)
+	}
+}
+
+// EXPECTED TO FAIL: forgot_password.go reuses whatever row GetById returns
+// without inspecting Reseter.Used. A token that has already been redeemed gets
+// re-sent by email, so a leaked-and-used token stays live for the whole TTL.
+func TestForgotPassword_DoesNotReuseAlreadyUsedToken(t *testing.T) {
+	d := newAuthDeps(t)
+	userID := uuid.New()
+
+	d.authRepo.EXPECT().
+		GetByEmail(gomock.Any(), gomock.Eq("user@example.com")).
+		Return(domainauth.User{Id: userID, Email: "user@example.com", IsVerified: true}, nil).
+		Times(1)
+
+	d.reseterRepo.EXPECT().
+		GetById(gomock.Any(), gomock.Eq(userID)).
+		Return(domainauth.Reseter{
+			Id:     7,
+			UserId: userID,
+			Token:  "already-redeemed-token",
+			Used:   true,
+			// still inside its TTL, so the repo's `expire_at > now()` filter
+			// does not screen it out
+			ExpireAt: time.Now().Add(time.Hour),
+		}, nil).
+		Times(1)
+
+	// A consumed token must not be handed back out: the service is expected to
+	// mint a fresh one instead.
+	d.reseterRepo.EXPECT().
+		Create(gomock.Any(), gomock.Any()).
+		Return(nil).
+		Times(1)
+
+	d.queue.EXPECT().
+		PublishEmail(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, msg queue.EmailMessage) error {
+			if msg.Token == "already-redeemed-token" {
+				t.Errorf("a spent reset token was emailed again: %q", msg.Token)
 			}
 			return nil
-		},
-	}
+		}).
+		Times(1)
 
-	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, queueMock, nil)
-
-	_, err := svc.Signup(context.Background(), "user@example.com", "username", "Full Name", "password123")
-	if err != nil {
-		t.Fatalf("expected signup to succeed, got error: %v", err)
-	}
-
-	if !emailPublished {
-		t.Errorf("expected verification email to be published to queue")
+	if err := d.svc.ForgotPassword(context.Background(), "user@example.com"); err != nil {
+		t.Fatalf("ForgotPassword: %v", err)
 	}
 }
 
-func TestAuthService_Signup_UserAlreadyExists(t *testing.T) {
-	authRepo := &mockAuthRepo{
-		getByEmailFunc: func(ctx context.Context, email string) (domainauth.User, error) {
-			return domainauth.User{Email: email}, nil
-		},
-	}
-	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, nil, nil)
+func TestForgotPassword_UnverifiedUserIsRejected(t *testing.T) {
+	d := newAuthDeps(t)
 
-	_, err := svc.Signup(context.Background(), "exists@example.com", "u", "fn", "p")
-	if !errors.Is(err, domainauth.ErrUserExists) {
-		t.Errorf("expected ErrUserExists, got %v", err)
-	}
-}
+	d.authRepo.EXPECT().
+		GetByEmail(gomock.Any(), gomock.Eq("unverified@example.com")).
+		Return(domainauth.User{Id: uuid.New(), Email: "unverified@example.com", IsVerified: false}, nil).
+		Times(1)
 
-func TestAuthService_Signup_QueuePublishFailure(t *testing.T) {
-	authRepo := &mockAuthRepo{
-		getByEmailFunc: func(ctx context.Context, email string) (domainauth.User, error) {
-			return domainauth.User{}, errors.New("not found")
-		},
-		createFunc: func(ctx context.Context, user domainauth.User) (domainauth.User, error) {
-			user.Id = uuid.New()
-			return user, nil
-		},
-	}
-	queueMock := &mockQueue{
-		publishEmailFunc: func(ctx context.Context, msg queue.EmailMessage) error {
-			return errors.New("rabbitmq down")
-		},
-	}
-	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, queueMock, nil)
-
-	_, err := svc.Signup(context.Background(), "user@example.com", "username", "Full Name", "password123")
-	if !errors.Is(err, apperr.ErrMessageQueueFailed) {
-		t.Errorf("expected ErrMessageQueueFailed, got %v", err)
-	}
-}
-
-func TestAuthService_Login_Success(t *testing.T) {
-	hasher := password.NewHasher("test-pepper", 10)
-	hashedPass, _ := hasher.GenerateHash("password123")
-	userId := uuid.New()
-
-	authRepo := &mockAuthRepo{
-		getByEmailFunc: func(ctx context.Context, email string) (domainauth.User, error) {
-			return domainauth.User{
-				Id:           userId,
-				Email:        email,
-				Fullname:     "Test User",
-				Role:         "user",
-				PasswordHash: hashedPass,
-				IsVerified:   true,
-			}, nil
-		},
-	}
-
-	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, nil, nil)
-
-	result, err := svc.Login(context.Background(), "test@example.com", "password123")
-	if err != nil {
-		t.Fatalf("expected login to succeed, got: %v", err)
-	}
-	if result.Token == "" {
-		t.Errorf("expected token in login result, got empty")
-	}
-	if result.Id != userId {
-		t.Errorf("expected userId %s, got %s", userId, result.Id)
-	}
-}
-
-func TestAuthService_Login_UserNotFound(t *testing.T) {
-	authRepo := &mockAuthRepo{
-		getByEmailFunc: func(ctx context.Context, email string) (domainauth.User, error) {
-			return domainauth.User{}, sql.ErrNoRows
-		},
-	}
-	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, nil, nil)
-
-	_, err := svc.Login(context.Background(), "missing@example.com", "password123")
-	if !errors.Is(err, domainauth.ErrInvalidCredential) {
-		t.Errorf("expected ErrInvalidCredential, got %v", err)
-	}
-}
-
-func TestAuthService_Login_Unverified(t *testing.T) {
-	hasher := password.NewHasher("test-pepper", 10)
-	hashedPass, _ := hasher.GenerateHash("password123")
-
-	authRepo := &mockAuthRepo{
-		getByEmailFunc: func(ctx context.Context, email string) (domainauth.User, error) {
-			return domainauth.User{
-				Email:        email,
-				PasswordHash: hashedPass,
-				IsVerified:   false,
-			}, nil
-		},
-	}
-	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, nil, nil)
-
-	_, err := svc.Login(context.Background(), "unverified@example.com", "password123")
+	// no token minted, no mail sent
+	err := d.svc.ForgotPassword(context.Background(), "unverified@example.com")
 	if !errors.Is(err, domainauth.ErrUserNotVerified) {
-		t.Errorf("expected ErrUserNotVerified, got %v", err)
+		t.Errorf("err = %v, want ErrUserNotVerified", err)
 	}
 }
 
-func TestAuthService_Login_InvalidPassword(t *testing.T) {
-	hasher := password.NewHasher("test-pepper", 10)
-	hashedPass, _ := hasher.GenerateHash("correctPass")
+func TestForgotPassword_UnknownUser(t *testing.T) {
+	d := newAuthDeps(t)
 
-	authRepo := &mockAuthRepo{
-		getByEmailFunc: func(ctx context.Context, email string) (domainauth.User, error) {
-			return domainauth.User{
-				Email:        email,
-				PasswordHash: hashedPass,
-				IsVerified:   true,
-			}, nil
-		},
-	}
-	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, nil, nil)
+	d.authRepo.EXPECT().
+		GetByEmail(gomock.Any(), gomock.Eq("nobody@example.com")).
+		Return(domainauth.User{}, sql.ErrNoRows).
+		Times(1)
 
-	_, err := svc.Login(context.Background(), "test@example.com", "wrongPass")
-	if !errors.Is(err, domainauth.ErrInvalidCredential) {
-		t.Errorf("expected ErrInvalidCredential, got %v", err)
-	}
-}
-
-func TestAuthService_Logout_Success(t *testing.T) {
-	cachedKey := ""
-	cacheMock := &mockCache{
-		setFunc: func(ctx context.Context, key string, value string, expiration time.Duration) error {
-			cachedKey = key
-			return nil
-		},
-	}
-	svc := newTestAuthService(&mockAuthRepo{}, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, cacheMock, nil, nil)
-
-	claims := jwtpkg.Payload{
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
-		},
-	}
-
-	err := svc.Logout(context.Background(), "my-jwt-token", claims)
-	if err != nil {
-		t.Fatalf("expected Logout to succeed, got %v", err)
-	}
-	if cachedKey != "token_blocklist:my-jwt-token" {
-		t.Errorf("expected blocklist key 'token_blocklist:my-jwt-token', got %s", cachedKey)
-	}
-}
-
-func TestAuthService_Logout_ExpiredToken(t *testing.T) {
-	cacheMock := &mockCache{
-		setFunc: func(ctx context.Context, key string, value string, expiration time.Duration) error {
-			t.Errorf("expected no cache write for already-expired token")
-			return nil
-		},
-	}
-	svc := newTestAuthService(&mockAuthRepo{}, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, cacheMock, nil, nil)
-
-	claims := jwtpkg.Payload{
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
-		},
-	}
-
-	err := svc.Logout(context.Background(), "expired-jwt", claims)
-	if err != nil {
-		t.Fatalf("expected Logout to succeed with nil error, got %v", err)
-	}
-}
-
-func TestAuthService_Verify_Success(t *testing.T) {
-	userId := uuid.New()
-	verifiedUser := false
-	deletedVerifier := false
-
-	tokenStr, _ := tokenpkg.GenerateToken()
-	tokenHash := tokenpkg.GetTokenHash(tokenStr)
-
-	verifierRepo := &mockVerifierRepo{
-		getByHashFunc: func(ctx context.Context, hash string) (domainauth.Verifier, error) {
-			if hash == tokenHash {
-				return domainauth.Verifier{Id: 10, UserId: userId}, nil
-			}
-			return domainauth.Verifier{}, sql.ErrNoRows
-		},
-		deleteFunc: func(ctx context.Context, id int64) error {
-			deletedVerifier = true
-			return nil
-		},
-	}
-	authRepo := &mockAuthRepo{
-		setVerifiedFunc: func(ctx context.Context, id uuid.UUID) error {
-			if id == userId {
-				verifiedUser = true
-			}
-			return nil
-		},
-	}
-
-	svc := newTestAuthService(authRepo, verifierRepo, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, nil, nil)
-
-	err := svc.Verify(context.Background(), tokenStr)
-	if err != nil {
-		t.Fatalf("expected Verify to succeed, got %v", err)
-	}
-	if !verifiedUser || !deletedVerifier {
-		t.Errorf("expected user to be verified and verifier record deleted")
-	}
-}
-
-func TestAuthService_Verify_InvalidToken(t *testing.T) {
-	verifierRepo := &mockVerifierRepo{
-		getByHashFunc: func(ctx context.Context, hash string) (domainauth.Verifier, error) {
-			return domainauth.Verifier{}, sql.ErrNoRows
-		},
-	}
-	svc := newTestAuthService(&mockAuthRepo{}, verifierRepo, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, nil, nil)
-
-	err := svc.Verify(context.Background(), "invalid-token")
-	if !errors.Is(err, domainauth.ErrInvalidToken) {
-		t.Errorf("expected ErrInvalidToken, got %v", err)
-	}
-}
-
-func TestAuthService_ForgotPassword_Success(t *testing.T) {
-	userId := uuid.New()
-	authRepo := &mockAuthRepo{
-		getByEmailFunc: func(ctx context.Context, email string) (domainauth.User, error) {
-			return domainauth.User{Id: userId, Email: email, IsVerified: true}, nil
-		},
-	}
-	reseterRepo := &mockReseterRepo{
-		getByIdFunc: func(ctx context.Context, id uuid.UUID) (domainauth.Reseter, error) {
-			return domainauth.Reseter{}, sql.ErrNoRows
-		},
-		createFunc: func(ctx context.Context, reseter domainauth.Reseter) error {
-			return nil
-		},
-	}
-	emailSent := false
-	queueMock := &mockQueue{
-		publishEmailFunc: func(ctx context.Context, msg queue.EmailMessage) error {
-			emailSent = true
-			return nil
-		},
-	}
-
-	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, reseterRepo, &mockQuotaRepo{}, nil, queueMock, nil)
-
-	err := svc.ForgotPassword(context.Background(), "user@example.com")
-	if err != nil {
-		t.Fatalf("expected ForgotPassword to succeed, got %v", err)
-	}
-	if !emailSent {
-		t.Errorf("expected forgot-password email to be published")
-	}
-}
-
-func TestAuthService_ForgotPassword_UserNotFound(t *testing.T) {
-	authRepo := &mockAuthRepo{
-		getByEmailFunc: func(ctx context.Context, email string) (domainauth.User, error) {
-			return domainauth.User{}, sql.ErrNoRows
-		},
-	}
-	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, nil, nil)
-
-	err := svc.ForgotPassword(context.Background(), "unknown@example.com")
+	err := d.svc.ForgotPassword(context.Background(), "nobody@example.com")
 	if !errors.Is(err, domainauth.ErrUserNotFound) {
-		t.Errorf("expected ErrUserNotFound, got %v", err)
+		t.Errorf("err = %v, want ErrUserNotFound", err)
 	}
 }
 
-func TestAuthService_ForgotPassword_Unverified(t *testing.T) {
-	authRepo := &mockAuthRepo{
-		getByEmailFunc: func(ctx context.Context, email string) (domainauth.User, error) {
-			return domainauth.User{Email: email, IsVerified: false}, nil
-		},
-	}
-	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, nil, nil)
+// A Redis/Postgres outage on the lookup must not be mistaken for "no token yet".
+func TestForgotPassword_LookupBackendErrorIsPropagated(t *testing.T) {
+	d := newAuthDeps(t)
+	userID := uuid.New()
 
-	err := svc.ForgotPassword(context.Background(), "unverified@example.com")
-	if !errors.Is(err, domainauth.ErrUserNotVerified) {
-		t.Errorf("expected ErrUserNotVerified, got %v", err)
+	d.authRepo.EXPECT().
+		GetByEmail(gomock.Any(), gomock.Any()).
+		Return(domainauth.User{Id: userID, Email: "u@example.com", IsVerified: true}, nil).
+		Times(1)
+
+	d.reseterRepo.EXPECT().
+		GetById(gomock.Any(), gomock.Eq(userID)).
+		Return(domainauth.Reseter{}, errors.New("dial tcp 127.0.0.1:5432: connect: connection refused")).
+		Times(1)
+
+	// Create and PublishEmail must NOT be reached; gomock fails the test if they are.
+	err := d.svc.ForgotPassword(context.Background(), "u@example.com")
+	if !errors.Is(err, domainauth.ErrTokenFetchFailed) {
+		t.Errorf("err = %v, want it to wrap ErrTokenFetchFailed", err)
 	}
 }
 
-func TestAuthService_ResendVerify_Success(t *testing.T) {
-	userId := uuid.New()
-	authRepo := &mockAuthRepo{
-		getByEmailFunc: func(ctx context.Context, email string) (domainauth.User, error) {
-			return domainauth.User{Id: userId, Email: email, IsVerified: false}, nil
-		},
+// ===========================================================================
+// Signup
+// ===========================================================================
+
+func TestSignup_PersistsHashedPasswordAndHashedVerifyToken(t *testing.T) {
+	d := newAuthDeps(t)
+	createdID := uuid.New()
+	d.passthroughTx(1)
+
+	d.authRepo.EXPECT().
+		GetByEmail(gomock.Any(), gomock.Eq("new@example.com")).
+		Return(domainauth.User{}, sql.ErrNoRows).
+		Times(1)
+
+	um := &userMatcher{
+		email: "new@example.com", username: "newbie", fullname: "New Bie",
+		role: "user", plaintextPassword: "sup3r-s3cret!",
 	}
-	verifierRepo := &mockVerifierRepo{
-		getByIdFunc: func(ctx context.Context, id uuid.UUID) (domainauth.Verifier, error) {
-			return domainauth.Verifier{Id: 1}, nil
-		},
-		deleteFunc: func(ctx context.Context, id int64) error {
+	d.authRepo.EXPECT().
+		Create(gomock.Any(), um).
+		Return(domainauth.User{Id: createdID, Email: "new@example.com"}, nil).
+		Times(1)
+
+	var storedVerifyToken string
+	d.verifierRepo.EXPECT().
+		Create(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, v domainauth.Verifier) error {
+			if v.UserId != createdID {
+				t.Errorf("verifier.UserId = %v, want %v", v.UserId, createdID)
+			}
+			storedVerifyToken = v.Token
 			return nil
-		},
-		createFunc: func(ctx context.Context, v domainauth.Verifier) error {
+		}).
+		Times(1)
+
+	d.profileRepo.EXPECT().
+		SetProfile(gomock.Any(), gomock.Eq(domainuser.Profile{UserId: createdID, ProfilePic: ""})).
+		Return(nil).
+		Times(1)
+
+	d.quotaRepo.EXPECT().
+		Create(gomock.Any(), gomock.Eq(domainuser.Quota{UserID: createdID})).
+		Return(nil).
+		Times(1)
+
+	var emailedToken string
+	d.queue.EXPECT().
+		PublishEmail(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, msg queue.EmailMessage) error {
+			if msg.Name != "signup" {
+				t.Errorf("email job type %q, want signup", msg.Name)
+			}
+			emailedToken = msg.Token
 			return nil
-		},
-	}
-	emailSent := false
-	queueMock := &mockQueue{
-		publishEmailFunc: func(ctx context.Context, msg queue.EmailMessage) error {
-			emailSent = true
-			return nil
-		},
+		}).
+		Times(1)
+
+	if _, err := d.svc.Signup(context.Background(), "new@example.com", "newbie", "New Bie", "sup3r-s3cret!"); err != nil {
+		t.Fatalf("Signup: %v", err)
 	}
 
-	svc := newTestAuthService(authRepo, verifierRepo, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, queueMock, nil)
+	// signup gets this right — it stores the hash and mails the raw token.
+	// This is the behaviour ForgotPassword is missing.
+	if storedVerifyToken != hashOf(emailedToken) {
+		t.Errorf("stored verify token = %q, want sha256(emailed) = %q", storedVerifyToken, hashOf(emailedToken))
+	}
+	if storedVerifyToken == emailedToken {
+		t.Error("raw verification token was persisted verbatim")
+	}
+}
 
-	err := svc.ResendVerify(context.Background(), "user@example.com")
+func TestSignup_DuplicateEmailIsRejected(t *testing.T) {
+	d := newAuthDeps(t)
+	d.passthroughTx(1)
+
+	d.authRepo.EXPECT().
+		GetByEmail(gomock.Any(), gomock.Eq("taken@example.com")).
+		Return(domainauth.User{Id: uuid.New()}, nil).
+		Times(1)
+
+	// no Create, no verifier, no mail
+	_, err := d.svc.Signup(context.Background(), "taken@example.com", "u", "U", "pw")
+	if !errors.Is(err, domainauth.ErrUserExists) {
+		t.Errorf("err = %v, want ErrUserExists", err)
+	}
+}
+
+// A failure late in the transaction must abort the whole signup: crucially, no
+// verification email may go out for a user that was rolled back.
+func TestSignup_QuotaFailureAbortsAndSendsNoEmail(t *testing.T) {
+	d := newAuthDeps(t)
+	createdID := uuid.New()
+	d.passthroughTx(1)
+
+	d.authRepo.EXPECT().GetByEmail(gomock.Any(), gomock.Any()).Return(domainauth.User{}, sql.ErrNoRows).Times(1)
+	d.authRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(domainauth.User{Id: createdID}, nil).Times(1)
+	d.verifierRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+	d.profileRepo.EXPECT().SetProfile(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+	d.quotaRepo.EXPECT().
+		Create(gomock.Any(), gomock.Any()).
+		Return(errors.New("quota table deadlock")).
+		Times(1)
+
+	// PublishEmail is deliberately NOT expected: gomock fails on an unexpected call.
+	_, err := d.svc.Signup(context.Background(), "new@example.com", "u", "U", "pw")
+	if !errors.Is(err, domainauth.ErrQuotaCreateFailed) {
+		t.Errorf("err = %v, want it to wrap ErrQuotaCreateFailed", err)
+	}
+}
+
+// ===========================================================================
+// Login
+// ===========================================================================
+
+func TestLogin(t *testing.T) {
+	hasher := password.NewHasher("pepper", bcrypt.MinCost)
+	goodHash, err := hasher.GenerateHash("correct-horse")
 	if err != nil {
-		t.Fatalf("expected ResendVerify to succeed, got %v", err)
+		t.Fatalf("GenerateHash: %v", err)
 	}
-	if !emailSent {
-		t.Errorf("expected resend-verify email to be published")
+	userID := uuid.New()
+
+	tests := []struct {
+		name     string
+		stored   domainauth.User
+		repoErr  error
+		password string
+		wantErr  error
+	}{
+		{
+			name:     "correct credentials",
+			stored:   domainauth.User{Id: userID, Email: "a@b.c", Fullname: "A B", Role: "user", IsVerified: true, PasswordHash: goodHash},
+			password: "correct-horse",
+		},
+		{
+			name:     "wrong password",
+			stored:   domainauth.User{Id: userID, Email: "a@b.c", Fullname: "A B", Role: "user", IsVerified: true, PasswordHash: goodHash},
+			password: "wrong-horse",
+			wantErr:  domainauth.ErrInvalidCredential,
+		},
+		{
+			name:     "empty password must not authenticate",
+			stored:   domainauth.User{Id: userID, Email: "a@b.c", Fullname: "A B", Role: "user", IsVerified: true, PasswordHash: goodHash},
+			password: "",
+			wantErr:  domainauth.ErrInvalidCredential,
+		},
+		{
+			name:     "unverified user",
+			stored:   domainauth.User{Id: userID, Email: "a@b.c", Fullname: "A B", Role: "user", IsVerified: false, PasswordHash: goodHash},
+			password: "correct-horse",
+			wantErr:  domainauth.ErrUserNotVerified,
+		},
+		{
+			name:     "unknown user is indistinguishable from a bad password",
+			repoErr:  sql.ErrNoRows,
+			password: "correct-horse",
+			wantErr:  domainauth.ErrInvalidCredential,
+		},
+		{
+			name:     "empty stored hash must never authenticate",
+			stored:   domainauth.User{Id: userID, Email: "a@b.c", Fullname: "A B", Role: "user", IsVerified: true, PasswordHash: ""},
+			password: "",
+			wantErr:  domainauth.ErrInvalidCredential,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := newAuthDeps(t)
+			d.authRepo.EXPECT().
+				GetByEmail(gomock.Any(), gomock.Eq("a@b.c")).
+				Return(tc.stored, tc.repoErr).
+				Times(1)
+
+			res, err := d.svc.Login(context.Background(), "a@b.c", tc.password)
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("err = %v, want %v", err, tc.wantErr)
+				}
+				if res != nil {
+					t.Error("a token was issued despite the failure")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Login: %v", err)
+			}
+			if res.Id != userID {
+				t.Errorf("Id = %v, want %v", res.Id, userID)
+			}
+
+			claims, err := d.jwt.Verify(res.Token)
+			if err != nil {
+				t.Fatalf("issued token does not verify: %v", err)
+			}
+			if claims.Subject != userID.String() {
+				t.Errorf("token subject = %q, want %q", claims.Subject, userID.String())
+			}
+			if claims.Role != "user" {
+				t.Errorf("token role = %q, want user", claims.Role)
+			}
+		})
 	}
 }
 
-func TestAuthService_ResendVerify_AlreadyVerified(t *testing.T) {
-	authRepo := &mockAuthRepo{
-		getByEmailFunc: func(ctx context.Context, email string) (domainauth.User, error) {
-			return domainauth.User{Email: email, IsVerified: true}, nil
-		},
-	}
-	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, &mockReseterRepo{}, &mockQuotaRepo{}, nil, nil, nil)
+// A user must never be able to mint a token for a role they do not hold.
+func TestLogin_TokenCarriesStoredRoleNotRequestedRole(t *testing.T) {
+	d := newAuthDeps(t)
+	hasher := password.NewHasher("pepper", bcrypt.MinCost)
+	h, _ := hasher.GenerateHash("pw")
+	userID := uuid.New()
 
-	err := svc.ResendVerify(context.Background(), "user@example.com")
+	d.authRepo.EXPECT().
+		GetByEmail(gomock.Any(), gomock.Any()).
+		Return(domainauth.User{
+			Id: userID, Email: "a@b.c", Fullname: "A B",
+			Role: "user", IsVerified: true, PasswordHash: h,
+		}, nil).
+		Times(1)
+
+	res, err := d.svc.Login(context.Background(), "a@b.c", "pw")
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	claims, err := d.jwt.Verify(res.Token)
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if claims.Role == "admin" {
+		t.Fatal("privilege escalation: token minted with admin role")
+	}
+}
+
+// ===========================================================================
+// Logout / blocklist
+// ===========================================================================
+
+func TestLogout_BlocklistsTokenForItsRemainingLifetime(t *testing.T) {
+	d := newAuthDeps(t)
+	tokenStr := "the.jwt.string"
+	exp := time.Now().Add(30 * time.Minute)
+
+	d.cache.EXPECT().
+		Set(gomock.Any(), gomock.Eq("token_blocklist:"+tokenStr), gomock.Eq("1"), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _, _ string, ttl time.Duration) error {
+			// TTL must cover the rest of the token's life, and must not be
+			// unbounded (that would leak Redis memory forever).
+			if ttl <= 0 {
+				t.Errorf("blocklist TTL = %v, want > 0", ttl)
+			}
+			if ttl > 31*time.Minute {
+				t.Errorf("blocklist TTL = %v, want <= the token's remaining lifetime", ttl)
+			}
+			return nil
+		}).
+		Times(1)
+
+	claims := jwtpkg.Payload{RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(exp)}}
+	if err := d.svc.Logout(context.Background(), tokenStr, claims); err != nil {
+		t.Fatalf("Logout: %v", err)
+	}
+}
+
+// An already-expired token needs no blocklist entry — writing one with a
+// negative TTL would make Redis store it forever.
+func TestLogout_ExpiredTokenIsNotWrittenToCache(t *testing.T) {
+	d := newAuthDeps(t)
+	claims := jwtpkg.Payload{
+		RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Minute))},
+	}
+	// cache.Set is not expected; gomock fails the test if it is called.
+	if err := d.svc.Logout(context.Background(), "expired.jwt", claims); err != nil {
+		t.Fatalf("Logout: %v", err)
+	}
+}
+
+// If the blocklist write fails, logout must report failure — silently
+// succeeding would tell the user they are logged out while the token stays live.
+func TestLogout_CacheFailureIsReported(t *testing.T) {
+	d := newAuthDeps(t)
+	boom := errors.New("redis: connection refused")
+
+	d.cache.EXPECT().
+		Set(gomock.Any(), gomock.Eq("token_blocklist:tok"), gomock.Eq("1"), gomock.Any()).
+		Return(boom).
+		Times(1)
+
+	claims := jwtpkg.Payload{
+		RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))},
+	}
+	if err := d.svc.Logout(context.Background(), "tok", claims); !errors.Is(err, boom) {
+		t.Errorf("err = %v, want the cache error", err)
+	}
+}
+
+// ===========================================================================
+// Verify
+// ===========================================================================
+
+func TestVerify_LooksUpByHashNotRawToken(t *testing.T) {
+	d := newAuthDeps(t)
+	d.passthroughTx(1)
+
+	raw := "11111111-2222-3333-4444-555555555555"
+	userID := uuid.New()
+
+	// The contract: the raw token from the email is hashed before the lookup.
+	d.verifierRepo.EXPECT().
+		GetByHash(gomock.Any(), gomock.Eq(hashOf(raw))).
+		Return(domainauth.Verifier{Id: 42, UserId: userID, Token: hashOf(raw)}, nil).
+		Times(1)
+
+	d.authRepo.EXPECT().SetVerified(gomock.Any(), gomock.Eq(userID)).Return(nil).Times(1)
+	d.verifierRepo.EXPECT().Delete(gomock.Any(), gomock.Eq(int64(42))).Return(nil).Times(1)
+
+	if err := d.svc.Verify(context.Background(), raw); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+}
+
+// Double-verify: the first call consumes the row, so the second lookup misses.
+func TestVerify_SecondUseOfSameTokenIsRejected(t *testing.T) {
+	d := newAuthDeps(t)
+	raw := "already-used-token"
+
+	d.verifierRepo.EXPECT().
+		GetByHash(gomock.Any(), gomock.Eq(hashOf(raw))).
+		Return(domainauth.Verifier{}, sql.ErrNoRows).
+		Times(1)
+
+	// SetVerified must not be reached.
+	err := d.svc.Verify(context.Background(), raw)
+	if !errors.Is(err, domainauth.ErrInvalidToken) {
+		t.Errorf("err = %v, want ErrInvalidToken", err)
+	}
+}
+
+// Marking the user verified and consuming the token must be atomic: if the
+// delete fails, the whole thing must roll back.
+func TestVerify_TokenDeleteFailureAbortsTransaction(t *testing.T) {
+	d := newAuthDeps(t)
+	d.passthroughTx(1)
+
+	raw := "tok"
+	userID := uuid.New()
+	deleteErr := errors.New("delete failed")
+
+	d.verifierRepo.EXPECT().GetByHash(gomock.Any(), gomock.Eq(hashOf(raw))).
+		Return(domainauth.Verifier{Id: 9, UserId: userID}, nil).Times(1)
+	d.authRepo.EXPECT().SetVerified(gomock.Any(), gomock.Eq(userID)).Return(nil).Times(1)
+	d.verifierRepo.EXPECT().Delete(gomock.Any(), gomock.Eq(int64(9))).Return(deleteErr).Times(1)
+
+	if err := d.svc.Verify(context.Background(), raw); !errors.Is(err, deleteErr) {
+		t.Errorf("err = %v, want the delete error to surface so the tx rolls back", err)
+	}
+}
+
+// A malformed/unknown token must not be treated as a backend outage and vice versa.
+func TestVerify_BackendErrorIsDistinctFromInvalidToken(t *testing.T) {
+	d := newAuthDeps(t)
+	raw := "tok"
+
+	d.verifierRepo.EXPECT().GetByHash(gomock.Any(), gomock.Eq(hashOf(raw))).
+		Return(domainauth.Verifier{}, errors.New("connection reset by peer")).Times(1)
+
+	err := d.svc.Verify(context.Background(), raw)
+	if errors.Is(err, domainauth.ErrInvalidToken) {
+		t.Error("a database outage was reported to the caller as an invalid token")
+	}
+	if !errors.Is(err, domainauth.ErrTokenFetchFailed) {
+		t.Errorf("err = %v, want it to wrap ErrTokenFetchFailed", err)
+	}
+}
+
+// ===========================================================================
+// ResendVerify
+// ===========================================================================
+
+func TestResendVerify_ReplacesOldTokenAndStoresOnlyTheHash(t *testing.T) {
+	d := newAuthDeps(t)
+	userID := uuid.New()
+
+	d.authRepo.EXPECT().GetByEmail(gomock.Any(), gomock.Eq("u@example.com")).
+		Return(domainauth.User{Id: userID, Email: "u@example.com", IsVerified: false}, nil).Times(1)
+
+	d.verifierRepo.EXPECT().GetById(gomock.Any(), gomock.Eq(userID)).
+		Return(domainauth.Verifier{Id: 3, UserId: userID, Token: "old-hash"}, nil).Times(1)
+
+	// the superseded token must be revoked, not left usable alongside the new one
+	d.verifierRepo.EXPECT().Delete(gomock.Any(), gomock.Eq(int64(3))).Return(nil).Times(1)
+
+	var stored string
+	d.verifierRepo.EXPECT().Create(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, v domainauth.Verifier) error {
+			if v.UserId != userID {
+				t.Errorf("verifier.UserId = %v, want %v", v.UserId, userID)
+			}
+			stored = v.Token
+			return nil
+		}).Times(1)
+
+	var emailed string
+	d.queue.EXPECT().PublishEmail(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, msg queue.EmailMessage) error {
+			if msg.Name != "resend-verify" {
+				t.Errorf("email job type %q, want resend-verify", msg.Name)
+			}
+			emailed = msg.Token
+			return nil
+		}).Times(1)
+
+	if err := d.svc.ResendVerify(context.Background(), "u@example.com"); err != nil {
+		t.Fatalf("ResendVerify: %v", err)
+	}
+	if stored != hashOf(emailed) {
+		t.Errorf("stored token = %q, want sha256(emailed) = %q", stored, hashOf(emailed))
+	}
+}
+
+func TestResendVerify_AlreadyVerifiedUserIsRejected(t *testing.T) {
+	d := newAuthDeps(t)
+	d.authRepo.EXPECT().GetByEmail(gomock.Any(), gomock.Any()).
+		Return(domainauth.User{Id: uuid.New(), IsVerified: true}, nil).Times(1)
+
+	// no token churn, no mail
+	err := d.svc.ResendVerify(context.Background(), "u@example.com")
 	if !errors.Is(err, domainauth.ErrUserAlreadyVerified) {
-		t.Errorf("expected ErrUserAlreadyVerified, got %v", err)
+		t.Errorf("err = %v, want ErrUserAlreadyVerified", err)
 	}
 }
 
-func TestAuthService_ResetPasswordGet_Success(t *testing.T) {
-	reseterRepo := &mockReseterRepo{
-		getByTokenFunc: func(ctx context.Context, token string) (domainauth.Reseter, error) {
-			return domainauth.Reseter{Token: "valid-reset-token"}, nil
-		},
-	}
-	svc := newTestAuthService(&mockAuthRepo{}, &mockVerifierRepo{}, &mockProfileRepo{}, reseterRepo, &mockQuotaRepo{}, nil, nil, nil)
+// ===========================================================================
+// ResetPasswordPost
+// ===========================================================================
 
-	token, err := svc.ResetPasswordGet(context.Background(), "valid-reset-token")
+// EXPECTED TO FAIL: internal/app/auth/reset_password.go accepts confirmPass as a
+// parameter and never reads it. The mismatch check lives only in the HTTP
+// handler's `eqfield=Password` tag, so any non-HTTP caller (a CLI, a worker, a
+// future gRPC transport) silently resets the password to `pass`.
+func TestResetPasswordPost_MismatchedConfirmationIsRejected(t *testing.T) {
+	d := newAuthDeps(t)
+	userID := uuid.New()
+
+	d.reseterRepo.EXPECT().
+		GetByToken(gomock.Any(), gomock.Eq("reset-tok")).
+		Return(domainauth.Reseter{Id: 1, UserId: userID, Token: "reset-tok"}, nil).
+		Times(1)
+	d.authRepo.EXPECT().
+		GetById(gomock.Any(), gomock.Eq(userID)).
+		Return(domainauth.User{Id: userID, Email: "u@example.com"}, nil).
+		AnyTimes()
+	d.tnx.EXPECT().
+		With(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, fn func(context.Context) (any, error)) (any, error) {
+			return fn(ctx)
+		}).
+		AnyTimes()
+
+	// The password must not be touched when the confirmation does not match.
+	d.authRepo.EXPECT().
+		UpdatePassword(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, id uuid.UUID, _ string) error {
+			t.Errorf("password for user %v was reset even though "+
+				"confirmPass (%q) did not match pass (%q)", id, "TYPO-different!", "newpassword1!")
+			return nil
+		}).
+		AnyTimes()
+	d.reseterRepo.EXPECT().DeleteById(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	d.queue.EXPECT().PublishEmail(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+	err := d.svc.ResetPasswordPost(context.Background(), "reset-tok", "newpassword1!", "TYPO-different!")
+	if err == nil {
+		t.Error("mismatched password confirmation was accepted; " +
+			"ResetPasswordPost ignores its confirmPass argument entirely")
+	}
+}
+
+func TestResetPasswordPost_HappyPathUpdatesHashAndConsumesToken(t *testing.T) {
+	d := newAuthDeps(t)
+	d.passthroughTx(1)
+	userID := uuid.New()
+
+	d.reseterRepo.EXPECT().GetByToken(gomock.Any(), gomock.Eq("reset-tok")).
+		Return(domainauth.Reseter{Id: 11, UserId: userID, Token: "reset-tok"}, nil).Times(1)
+	d.authRepo.EXPECT().GetById(gomock.Any(), gomock.Eq(userID)).
+		Return(domainauth.User{Id: userID, Email: "u@example.com"}, nil).Times(1)
+
+	d.authRepo.EXPECT().
+		UpdatePassword(gomock.Any(), gomock.Eq(userID), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ uuid.UUID, hash string) error {
+			if hash == "newpassword1!" {
+				t.Error("the new password was stored in plaintext")
+			}
+			hasher := password.NewHasher("pepper", bcrypt.MinCost)
+			if !hasher.CompareHashAndPassword(hash, "newpassword1!") {
+				t.Error("stored hash does not verify against the new password")
+			}
+			return nil
+		}).Times(1)
+
+	// the reset token must be single-use
+	d.reseterRepo.EXPECT().DeleteById(gomock.Any(), gomock.Eq(int64(11))).Return(nil).Times(1)
+
+	d.queue.EXPECT().PublishEmail(gomock.Any(), gomock.Eq(queue.EmailMessage{
+		To:   "u@example.com",
+		Name: "reset-password",
+	})).Return(nil).Times(1)
+
+	if err := d.svc.ResetPasswordPost(context.Background(), "reset-tok", "newpassword1!", "newpassword1!"); err != nil {
+		t.Fatalf("ResetPasswordPost: %v", err)
+	}
+}
+
+// If the password update cannot be committed, the reset token must survive so
+// the user can retry — and no "your password was changed" mail may go out.
+func TestResetPasswordPost_UpdateFailureSendsNoNotification(t *testing.T) {
+	d := newAuthDeps(t)
+	d.passthroughTx(1)
+	userID := uuid.New()
+	updateErr := errors.New("update failed")
+
+	d.reseterRepo.EXPECT().GetByToken(gomock.Any(), gomock.Any()).
+		Return(domainauth.Reseter{Id: 11, UserId: userID}, nil).Times(1)
+	d.authRepo.EXPECT().GetById(gomock.Any(), gomock.Any()).
+		Return(domainauth.User{Id: userID, Email: "u@example.com"}, nil).Times(1)
+	d.authRepo.EXPECT().UpdatePassword(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(updateErr).Times(1)
+
+	// DeleteById and PublishEmail are not expected.
+	if err := d.svc.ResetPasswordPost(context.Background(), "tok", "pw!", "pw!"); !errors.Is(err, updateErr) {
+		t.Errorf("err = %v, want the update error", err)
+	}
+}
+
+// EXPECTED TO FAIL (information disclosure): ResetPasswordGet echoes the stored
+// reseter.Token straight back to the caller. Combined with the raw-token
+// storage bug above, the endpoint hands back a directly usable credential.
+// A validity probe should return only whether the token is usable.
+func TestResetPasswordGet_DoesNotEchoStoredCredential(t *testing.T) {
+	d := newAuthDeps(t)
+
+	d.reseterRepo.EXPECT().
+		GetByToken(gomock.Any(), gomock.Eq("submitted-token")).
+		Return(domainauth.Reseter{Id: 1, UserId: uuid.New(), Token: "STORED-SECRET-VALUE"}, nil).
+		Times(1)
+
+	got, err := d.svc.ResetPasswordGet(context.Background(), "submitted-token")
 	if err != nil {
-		t.Fatalf("expected ResetPasswordGet to succeed, got %v", err)
+		t.Fatalf("ResetPasswordGet: %v", err)
 	}
-	if token != "valid-reset-token" {
-		t.Errorf("expected valid-reset-token, got %s", token)
-	}
-}
-
-func TestAuthService_ResetPasswordGet_NotFound(t *testing.T) {
-	reseterRepo := &mockReseterRepo{
-		getByTokenFunc: func(ctx context.Context, token string) (domainauth.Reseter, error) {
-			return domainauth.Reseter{}, errors.New("not found")
-		},
-	}
-	svc := newTestAuthService(&mockAuthRepo{}, &mockVerifierRepo{}, &mockProfileRepo{}, reseterRepo, &mockQuotaRepo{}, nil, nil, nil)
-
-	_, err := svc.ResetPasswordGet(context.Background(), "invalid-token")
-	if !errors.Is(err, domainauth.ErrReseterTokenFatchFailed) {
-		t.Errorf("expected ErrReseterTokenFatchFailed, got %v", err)
+	if got == "STORED-SECRET-VALUE" {
+		t.Errorf("the stored reset credential was returned to the caller: %q", got)
 	}
 }
 
-func TestAuthService_ResetPasswordPost_Success(t *testing.T) {
-	userId := uuid.New()
-	reseterRepo := &mockReseterRepo{
-		getByTokenFunc: func(ctx context.Context, token string) (domainauth.Reseter, error) {
-			return domainauth.Reseter{Id: 5, UserId: userId, Token: token}, nil
-		},
-		deleteByIdFunc: func(ctx context.Context, id int64) error {
-			return nil
-		},
-	}
-	authRepo := &mockAuthRepo{
-		getByIdFunc: func(ctx context.Context, id uuid.UUID) (domainauth.User, error) {
-			return domainauth.User{Id: userId, Email: "user@example.com"}, nil
-		},
-		updatePasswordFunc: func(ctx context.Context, id uuid.UUID, passHash string) error {
-			return nil
-		},
-	}
-	emailSent := false
-	queueMock := &mockQueue{
-		publishEmailFunc: func(ctx context.Context, msg queue.EmailMessage) error {
-			emailSent = true
-			return nil
-		},
-	}
+func TestResetPasswordGet_InvalidTokenIsRejected(t *testing.T) {
+	d := newAuthDeps(t)
+	d.reseterRepo.EXPECT().GetByToken(gomock.Any(), gomock.Eq("bogus")).
+		Return(domainauth.Reseter{}, sql.ErrNoRows).Times(1)
 
-	svc := newTestAuthService(authRepo, &mockVerifierRepo{}, &mockProfileRepo{}, reseterRepo, &mockQuotaRepo{}, nil, queueMock, nil)
-
-	err := svc.ResetPasswordPost(context.Background(), "valid-token", "NewPassword123!", "NewPassword123!")
-	if err != nil {
-		t.Fatalf("expected ResetPasswordPost to succeed, got %v", err)
-	}
-	if !emailSent {
-		t.Errorf("expected reset-password confirmation email")
+	if _, err := d.svc.ResetPasswordGet(context.Background(), "bogus"); !errors.Is(err, domainauth.ErrReseterTokenFatchFailed) {
+		t.Errorf("err = %v, want it to wrap ErrReseterTokenFatchFailed", err)
 	}
 }

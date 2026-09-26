@@ -10,18 +10,21 @@ import (
 	"github.com/labib0x9/ffgif/internal/port/queue"
 )
 
+//go:generate mockgen -source=service.go -destination=mocks/mock_share_service.go -package=mocks
 type Service interface {
 	Create(ctx context.Context, sharedBy string, gifKey string, sharedWith string, expiresAt time.Time) error
 	CreateByToken(ctx context.Context, sharedBy string, gifKey string, sharedWithEmail string, expiresAt time.Time) (string, error)
 	Delete(ctx context.Context, userId, gifKey, shareId string) error
 	Get(ctx context.Context, user string) ([]share.GifResponse, error)
 	GetByToken(ctx context.Context, token string) (share.GifTokenResponse, error)
+	DownloadByToken(ctx context.Context, token string) (string, error)
 }
 
 type service struct {
 	authRepo  auth.AuthRepository
 	gifRepo   media.GifRepository
 	shareRepo share.ShareRepository
+	storage   media.StorageRepository
 	queue     queue.Queue
 }
 
@@ -29,12 +32,14 @@ func NewService(
 	authRepo auth.AuthRepository,
 	gifRepo media.GifRepository,
 	shareRepo share.ShareRepository,
+	storage media.StorageRepository,
 	queue queue.Queue,
 ) Service {
 	return &service{
 		authRepo:  authRepo,
 		gifRepo:   gifRepo,
 		shareRepo: shareRepo,
+		storage:   storage,
 		queue:     queue,
 	}
 }

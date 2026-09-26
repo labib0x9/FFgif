@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(70)  DEFAULT '',
     is_verified   BOOLEAN       DEFAULT FALSE,
     role          VARCHAR(6)   DEFAULT 'user',
-    created_at    TIMESTAMP     DEFAULT NOW(),
-    updated_at    TIMESTAMP     DEFAULT NOW(),
-    deleted_at    TIMESTAMP
+    created_at    TIMESTAMPTZ   DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ   DEFAULT NOW(),
+    deleted_at    TIMESTAMPTZ
 );

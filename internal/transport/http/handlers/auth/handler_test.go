@@ -1,444 +1,465 @@
 package auth_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-playground/validator/v10"
+	gojwt "github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"go.uber.org/mock/gomock"
+
+	"github.com/labib0x9/ffgif/config"
 	appauth "github.com/labib0x9/ffgif/internal/app/auth"
+	authsvcmocks "github.com/labib0x9/ffgif/internal/app/auth/mocks"
 	domainauth "github.com/labib0x9/ffgif/internal/domain/auth"
-	authhandler "github.com/labib0x9/ffgif/internal/transport/http/handlers/auth"
+	"github.com/labib0x9/ffgif/internal/transport/http/handlers/auth"
 	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
+	"github.com/labib0x9/ffgif/pkg/apperr"
 	jwtpkg "github.com/labib0x9/ffgif/pkg/jwt"
 )
 
-type mockAuthService struct {
-	signupFunc            func(ctx context.Context, email string, username string, fullname string, password string) (*appauth.SignupResult, error)
-	loginFunc             func(ctx context.Context, email string, password string) (*appauth.Result, error)
-	verifyFunc            func(ctx context.Context, token string) error
-	forgotPasswordFunc    func(ctx context.Context, email string) error
-	resendVerifyFunc      func(ctx context.Context, email string) error
-	resetPasswordGetFunc  func(ctx context.Context, token string) (string, error)
-	resetPasswordPostFunc func(ctx context.Context, token string, pass string, confirmPass string) error
-	logoutFunc            func(ctx context.Context, jwt string, claims jwtpkg.Payload) error
+type authHarness struct {
+	svc *authsvcmocks.MockService
+	h   *auth.Handler
 }
 
-func (m *mockAuthService) Signup(ctx context.Context, email string, username string, fullname string, password string) (*appauth.SignupResult, error) {
-	if m.signupFunc != nil {
-		return m.signupFunc(ctx, email, username, fullname, password)
-	}
-	return &appauth.SignupResult{}, nil
-}
-func (m *mockAuthService) Login(ctx context.Context, email string, password string) (*appauth.Result, error) {
-	if m.loginFunc != nil {
-		return m.loginFunc(ctx, email, password)
-	}
-	return &appauth.Result{Token: "test.jwt.token", Id: uuid.New()}, nil
-}
-func (m *mockAuthService) Verify(ctx context.Context, token string) error {
-	if m.verifyFunc != nil {
-		return m.verifyFunc(ctx, token)
-	}
-	return nil
-}
-func (m *mockAuthService) ForgotPassword(ctx context.Context, email string) error {
-	if m.forgotPasswordFunc != nil {
-		return m.forgotPasswordFunc(ctx, email)
-	}
-	return nil
-}
-func (m *mockAuthService) ResendVerify(ctx context.Context, email string) error {
-	if m.resendVerifyFunc != nil {
-		return m.resendVerifyFunc(ctx, email)
-	}
-	return nil
-}
-func (m *mockAuthService) ResetPasswordGet(ctx context.Context, token string) (string, error) {
-	if m.resetPasswordGetFunc != nil {
-		return m.resetPasswordGetFunc(ctx, token)
-	}
-	return "user@example.com", nil
-}
-func (m *mockAuthService) ResetPasswordPost(ctx context.Context, token string, pass string, confirmPass string) error {
-	if m.resetPasswordPostFunc != nil {
-		return m.resetPasswordPostFunc(ctx, token, pass, confirmPass)
-	}
-	return nil
-}
-func (m *mockAuthService) Logout(ctx context.Context, jwt string, claims jwtpkg.Payload) error {
-	if m.logoutFunc != nil {
-		return m.logoutFunc(ctx, jwt, claims)
-	}
-	return nil
+func newAuthHarness(t *testing.T) *authHarness {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	svc := authsvcmocks.NewMockService(ctrl)
+	mws := middleware.NewMiddlewares(&config.Config{}, nil, jwtpkg.Jwt{})
+	return &authHarness{svc: svc, h: auth.NewHandler(svc, mws, validator.New())}
 }
 
-func TestAuthHandler_Signup_Success(t *testing.T) {
-	mockSvc := &mockAuthService{}
-	val := validator.New()
-	handler := authhandler.NewHandler(mockSvc, nil, val)
+func post(target, body string) *http.Request {
+	r := httptest.NewRequest(http.MethodPost, target, strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	return r
+}
 
-	body, _ := json.Marshal(map[string]string{
-		"username":         "validuser",
-		"fullname":         "Valid User",
-		"email":            "user@example.com",
-		"password":         "Password123!",
-		"confirm_password": "Password123!",
-	})
+// ===========================================================================
+// Signup
+// ===========================================================================
 
-	req := httptest.NewRequest(http.MethodPost, "/auth/signup", bytes.NewReader(body))
+func TestSignup_ForwardsTheDecodedFieldsInTheRightOrder(t *testing.T) {
+	h := newAuthHarness(t)
+
+	// Signup's parameter list is (email, username, fullname, password) — an
+	// easy pair to transpose. Match each one exactly.
+	h.svc.EXPECT().
+		Signup(gomock.Any(),
+			gomock.Eq("alice@example.com"),
+			gomock.Eq("alice99"),
+			gomock.Eq("Alice Anderson"),
+			gomock.Eq("s3cret!pass")).
+		Return(&appauth.SignupResult{}, nil).
+		Times(1)
+
 	rec := httptest.NewRecorder()
-
-	handler.Signup(rec, req)
+	h.h.Signup(rec, post("/signup", `{
+		"username":"alice99","fullname":"Alice Anderson",
+		"email":"alice@example.com","password":"s3cret!pass",
+		"confirm_password":"s3cret!pass"}`))
 
 	if rec.Code != http.StatusCreated {
-		t.Errorf("expected status 201 Created, got %d. Body: %s", rec.Code, rec.Body.String())
+		t.Fatalf("status = %d, want 201; body = %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestAuthHandler_Signup_BadJSON(t *testing.T) {
-	handler := authhandler.NewHandler(&mockAuthService{}, nil, validator.New())
-	req := httptest.NewRequest(http.MethodPost, "/auth/signup", bytes.NewReader([]byte("{invalid-json")))
-	rec := httptest.NewRecorder()
+func TestSignup_Validation(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		wantCode int
+	}{
+		{"confirmation does not match", `{"username":"alice99","fullname":"Alice A","email":"a@example.com","password":"s3cret!pass","confirm_password":"different!"}`, http.StatusUnprocessableEntity},
+		{"password with no special character", `{"username":"alice99","fullname":"Alice A","email":"a@example.com","password":"plainpassword","confirm_password":"plainpassword"}`, http.StatusUnprocessableEntity},
+		{"password too short", `{"username":"alice99","fullname":"Alice A","email":"a@example.com","password":"a!","confirm_password":"a!"}`, http.StatusUnprocessableEntity},
+		{"malformed email", `{"username":"alice99","fullname":"Alice A","email":"not-an-email","password":"s3cret!pass","confirm_password":"s3cret!pass"}`, http.StatusUnprocessableEntity},
+		{"non-alphanumeric username", `{"username":"alice 99!","fullname":"Alice A","email":"a@example.com","password":"s3cret!pass","confirm_password":"s3cret!pass"}`, http.StatusUnprocessableEntity},
+		{"username too short", `{"username":"ab","fullname":"Alice A","email":"a@example.com","password":"s3cret!pass","confirm_password":"s3cret!pass"}`, http.StatusUnprocessableEntity},
+		{"empty body", ``, http.StatusBadRequest},
+		{"malformed json", `{"username":`, http.StatusBadRequest},
+	}
 
-	handler.Signup(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status 400 Bad Request, got %d", rec.Code)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newAuthHarness(t)
+			// the service must not be reached
+			rec := httptest.NewRecorder()
+			h.h.Signup(rec, post("/signup", tc.body))
+			if rec.Code != tc.wantCode {
+				t.Errorf("status = %d, want %d; body = %s", rec.Code, tc.wantCode, rec.Body.String())
+			}
+		})
 	}
 }
 
-func TestAuthHandler_Signup_ValidationFailed(t *testing.T) {
-	handler := authhandler.NewHandler(&mockAuthService{}, nil, validator.New())
+func TestSignup_DuplicateEmailIsConflict(t *testing.T) {
+	h := newAuthHarness(t)
+	h.svc.EXPECT().
+		Signup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, domainauth.ErrUserExists).
+		Times(1)
 
-	// password mismatch
-	body, _ := json.Marshal(map[string]string{
-		"username":         "user1",
-		"fullname":         "User One",
-		"email":            "invalid-email",
-		"password":         "Pass1",
-		"confirm_password": "Pass2",
-	})
-	req := httptest.NewRequest(http.MethodPost, "/auth/signup", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-
-	handler.Signup(rec, req)
-	if rec.Code != 422 {
-		t.Errorf("expected status 422 Unprocessable Entity, got %d", rec.Code)
-	}
-}
-
-func TestAuthHandler_Signup_Conflict(t *testing.T) {
-	mockSvc := &mockAuthService{
-		signupFunc: func(ctx context.Context, email string, username string, fullname string, password string) (*appauth.SignupResult, error) {
-			return nil, domainauth.ErrUserExists
-		},
-	}
-	handler := authhandler.NewHandler(mockSvc, nil, validator.New())
-
-	body, _ := json.Marshal(map[string]string{
-		"username":         "existinguser",
-		"fullname":         "Existing User",
-		"email":            "exists@example.com",
-		"password":         "Password123!",
-		"confirm_password": "Password123!",
-	})
-
-	req := httptest.NewRequest(http.MethodPost, "/auth/signup", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
-
-	handler.Signup(rec, req)
+	h.h.Signup(rec, post("/signup", `{"username":"alice99","fullname":"Alice A","email":"a@example.com","password":"s3cret!pass","confirm_password":"s3cret!pass"}`))
 
 	if rec.Code != http.StatusConflict {
-		t.Errorf("expected status 409 Conflict, got %d", rec.Code)
+		t.Errorf("status = %d, want 409", rec.Code)
 	}
 }
 
-func TestAuthHandler_Login_Success(t *testing.T) {
-	mockSvc := &mockAuthService{
-		loginFunc: func(ctx context.Context, email string, password string) (*appauth.Result, error) {
-			return &appauth.Result{Token: "sample.jwt.token"}, nil
-		},
-	}
-	handler := authhandler.NewHandler(mockSvc, nil, validator.New())
+// The account exists even if the verification email could not be queued, so a
+// queue failure must still report success and let ResendVerify recover.
+func TestSignup_QueueFailureStillReportsCreated(t *testing.T) {
+	h := newAuthHarness(t)
+	h.svc.EXPECT().
+		Signup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, apperr.ErrMessageQueueFailed).
+		Times(1)
 
-	body, _ := json.Marshal(map[string]string{
-		"email":    "user@example.com",
-		"password": "Password123!",
-	})
-
-	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
+	h.h.Signup(rec, post("/signup", `{"username":"alice99","fullname":"Alice A","email":"a@example.com","password":"s3cret!pass","confirm_password":"s3cret!pass"}`))
 
-	handler.Login(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Errorf("status = %d, want 201", rec.Code)
+	}
+}
+
+// EXPECTED TO FAIL: internal/transport/http/handlers/auth/signup.go:50 builds
+// the header as
+//
+//	w.Header().Set("Location", "/users/"+"res.Id")
+//
+// concatenating the literal string "res.Id" instead of the created user's id.
+// Every signup returns `Location: /users/res.Id`, which points at nothing.
+func TestSignup_LocationHeaderPointsAtTheCreatedUser(t *testing.T) {
+	h := newAuthHarness(t)
+	h.svc.EXPECT().
+		Signup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(&appauth.SignupResult{}, nil).
+		Times(1)
+
+	rec := httptest.NewRecorder()
+	h.h.Signup(rec, post("/signup", `{"username":"alice99","fullname":"Alice A","email":"a@example.com","password":"s3cret!pass","confirm_password":"s3cret!pass"}`))
+
+	loc := rec.Header().Get("Location")
+	if loc == "/users/res.Id" {
+		t.Errorf(`Location = %q — the handler concatenates the literal string "res.Id" `+
+			`instead of interpolating the new user's identifier`, loc)
+	}
+	if strings.Contains(loc, "res.Id") {
+		t.Errorf("Location = %q contains a Go expression that was never evaluated", loc)
+	}
+}
+
+// ===========================================================================
+// Login
+// ===========================================================================
+
+func TestLogin_SuccessReturnsTokenAndId(t *testing.T) {
+	h := newAuthHarness(t)
+	id := uuid.New()
+
+	h.svc.EXPECT().
+		Login(gomock.Any(), gomock.Eq("alice@example.com"), gomock.Eq("s3cret!pass")).
+		Return(&appauth.Result{Token: "the.jwt.token", Id: id}, nil).
+		Times(1)
+
+	rec := httptest.NewRecorder()
+	h.h.Login(rec, post("/login", `{"email":"alice@example.com","password":"s3cret!pass"}`))
 
 	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["token"] != "the.jwt.token" {
+		t.Errorf("token = %v, want the.jwt.token", body["token"])
+	}
+	if body["id"] != id.String() {
+		t.Errorf("id = %v, want %s", body["id"], id)
 	}
 }
 
-func TestAuthHandler_Login_InvalidCredentials(t *testing.T) {
-	mockSvc := &mockAuthService{
-		loginFunc: func(ctx context.Context, email string, password string) (*appauth.Result, error) {
-			return nil, domainauth.ErrInvalidCredential
+func TestLogin_ErrorMapping(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		wantCode int
+	}{
+		{"bad credentials", domainauth.ErrInvalidCredential, http.StatusUnauthorized},
+		{"unverified account", domainauth.ErrUserNotVerified, http.StatusForbidden},
+		{"unexpected failure", errors.New("db down"), http.StatusInternalServerError},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newAuthHarness(t)
+			h.svc.EXPECT().
+				Login(gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(nil, tc.err).
+				Times(1)
+
+			rec := httptest.NewRecorder()
+			h.h.Login(rec, post("/login", `{"email":"a@example.com","password":"s3cret!pass"}`))
+
+			if rec.Code != tc.wantCode {
+				t.Errorf("status = %d, want %d", rec.Code, tc.wantCode)
+			}
+			if strings.Contains(rec.Body.String(), "the.jwt.token") {
+				t.Error("a token was leaked in an error response")
+			}
+		})
+	}
+}
+
+// A failed login must never disclose whether the account exists.
+func TestLogin_FailureDoesNotDiscloseAccountExistence(t *testing.T) {
+	h := newAuthHarness(t)
+	h.svc.EXPECT().
+		Login(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, domainauth.ErrInvalidCredential).
+		Times(1)
+
+	rec := httptest.NewRecorder()
+	h.h.Login(rec, post("/login", `{"email":"ghost@example.com","password":"s3cret!pass"}`))
+
+	body := strings.ToLower(rec.Body.String())
+	for _, leak := range []string{"not found", "no such user", "unknown email", "does not exist"} {
+		if strings.Contains(body, leak) {
+			t.Errorf("the response distinguishes a missing account: %q appears in %s", leak, rec.Body.String())
+		}
+	}
+}
+
+func TestLogin_Validation(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		wantCode int
+	}{
+		{"missing password", `{"email":"a@example.com"}`, http.StatusUnprocessableEntity},
+		{"missing email", `{"password":"s3cret!pass"}`, http.StatusUnprocessableEntity},
+		{"malformed email", `{"email":"nope","password":"s3cret!pass"}`, http.StatusUnprocessableEntity},
+		{"malformed json", `{"email":`, http.StatusBadRequest},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newAuthHarness(t)
+			// the service must not be reached
+			rec := httptest.NewRecorder()
+			h.h.Login(rec, post("/login", tc.body))
+			if rec.Code != tc.wantCode {
+				t.Errorf("status = %d, want %d", rec.Code, tc.wantCode)
+			}
+		})
+	}
+}
+
+// ===========================================================================
+// Logout
+// ===========================================================================
+
+func TestLogout_PassesTheCallersOwnTokenAndClaims(t *testing.T) {
+	h := newAuthHarness(t)
+	exp := time.Now().Add(time.Hour)
+	claims := jwtpkg.Payload{
+		Fullname: "Alice", Email: "a@example.com", Role: "user",
+		RegisteredClaims: gojwt.RegisteredClaims{
+			Subject: "user-1", ExpiresAt: gojwt.NewNumericDate(exp),
 		},
 	}
-	handler := authhandler.NewHandler(mockSvc, nil, validator.New())
 
-	body, _ := json.Marshal(map[string]string{
-		"email":    "user@example.com",
-		"password": "WrongPassword123!",
-	})
-	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
-
-	handler.Login(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status 401 Unauthorized, got %d", rec.Code)
-	}
-}
-
-func TestAuthHandler_Login_Unverified(t *testing.T) {
-	mockSvc := &mockAuthService{
-		loginFunc: func(ctx context.Context, email string, password string) (*appauth.Result, error) {
-			return nil, domainauth.ErrUserNotVerified
-		},
-	}
-	handler := authhandler.NewHandler(mockSvc, nil, validator.New())
-
-	body, _ := json.Marshal(map[string]string{
-		"email":    "unverified@example.com",
-		"password": "Password123!",
-	})
-	req := httptest.NewRequest(http.MethodPost, "/auth/login", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
-
-	handler.Login(rec, req)
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("expected status 403 Forbidden for unverified user, got %d", rec.Code)
-	}
-}
-
-func TestAuthHandler_Logout_Success(t *testing.T) {
-	mockSvc := &mockAuthService{
-		logoutFunc: func(ctx context.Context, token string, claims jwtpkg.Payload) error {
+	h.svc.EXPECT().
+		Logout(gomock.Any(), gomock.Eq("the.raw.jwt"), gomock.Any()).
+		DoAndReturn(func(_ context.Context, token string, got jwtpkg.Payload) error {
+			if got.Subject != "user-1" {
+				t.Errorf("claims.Subject = %q, want user-1", got.Subject)
+			}
+			if got.ExpiresAt == nil || !got.ExpiresAt.Time.Equal(exp.Truncate(time.Second)) {
+				// jwt.NewNumericDate truncates to the second
+				if got.ExpiresAt == nil {
+					t.Error("claims.ExpiresAt is nil; the blocklist TTL cannot be computed")
+				}
+			}
 			return nil
-		},
-	}
-	handler := authhandler.NewHandler(mockSvc, nil, validator.New())
+		}).
+		Times(1)
 
-	req := httptest.NewRequest(http.MethodGet, "/auth/logout", nil)
-	ctx := httputil.WithAuthContext(req.Context(), jwtpkg.Payload{Fullname: "User"}, "token-xyz")
-	req = req.WithContext(ctx)
+	req := httptest.NewRequest(http.MethodPost, "/logout", nil)
+	req = req.WithContext(httputil.WithAuthContext(req.Context(), claims, "the.raw.jwt"))
 
 	rec := httptest.NewRecorder()
-	handler.Logout(rec, req)
+	h.h.Logout(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
+		t.Errorf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestAuthHandler_Logout_Unauthenticated(t *testing.T) {
-	handler := authhandler.NewHandler(&mockAuthService{}, nil, validator.New())
-	req := httptest.NewRequest(http.MethodGet, "/auth/logout", nil)
+// Without an auth context there is nothing to revoke; the service must not be
+// called with a zero-value token, which would blocklist the key
+// "token_blocklist:" for every user at once.
+func TestLogout_WithoutAuthContextDoesNotCallTheService(t *testing.T) {
+	h := newAuthHarness(t)
+	// Logout must not be called.
+	req := httptest.NewRequest(http.MethodPost, "/logout", nil)
 	rec := httptest.NewRecorder()
+	h.h.Logout(rec, req)
 
-	handler.Logout(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected status 500 when missing auth context, got %d", rec.Code)
+	if rec.Code == http.StatusOK {
+		t.Errorf("status = %d; an unauthenticated logout was treated as a success", rec.Code)
 	}
 }
 
-func TestAuthHandler_Verify_Success(t *testing.T) {
-	mockSvc := &mockAuthService{
-		verifyFunc: func(ctx context.Context, token string) error {
-			return nil
-		},
-	}
-	handler := authhandler.NewHandler(mockSvc, nil, validator.New())
+// A failed blocklist write must not be reported as a successful logout.
+func TestLogout_ServiceFailureIsNotReportedAsSuccess(t *testing.T) {
+	h := newAuthHarness(t)
+	claims := jwtpkg.Payload{RegisteredClaims: gojwt.RegisteredClaims{
+		Subject: "user-1", ExpiresAt: gojwt.NewNumericDate(time.Now().Add(time.Hour)),
+	}}
 
-	req := httptest.NewRequest(http.MethodGet, "/auth/verify?token=valid-token", nil)
+	h.svc.EXPECT().
+		Logout(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(errors.New("redis down")).
+		Times(1)
+
+	req := httptest.NewRequest(http.MethodPost, "/logout", nil)
+	req = req.WithContext(httputil.WithAuthContext(req.Context(), claims, "tok"))
 	rec := httptest.NewRecorder()
+	h.h.Logout(rec, req)
 
-	handler.Verify(rec, req)
+	if rec.Code == http.StatusOK {
+		t.Error("the user was told they were logged out while their token stays valid")
+	}
+}
+
+// ===========================================================================
+// Verify / ResendVerify / ForgotPassword / ResetPassword
+// ===========================================================================
+
+func TestVerify_ForwardsTheTokenFromTheQueryString(t *testing.T) {
+	h := newAuthHarness(t)
+
+	h.svc.EXPECT().
+		Verify(gomock.Any(), gomock.Eq("the-verify-token")).
+		Return(nil).
+		Times(1)
+
+	req := httptest.NewRequest(http.MethodGet, "/verify?token=the-verify-token", nil)
+	rec := httptest.NewRecorder()
+	h.h.Verify(rec, req)
+
 	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
+		t.Errorf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestAuthHandler_Verify_MissingToken(t *testing.T) {
-	handler := authhandler.NewHandler(&mockAuthService{}, nil, validator.New())
-	req := httptest.NewRequest(http.MethodGet, "/auth/verify", nil)
-	rec := httptest.NewRecorder()
+func TestVerify_RejectsAMissingOrInvalidToken(t *testing.T) {
+	t.Run("no token", func(t *testing.T) {
+		h := newAuthHarness(t)
+		// the service must not be reached
+		rec := httptest.NewRecorder()
+		h.h.Verify(rec, httptest.NewRequest(http.MethodGet, "/verify", nil))
+		if rec.Code == http.StatusOK {
+			t.Errorf("status = %d; an empty verification token was accepted", rec.Code)
+		}
+	})
 
-	handler.Verify(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status 400 Bad Request on missing token query, got %d", rec.Code)
+	t.Run("invalid token", func(t *testing.T) {
+		h := newAuthHarness(t)
+		h.svc.EXPECT().
+			Verify(gomock.Any(), gomock.Eq("bogus")).
+			Return(domainauth.ErrInvalidToken).
+			Times(1)
+
+		rec := httptest.NewRecorder()
+		h.h.Verify(rec, httptest.NewRequest(http.MethodGet, "/verify?token=bogus", nil))
+		if rec.Code == http.StatusOK {
+			t.Error("an invalid verification token was accepted")
+		}
+	})
+}
+
+// A password-reset request must answer identically whether or not the address
+// is registered, or it becomes an account-enumeration oracle.
+func TestForgotPassword_ResponseIsIdenticalForKnownAndUnknownAddresses(t *testing.T) {
+	capture := func(t *testing.T, svcErr error) (int, string) {
+		t.Helper()
+		h := newAuthHarness(t)
+		h.svc.EXPECT().
+			ForgotPassword(gomock.Any(), gomock.Eq("probe@example.com")).
+			Return(svcErr).
+			Times(1)
+
+		rec := httptest.NewRecorder()
+		h.h.ForgotPassword(rec, post("/forgot-password", `{"email":"probe@example.com"}`))
+		return rec.Code, rec.Body.String()
+	}
+
+	knownCode, knownBody := capture(t, nil)
+	unknownCode, unknownBody := capture(t, domainauth.ErrUserNotFound)
+
+	if knownCode != unknownCode || knownBody != unknownBody {
+		t.Errorf("the endpoint distinguishes registered from unregistered addresses:\n"+
+			"  registered:   %d %s\n  unregistered: %d %s\n"+
+			"this lets an attacker enumerate which emails hold accounts",
+			knownCode, knownBody, unknownCode, unknownBody)
 	}
 }
 
-func TestAuthHandler_Verify_InvalidToken(t *testing.T) {
-	mockSvc := &mockAuthService{
-		verifyFunc: func(ctx context.Context, token string) error {
-			return domainauth.ErrInvalidToken
-		},
-	}
-	handler := authhandler.NewHandler(mockSvc, nil, validator.New())
-
-	req := httptest.NewRequest(http.MethodGet, "/auth/verify?token=bad-token", nil)
+func TestResetPasswordPost_MismatchedConfirmationIsRejectedAtTheEdge(t *testing.T) {
+	h := newAuthHarness(t)
+	// the service must not be reached: the eqfield tag stops this at the handler
 	rec := httptest.NewRecorder()
+	h.h.ResetPasswordPost(rec, post("/reset-password",
+		`{"token":"tok","password":"newpass!","confirm_password":"different!"}`))
 
-	handler.Verify(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", rec.Code)
+	}
+}
+
+func TestResetPasswordPost_ExpiredTokenIsGone(t *testing.T) {
+	h := newAuthHarness(t)
+	h.svc.EXPECT().
+		ResetPasswordPost(gomock.Any(), gomock.Eq("tok"), gomock.Eq("newpass!"), gomock.Eq("newpass!")).
+		Return(domainauth.ErrReseterTokenFatchFailed).
+		Times(1)
+
+	rec := httptest.NewRecorder()
+	h.h.ResetPasswordPost(rec, post("/reset-password",
+		`{"token":"tok","password":"newpass!","confirm_password":"newpass!"}`))
+
 	if rec.Code != http.StatusGone {
-		t.Errorf("expected status 410 Gone on invalid token, got %d", rec.Code)
+		t.Errorf("status = %d, want 410", rec.Code)
 	}
 }
 
-func TestAuthHandler_ForgotPassword_Success(t *testing.T) {
-	mockSvc := &mockAuthService{
-		forgotPasswordFunc: func(ctx context.Context, email string) error {
-			return nil
-		},
-	}
-	handler := authhandler.NewHandler(mockSvc, nil, validator.New())
+func TestResendVerify_ForwardsTheEmail(t *testing.T) {
+	h := newAuthHarness(t)
+	h.svc.EXPECT().
+		ResendVerify(gomock.Any(), gomock.Eq("alice@example.com")).
+		Return(nil).
+		Times(1)
 
-	body, _ := json.Marshal(map[string]string{"email": "user@example.com"})
-	req := httptest.NewRequest(http.MethodPost, "/auth/forgot-password", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
+	h.h.ResendVerify(rec, post("/resend-verify", `{"email":"alice@example.com"}`))
 
-	handler.ForgotPassword(rec, req)
-	if rec.Code != http.StatusAccepted {
-		t.Errorf("expected status 202 Accepted, got %d", rec.Code)
-	}
-}
-
-func TestAuthHandler_ForgotPassword_UserNotFound(t *testing.T) {
-	mockSvc := &mockAuthService{
-		forgotPasswordFunc: func(ctx context.Context, email string) error {
-			return domainauth.ErrUserNotFound
-		},
-	}
-	handler := authhandler.NewHandler(mockSvc, nil, validator.New())
-
-	body, _ := json.Marshal(map[string]string{"email": "missing@example.com"})
-	req := httptest.NewRequest(http.MethodPost, "/auth/forgot-password", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
-
-	handler.ForgotPassword(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected status 404 Not Found, got %d", rec.Code)
-	}
-}
-
-func TestAuthHandler_ResendVerify_Success(t *testing.T) {
-	mockSvc := &mockAuthService{
-		resendVerifyFunc: func(ctx context.Context, email string) error {
-			return nil
-		},
-	}
-	handler := authhandler.NewHandler(mockSvc, nil, validator.New())
-
-	body, _ := json.Marshal(map[string]string{"email": "unverified@example.com"})
-	req := httptest.NewRequest(http.MethodPost, "/auth/verify/resend", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
-
-	handler.ResendVerify(rec, req)
-	if rec.Code != http.StatusAccepted {
-		t.Errorf("expected status 202 Accepted, got %d", rec.Code)
-	}
-}
-
-func TestAuthHandler_ResendVerify_UserNotFound(t *testing.T) {
-	mockSvc := &mockAuthService{
-		resendVerifyFunc: func(ctx context.Context, email string) error {
-			return domainauth.ErrUserNotFound
-		},
-	}
-	handler := authhandler.NewHandler(mockSvc, nil, validator.New())
-
-	body, _ := json.Marshal(map[string]string{"email": "missing@example.com"})
-	req := httptest.NewRequest(http.MethodPost, "/auth/verify/resend", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
-
-	handler.ResendVerify(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected status 404 Not Found for missing user, got %d", rec.Code)
-	}
-}
-
-func TestAuthHandler_ResetPasswordGet_Success(t *testing.T) {
-	mockSvc := &mockAuthService{
-		resetPasswordGetFunc: func(ctx context.Context, token string) (string, error) {
-			return "reset-tok-123", nil
-		},
-	}
-	handler := authhandler.NewHandler(mockSvc, nil, validator.New())
-
-	req := httptest.NewRequest(http.MethodGet, "/auth/reset?token=reset-tok-123", nil)
-	rec := httptest.NewRecorder()
-
-	handler.ResetPasswordGet(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
-	}
-}
-
-func TestAuthHandler_ResetPasswordGet_NotFound(t *testing.T) {
-	mockSvc := &mockAuthService{
-		resetPasswordGetFunc: func(ctx context.Context, token string) (string, error) {
-			return "", domainauth.ErrReseterTokenFatchFailed
-		},
-	}
-	handler := authhandler.NewHandler(mockSvc, nil, validator.New())
-
-	req := httptest.NewRequest(http.MethodGet, "/auth/reset?token=invalid-tok", nil)
-	rec := httptest.NewRecorder()
-
-	handler.ResetPasswordGet(rec, req)
-	if rec.Code != http.StatusGone {
-		t.Errorf("expected status 410 Gone, got %d", rec.Code)
-	}
-}
-
-func TestAuthHandler_ResetPasswordPost_Success(t *testing.T) {
-	mockSvc := &mockAuthService{
-		resetPasswordPostFunc: func(ctx context.Context, token string, pass string, confirmPass string) error {
-			return nil
-		},
-	}
-	handler := authhandler.NewHandler(mockSvc, nil, validator.New())
-
-	body, _ := json.Marshal(map[string]string{
-		"token":            "valid-reset-token",
-		"password":         "NewPass123!",
-		"confirm_password": "NewPass123!",
-	})
-	req := httptest.NewRequest(http.MethodPost, "/auth/reset", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
-
-	handler.ResetPasswordPost(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200 OK, got %d", rec.Code)
-	}
-}
-
-func TestAuthHandler_ResetPasswordPost_Mismatch(t *testing.T) {
-	handler := authhandler.NewHandler(&mockAuthService{}, nil, validator.New())
-
-	body, _ := json.Marshal(map[string]string{
-		"token":            "valid-token",
-		"password":         "Password123!",
-		"confirm_password": "PasswordDifferent!",
-	})
-	req := httptest.NewRequest(http.MethodPost, "/auth/reset", bytes.NewReader(body))
-	rec := httptest.NewRecorder()
-
-	handler.ResetPasswordPost(rec, req)
-	if rec.Code != 422 {
-		t.Errorf("expected status 422 Unprocessable Entity, got %d", rec.Code)
+	if rec.Code != http.StatusOK && rec.Code != http.StatusAccepted {
+		t.Errorf("status = %d, want 200 or 202; body = %s", rec.Code, rec.Body.String())
 	}
 }

@@ -30,6 +30,7 @@ type User struct {
 	DeletedAt    *time.Time `json:"deleted_at"    db:"deleted_at"`
 }
 
+//go:generate mockgen -source=user.go -destination=mocks/mock_auth_repository.go -package=mocks
 type AuthRepository interface {
 	GetByEmail(ctx context.Context, email string) (User, error)
 	GetById(ctx context.Context, id uuid.UUID) (User, error)
@@ -38,6 +39,7 @@ type AuthRepository interface {
 	DeleteByEmail(ctx context.Context, email string) error
 	UpdatePassword(ctx context.Context, id uuid.UUID, passHash string) error
 	SetVerified(ctx context.Context, userId uuid.UUID) error
+	// To-Do
 	Upgrade(ctx context.Context, id string, user User) (User, error)
 	// CreateDemo(user AnonUser) (AnonUser, error)
 }

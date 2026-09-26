@@ -21,31 +21,32 @@ func NewGifRepository(db *sqlx.DB) media.GifRepository {
 func (r *gifRepo) Create(ctx context.Context, gif media.Gif) error {
 	db := getDBFromCtx(ctx, r.db)
 	query := `insert into 
-		gifs(user_id, key, thumbnail_url, url, name)
-		values(:user_id, :key, :thumbnail_url, :url, :name)
+		gifs(user_id, key, thumbnail_url, url, name, file_size_bytes, width, height, duration_seconds, is_public)
+		values(:user_id, :key, :thumbnail_url, :url, :name, :file_size_bytes, :width, :height, :duration_seconds, :is_public)
 	`
 
 	_, err := sqlx.NamedExecContext(ctx, db, query, gif)
 	return err
 }
 
-func (r *gifRepo) Get(ctx context.Context, user_id string, status string) ([]media.GifResponse, error) {
+func (r *gifRepo) Get(ctx context.Context, user_id string, status string, limit int, offset int) ([]media.GifResponse, error) {
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
-			name, thumbnail_url, url, key, status, persist, download, created_at
+			name, thumbnail_url, url, key, status, persist, download, file_size_bytes, width, height, duration_seconds, is_public, created_at, updated_at
 		from
 			gifs
 		where user_id = $1`
 
 	var val []media.GifResponse
 	if status != "all" {
-		query += ` and status = $2`
-		if err := sqlx.SelectContext(ctx, db, &val, query, user_id, status); err != nil {
+		query += ` and status = $2 order by created_at desc limit $3 offset $4`
+		if err := sqlx.SelectContext(ctx, db, &val, query, user_id, status, limit, offset); err != nil {
 			return []media.GifResponse{}, err
 		}
 	} else {
-		if err := sqlx.SelectContext(ctx, db, &val, query, user_id); err != nil {
+		query += ` order by created_at desc limit $2 offset $3`
+		if err := sqlx.SelectContext(ctx, db, &val, query, user_id, limit, offset); err != nil {
 			return []media.GifResponse{}, err
 		}
 	}
@@ -66,12 +67,12 @@ func (r *gifRepo) GetByKey(ctx context.Context, key string, forUpdate bool) (med
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
-			name, thumbnail_url, url,key, status, persist, download, created_at, updated_at
+			name, thumbnail_url, url, key, status, persist, download, file_size_bytes, width, height, duration_seconds, is_public, created_at, updated_at
 		from
 			gifs
 		where key = $1`
 	if forUpdate == true {
-		query += "for update"
+		query += " for update"
 	}
 	var val media.GifResponse
 	if err := sqlx.GetContext(ctx, db, &val, query, key); err != nil {
@@ -84,7 +85,7 @@ func (r *gifRepo) GetRecents(ctx context.Context, user_id string) ([]media.GifRe
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
-			name, thumbnail_url, url,key, status, persist, download, created_at
+			name, thumbnail_url, url, key, status, persist, download, file_size_bytes, width, height, duration_seconds, is_public, created_at, updated_at
 		from
 			gifs
 		where user_id = $1
@@ -110,16 +111,17 @@ func (r *gifRepo) Update(ctx context.Context, key string, req media.GifUpdateReq
 	query := `
 		update gifs
 		set
-			name    = COALESCE($1, name),
-			status  = COALESCE($2, status),
-			persist = COALESCE($3, persist),
+			name       = COALESCE($1, name),
+			status     = COALESCE($2, status),
+			persist    = COALESCE($3, persist),
+			is_public  = COALESCE($4, is_public),
 			updated_at = NOW()
-		where key = $4
-		returning key, name, status, persist, url, thumbnail_url, download, created_at, updated_at
+		where key = $5
+		returning key, name, status, persist, url, thumbnail_url, download, file_size_bytes, width, height, duration_seconds, is_public, created_at, updated_at
 	`
 
 	var resp media.GifResponse
-	if err := sqlx.GetContext(ctx, db, &resp, query, req.Name, req.Status, req.Persist, key); err != nil {
+	if err := sqlx.GetContext(ctx, db, &resp, query, req.Name, req.Status, req.Persist, req.IsPublic, key); err != nil {
 		return media.GifResponse{}, err
 	}
 	return resp, nil
@@ -127,8 +129,16 @@ func (r *gifRepo) Update(ctx context.Context, key string, req media.GifUpdateReq
 
 func (r *gifRepo) SaveRecent(ctx context.Context, key string) error {
 	db := getDBFromCtx(ctx, r.db)
-	_ = db
-	return nil
+	query := `UPDATE gifs SET persist = TRUE, updated_at = NOW() WHERE key = $1`
+	_, err := db.ExecContext(ctx, query, key)
+	return err
+}
+
+func (r *gifRepo) IncrementDownload(ctx context.Context, key string) error {
+	db := getDBFromCtx(ctx, r.db)
+	query := `UPDATE gifs SET download = download + 1, updated_at = NOW() WHERE key = $1`
+	_, err := db.ExecContext(ctx, query, key)
+	return err
 }
 
 type lastVideoRepo struct {
@@ -147,12 +157,14 @@ func (l *lastVideoRepo) Create(ctx context.Context, upload media.LastUpload) err
         VALUES
             (:user_id, :file_key, :file_name, :content_type, :size_bytes, :duration_sec, :thumbnail_url, :uploaded_at, NOW())
         ON CONFLICT (user_id) DO UPDATE SET
-            file_key     = EXCLUDED.file_key,
-            file_name    = EXCLUDED.file_name,
-            content_type = EXCLUDED.content_type,
-            size_bytes   = EXCLUDED.size_bytes,
-            uploaded_at  = EXCLUDED.uploaded_at,
-            updated_at   = NOW()
+            file_key      = EXCLUDED.file_key,
+            file_name     = EXCLUDED.file_name,
+            content_type  = EXCLUDED.content_type,
+            size_bytes    = EXCLUDED.size_bytes,
+            thumbnail_url = EXCLUDED.thumbnail_url,
+            duration_sec  = EXCLUDED.duration_sec,
+            uploaded_at   = EXCLUDED.uploaded_at,
+            updated_at    = NOW()
     `
 	_, err := sqlx.NamedExecContext(ctx, db, query, upload)
 	if err != nil {

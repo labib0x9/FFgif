@@ -29,6 +29,14 @@ func (t *txManager) With(ctx context.Context, fn func(ctx context.Context) (any,
 	}
 
 	txCtx := context.WithValue(ctx, txKey{}, tx)
+
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback()
+			panic(p)
+		}
+	}()
+
 	result, err := fn(txCtx)
 	if err != nil {
 		tx.Rollback()
@@ -46,6 +54,14 @@ func (t *txManager) WithRC(ctx context.Context, fn func(ctx context.Context) (an
 	}
 
 	txCtx := context.WithValue(ctx, txKey{}, tx)
+
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback()
+			panic(p)
+		}
+	}()
+
 	result, err := fn(txCtx)
 	if err != nil {
 		tx.Rollback()

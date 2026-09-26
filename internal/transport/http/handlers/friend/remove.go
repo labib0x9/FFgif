@@ -1,0 +1,46 @@
+package friend
+
+import (
+	"errors"
+	"log/slog"
+	"net/http"
+
+	"github.com/labib0x9/ffgif/internal/domain/auth"
+	"github.com/labib0x9/ffgif/internal/domain/friend"
+	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
+)
+
+func (h *Handler) Remove(w http.ResponseWriter, r *http.Request) {
+	reqId := httputil.GetRequestID(r.Context())
+	userId := httputil.GetUserId(r.Context())
+	if userId == "" {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="ffgif", error="invalid_token", error_description="user id not found"`)
+		httputil.SendError(w, auth.AUTH_INVALID_CREDENTIALS, "unauthenticated", http.StatusUnauthorized)
+		slog.Error("friend handler - Remove() = user_id not found", "request_id", reqId, "err", "user_id not found")
+		return
+	}
+
+	id := r.PathValue("id")
+	if id == "" {
+		httputil.SendError(w, httputil.BAD_REQUEST, "friendship id is missing", http.StatusBadRequest)
+		slog.Warn("friend handler - Remove() = friendship id missing", "request_id", reqId, "error", "friendship id missing")
+		return
+	}
+
+	if err := h.srv.Remove(r.Context(), id, userId); err != nil {
+		switch {
+		case errors.Is(err, friend.ErrNotFound):
+			httputil.SendError(w, "FRIENDSHIP_NOT_FOUND", "friendship not found", http.StatusNotFound)
+		case errors.Is(err, friend.ErrNotAuthorized):
+			httputil.SendError(w, "FRIENDSHIP_FORBIDDEN", "forbidden", http.StatusForbidden)
+		default:
+			httputil.SendError(w, httputil.INTERNAL_ERROR, "internal server error", http.StatusInternalServerError)
+		}
+		slog.Error("friend handler - Remove()", "request_id", reqId, "err", err)
+		return
+	}
+
+	httputil.SendJson(w, map[string]string{
+		"msg": "removed",
+	}, http.StatusOK)
+}

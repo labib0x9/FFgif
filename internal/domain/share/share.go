@@ -9,6 +9,7 @@ import (
 var (
 	ErrNotFound      = errors.New("not found")
 	ErrNotAuthorized = errors.New("not authorized")
+	ErrInvalidExpiry = errors.New("expiry must be in the future")
 )
 
 type Share struct {
@@ -48,6 +49,7 @@ type GifResponse struct {
 	ExpiresAt    *time.Time `json:"expires_at" db:"expires_at"`
 }
 
+//go:generate mockgen -source=share.go -destination=mocks/mock_share_repository.go -package=mocks
 type ShareRepository interface {
 	Create(ctx context.Context, gif Share) error
 	CreateByToken(ctx context.Context, gif ShareByToken) error

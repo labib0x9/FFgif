@@ -1,0 +1,1242 @@
+openapi: 3.0.3
+info:
+  title: FFgif API
+  description: High-performance video-to-GIF conversion and sharing service built with Go, PostgreSQL, MinIO, Redis, RabbitMQ, and FFmpeg.
+  version: 1.0.0
+servers:
+  - url: http://api:8080
+    description: Docker network (used by ZAP scan)
+  - url: http://localhost:8080
+    description: Local dev
+
+paths:
+  # ---------------------------------------------------------------------------
+  # Authentication & Registration
+  # ---------------------------------------------------------------------------
+  /auth/signup:
+    post:
+      summary: Register a new user account
+      description: Creates a user record, initializes default quotas, and queues a verification email.
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, fullname, email, password, confirm_password]
+              properties:
+                username:
+                  type: string
+                  minLength: 4
+                  maxLength: 20
+                  example: jandoe
+                fullname:
+                  type: string
+                  minLength: 4
+                  maxLength: 100
+                  example: Jane Doe
+                email:
+                  type: string
+                  format: email
+                  maxLength: 50
+                  example: jane@example.com
+                password:
+                  type: string
+                  minLength: 5
+                  maxLength: 70
+                  example: P@ssw0rd!
+                confirm_password:
+                  type: string
+                  example: P@ssw0rd!
+      responses:
+        '201':
+          description: User created successfully.
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /users/38b9299e-7986-4489-9cd6-f63cc47de283
+          content:
+            application/json:
+              schema:
+                type: string
+                example: user created
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: User already exists with this email.
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/verify:
+    get:
+      summary: Verify user account email
+      description: Consumes the emailed verification token and marks the account as verified.
+      tags:
+        - Auth
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Account verified successfully.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Token invalid or expired.
+
+  /auth/verify/resend:
+    post:
+      summary: Resend account verification email
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '202':
+          description: Verification email dispatched if unverified.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/login:
+    post:
+      summary: Authenticate user
+      description: Issues a signed JWT upon valid credentials and verified status.
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  token:
+                    type: string
+        '401':
+          description: Invalid credentials or unverified account.
+
+  /auth/logout:
+    post:
+      summary: Logout user
+      description: Revokes the caller's JWT token by adding its JTI to the Redis blocklist.
+      tags:
+        - Auth
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Logged out successfully.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/forgot-password:
+    post:
+      summary: Request password reset email
+      description: Dispatches a password reset email without disclosing account existence.
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '202':
+          description: Accepted; email sent if registered and verified.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/reset:
+    get:
+      summary: Check password reset token validity
+      tags:
+        - Auth
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Token is valid.
+        '404':
+          description: Token expired or invalid.
+    post:
+      summary: Complete password reset
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password, confirm_password]
+              properties:
+                token:
+                  type: string
+                password:
+                  type: string
+                  minLength: 5
+                confirm_password:
+                  type: string
+      responses:
+        '200':
+          description: Password reset successfully.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  # ---------------------------------------------------------------------------
+  # User Profile & Quotas
+  # ---------------------------------------------------------------------------
+  /users/me/profile:
+    get:
+      summary: Get authenticated user's profile
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      summary: Update authenticated user's profile
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: If-Match
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullname:
+                  type: string
+                profile_pic:
+                  type: string
+      responses:
+        '200':
+          description: Profile updated.
+        '412':
+          description: Precondition failed (stale ETag).
+
+  /users/{userId}/profile:
+    get:
+      summary: Get user profile by user ID
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '404':
+          description: User not found.
+
+  /users/me/quota:
+    get:
+      summary: Get storage bytes and GIF count quota
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserQuota'
+
+  /users/me/change-password:
+    patch:
+      summary: Change password for authenticated user
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, password, confirm_password]
+              properties:
+                current_password:
+                  type: string
+                password:
+                  type: string
+                  minLength: 5
+                confirm_password:
+                  type: string
+      responses:
+        '200':
+          description: Password updated.
+        '401':
+          description: Current password incorrect.
+
+  /users/me:
+    delete:
+      summary: Delete user account
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Account deleted.
+
+  # ---------------------------------------------------------------------------
+  # Friendships
+  # ---------------------------------------------------------------------------
+  /friends/requests:
+    post:
+      summary: Send friend request
+      tags:
+        - Friends
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [addressee_id]
+              properties:
+                addressee_id:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Friend request sent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Friendship'
+        '409':
+          description: Friendship already exists.
+        '422':
+          description: Cannot friend self.
+    get:
+      summary: List incoming pending friend requests
+      tags:
+        - Friends
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FriendResponse'
+
+  /friends/requests/{id}:
+    patch:
+      summary: Accept friend request
+      tags:
+        - Friends
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Friend request accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Friendship'
+    delete:
+      summary: Reject friend request
+      tags:
+        - Friends
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Friend request rejected.
+
+  /friends:
+    get:
+      summary: List accepted friends
+      tags:
+        - Friends
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FriendResponse'
+
+  /friends/{id}:
+    delete:
+      summary: Remove friend
+      tags:
+        - Friends
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Friend removed.
+
+  # ---------------------------------------------------------------------------
+  # Media Uploads & GIF Conversions
+  # ---------------------------------------------------------------------------
+  /uploads:
+    post:
+      summary: Request presigned upload URL for raw video
+      tags:
+        - Media
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: Upload URL issued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_key:
+                    type: string
+                  url:
+                    type: string
+                    format: uri
+
+  /uploads/{key}/status:
+    get:
+      summary: Check status of raw video upload
+      tags:
+        - Media
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [uploading, ready, failed]
+
+  /uploads/{key}/stream:
+    get:
+      summary: Get streaming URL for raw uploaded video
+      tags:
+        - Media
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  presigned_url:
+                    type: string
+                  expire_in:
+                    type: integer
+
+  /uploads/last:
+    get:
+      summary: Get metadata of user's most recent video upload
+      tags:
+        - Media
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  user_id:
+                    type: string
+                    format: uuid
+                  file_key:
+                    type: string
+                  file_name:
+                    type: string
+                  content_type:
+                    type: string
+                  size_bytes:
+                    type: integer
+                  duration_sec:
+                    type: number
+                  thumbnail_url:
+                    type: string
+                  uploaded_at:
+                    type: string
+                    format: date-time
+        '404':
+          description: No previous upload found.
+
+  /jobs:
+    post:
+      summary: Queue video-to-GIF conversion job
+      tags:
+        - Media
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [upload_key, start_time, end_time, width, fps]
+              properties:
+                upload_key:
+                  type: string
+                start_time:
+                  type: number
+                  minimum: 0
+                  example: 0.0
+                end_time:
+                  type: number
+                  minimum: 0.1
+                  example: 4.5
+                width:
+                  type: integer
+                  minimum: 100
+                  maximum: 1920
+                  example: 640
+                fps:
+                  type: integer
+                  minimum: 1
+                  maximum: 30
+                  example: 24
+                loop:
+                  type: boolean
+                  default: true
+      responses:
+        '202':
+          description: Conversion job accepted.
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /jobs/550e8400-e29b-41d4-a716-446655440000/status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                  status:
+                    type: string
+                    example: queued
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /jobs/{jobId}/status:
+    get:
+      summary: Poll conversion job status
+      tags:
+        - Media
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: jobId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [queued, processing, done, failed]
+
+  # ---------------------------------------------------------------------------
+  # GIFs Management
+  # ---------------------------------------------------------------------------
+  /gifs/me:
+    get:
+      summary: List authenticated user's converted GIFs
+      tags:
+        - Media
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            default: all
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Gif'
+
+  /gifs/me/recents:
+    get:
+      summary: List authenticated user's recently converted temporary GIFs
+      tags:
+        - Media
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Gif'
+
+  /gifs/user/{userId}:
+    get:
+      summary: List GIFs owned by a specific user (public or shared)
+      tags:
+        - Media
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: status
+          schema:
+            type: string
+            default: all
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Gif'
+
+  /gifs/me/{key}:
+    get:
+      summary: Get GIF details by key
+      tags:
+        - Media
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Gif'
+    patch:
+      summary: Update GIF metadata (rename, public flag)
+      tags:
+        - Media
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+        - in: header
+          name: If-Match
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                is_public:
+                  type: boolean
+      responses:
+        '200':
+          description: GIF updated.
+        '412':
+          description: Precondition failed.
+    delete:
+      summary: Delete GIF
+      tags:
+        - Media
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: GIF deleted.
+
+  /gifs/me/{key}/download:
+    get:
+      summary: Get presigned download URL for a GIF
+      tags:
+        - Media
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+
+  /gifs/me/{key}/thumbnail:
+    get:
+      summary: Get presigned thumbnail URL for a GIF
+      tags:
+        - Media
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+
+  /gifs/me/recents/{key}/save:
+    post:
+      summary: Persist a recent temporary GIF to permanent storage
+      tags:
+        - Media
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: GIF persisted successfully.
+
+  # ---------------------------------------------------------------------------
+  # Sharing (Account & Public Token)
+  # ---------------------------------------------------------------------------
+  /gifs/me/{key}/shares:
+    post:
+      summary: Share a GIF with a registered user by email
+      tags:
+        - Share
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shared_with, expire_at]
+              properties:
+                shared_with:
+                  type: string
+                  format: email
+                expire_at:
+                  type: string
+                  format: date-time
+      responses:
+        '201':
+          description: GIF shared.
+          headers:
+            Location:
+              schema:
+                type: string
+
+  /gifs/me/shares:
+    get:
+      summary: List GIFs shared with or by the authenticated user
+      tags:
+        - Share
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ShareGifResponse'
+
+  /gifs/me/{key}/shares/{shareWithId}:
+    delete:
+      summary: Revoke GIF share
+      tags:
+        - Share
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: shareWithId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Share revoked.
+
+  /s:
+    post:
+      summary: Create public tokenized share link
+      description: Generates an anonymous share token and sends a notification email to recipient.
+      tags:
+        - Share
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [gif_key, email, expire_at]
+              properties:
+                gif_key:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                expire_at:
+                  type: string
+                  format: date-time
+      responses:
+        '201':
+          description: Token share created.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+
+  /s/{token}:
+    get:
+      summary: View publicly shared GIF by token
+      tags:
+        - Share
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GifTokenResponse'
+        '404':
+          description: Token not found or expired.
+
+  /s/{token}/download:
+    get:
+      summary: Download publicly shared GIF by token
+      tags:
+        - Share
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  download_url:
+                    type: string
+        '404':
+          description: Token not found or expired.
+
+  # ---------------------------------------------------------------------------
+  # System
+  # ---------------------------------------------------------------------------
+  /health:
+    get:
+      summary: Health check endpoint
+      tags:
+        - System
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        fullname:
+          type: string
+        email:
+          type: string
+        profile_pic:
+          type: string
+        role:
+          type: string
+
+    UserQuota:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        total_bytes:
+          type: integer
+          description: Current total storage used in bytes
+        used_bytes:
+          type: integer
+        gif_count:
+          type: integer
+          description: Total number of GIFs owned
+        max_gifs:
+          type: integer
+
+    Gif:
+      type: object
+      properties:
+        id:
+          type: integer
+        key:
+          type: string
+        name:
+          type: string
+        user_id:
+          type: string
+          format: uuid
+        url:
+          type: string
+        thumbnail_url:
+          type: string
+        file_size_bytes:
+          type: integer
+        width:
+          type: integer
+        height:
+          type: integer
+        duration_seconds:
+          type: number
+        is_public:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    Friendship:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        requester_id:
+          type: string
+          format: uuid
+        addressee_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, accepted, blocked]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    FriendResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        fullname:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ShareGifResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        url:
+          type: string
+        thumbnail_url:
+          type: string
+        gif_key:
+          type: string
+        owner_id:
+          type: string
+          format: uuid
+        shared_with:
+          type: string
+          format: uuid
+        expires_at:
+          type: string
+          format: date-time
+
+    GifTokenResponse:
+      type: object
+      properties:
+        gif_key:
+          type: string
+        name:
+          type: string
+        url:
+          type: string
+        thumbnail_url:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+  responses:
+    BadRequest:
+      description: Bad request or malformed JSON.
+    Unauthorized:
+      description: Missing or invalid authentication token.
+    ValidationError:
+      description: Struct validation failed for input parameters.
+    RateLimited:
+      description: Too many requests. Wait before retrying.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            description: Seconds to wait before retry.

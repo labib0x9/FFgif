@@ -39,6 +39,7 @@ type StreamResult struct {
 	ExpireIn     int    `json:"expires_in"`
 }
 
+//go:generate mockgen -source=storage.go -destination=mocks/mock_storage_repository.go -package=mocks
 type StorageRepository interface {
 	Create(ctx context.Context, key string, expirey time.Duration) (*url.URL, error)
 	Download(ctx context.Context, key string, expirey time.Duration) (*url.URL, error)
@@ -47,6 +48,7 @@ type StorageRepository interface {
 	DownloadLocal(ctx context.Context, key, destPath string) error
 	DownloadLocalRawVideo(ctx context.Context, key, destPath string) error
 	Upload(ctx context.Context, key, filePath, contentType string) error
+	Delete(ctx context.Context, key string) error
 	GetStreamURL(ctx context.Context, key string, expiry time.Duration) (*url.URL, error)
 	GetThumbnailURL(ctx context.Context, key string) (*url.URL, error)
 }

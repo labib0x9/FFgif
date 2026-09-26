@@ -31,6 +31,7 @@ type ProfileUpdateRequest struct {
 	Email      *string `json:"email"         db:"email"`
 }
 
+//go:generate mockgen -source=profile.go -destination=mocks/mock_user_repository.go -package=mocks
 type UserRepository interface {
 	GetProfile(ctx context.Context, userId string, forUpdate bool) (ProfileResponse, error)
 	SetProfile(ctx context.Context, profile Profile) error

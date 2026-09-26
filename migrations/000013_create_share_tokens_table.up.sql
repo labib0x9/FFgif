@@ -6,3 +6,5 @@ CREATE TABLE IF NOT EXISTS share_tokens (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (gif_key, email)
 );
+
+CREATE INDEX IF NOT EXISTS idx_share_tokens_gif_key ON share_tokens(gif_key);
