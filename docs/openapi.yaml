@@ -4,8 +4,10 @@ info:
   description: High-performance video-to-GIF conversion and sharing service built with Go, PostgreSQL, MinIO, Redis, RabbitMQ, and FFmpeg.
   version: 1.0.0
 servers:
-  - url: http://127.0.0.1:8080
-    description: Local development server
+  - url: http://api:8080
+    description: Docker network (used by ZAP scan)
+  - url: http://localhost:8080
+    description: Local dev
 
 paths:
   # ---------------------------------------------------------------------------

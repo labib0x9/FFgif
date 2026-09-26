@@ -270,55 +270,51 @@ sequenceDiagram
 
 - Docker
 
-### Environment
+### Environment Variables
 
 Copy `.env.example` to `.env` and fill in your values:
 
-```env
-VERSION=                        # Project version
-SERVICE_NAME=                   # Project name
-ADDR=
-PORT=
-
-JWT_SECRET=                     # Auth
-HASH_PEPPER=
-BCRYPT_COST=
-
-PG_USER=                        # PostgreSql
-PG_PASSWORD=
-PG_PORT=
-PG_ADDRESS=
-PG_NAME=
-PG_SSLMODE=
-
-PG_SUPERUSER=
-PG_SUPERDB=
-
-REDIS_ADDR=                     # Redis
-
-EMAIL=                          # Mailtrap
-MAILTRAP_USERNAME=
-MAILTRAP_PASSWORD=
-
-MINIO_ADDR=                     # Minio
-MINIO_ROOT_USER=
-MINIO_ROOT_PASSWORD=
-MINIO_TEMP_BUCKET=              # raw upload bucket
-MINIO_PERSIST_BUCKET=           # mp4 converted storage bucket
-MINIO_TEMP_BUCKET_TTL_DAYS=     # time to delete raw uploaded file
-MINIO_API_CORS_ALLOW_ORIGIN=    # minio cors
-MINIO_NOTIFY_EXCHANGE=          # rabbitmq exhange name where minio will send notification
-MINIO_PUBLIC_ENDPOINT=          # rabbitmq public endpoint where client requests
-
-RMQ_ADDR=                       # Rabbitmq
-RMQ_USER=
-RMQ_PASS=
-
-SMTP_HOST=                      # SMTP for sending email
-SMTP_PORT=
-SMTP_USER=
-SMTP_PASS=
+```bash
+cp .env.example .env
 ```
+
+| Variable | Default / Example | Required | Description |
+|---|---|---|---|
+| `VERSION` | `1.0.0` | Yes | Application release version |
+| `SERVICE_NAME` | `ffgif` | Yes | Service identifier name |
+| `ADDR` | `0.0.0.0` | Yes | Server bind address |
+| `PORT` | `8080` | Yes | HTTP server listening port |
+| `JWT_SECRET` | `secret-key` | Yes | Secret key used for signing & validating JWT tokens |
+| `HASH_PEPPER` | `pepper-string` | Yes | Secret pepper added before password hashing |
+| `BCRYPT_COST` | `12` | Yes | Work factor / cost for bcrypt hashing |
+| `PG_ADDRESS` | `postgres` | Yes | PostgreSQL host address |
+| `PG_PORT` | `5432` | Yes | PostgreSQL port |
+| `PG_USER` | `ffgif` | Yes | PostgreSQL application username |
+| `PG_PASSWORD` | `secret` | Yes | PostgreSQL application password |
+| `PG_NAME` | `ffgif` | Yes | PostgreSQL database name |
+| `PG_SSLMODE` | `disable` | Yes | PostgreSQL SSL connection mode |
+| `PG_SUPERUSER` | `postgres` | Yes | Admin username for schema initialization and `pg_cron` |
+| `PG_SUPERDB` | `postgres` | Yes | Superuser default database name |
+| `REDIS_ADDR` | `redis:6379` | Yes | Redis host and port for token blocklist, rate limiting & cache |
+| `RMQ_ADDR` | `rabbitmq:5672` | Yes | RabbitMQ broker address |
+| `RMQ_USER` | `guest` | Yes | RabbitMQ username |
+| `RMQ_PASS` | `guest` | Yes | RabbitMQ password |
+| `MINIO_ADDR` | `minio:9000` | Yes | Internal MinIO S3 API address |
+| `MINIO_ROOT_USER` | `minioadmin` | Yes | MinIO root administrator username |
+| `MINIO_ROOT_PASSWORD` | `minioadmin` | Yes | MinIO root administrator password |
+| `MINIO_TEMP_BUCKET` | `uploads` | Yes | S3 bucket for incoming video uploads and transient GIFs |
+| `MINIO_PERSIST_BUCKET`| `storage` | Yes | S3 bucket for permanently saved user GIFs and thumbnails |
+| `MINIO_TEMP_BUCKET_TTL_DAYS` | `1` | No | Automated lifecycle eviction period (days) for temp bucket |
+| `MINIO_API_CORS_ALLOW_ORIGIN`| `http://localhost:8080` | Yes | Allowed origins for direct browser S3 uploads |
+| `MINIO_NOTIFY_EXCHANGE` | `notify.upload.exchange` | Yes | RabbitMQ fanout exchange for MinIO `s3:ObjectCreated` events |
+| `MINIO_PUBLIC_ENDPOINT` | `127.0.0.1:9000` | Yes | Publicly reachable MinIO host for presigned URLs |
+| `EMAIL` | `verify@ffgif.com` | Yes | Sender email address for system notifications |
+| `SMTP_HOST` | `smtp.gmail.com` | Yes | SMTP server hostname |
+| `SMTP_PORT` | `587` | Yes | SMTP server port |
+| `SMTP_USER` | `ffgif@gmail.com` | Yes | SMTP authentication username |
+| `SMTP_PASS` | `app-password` | Yes | SMTP authentication password |
+| `MAILTRAP_USERNAME` | `mailtrap-user` | No | Mailtrap sandbox username (alternative to SMTP) |
+| `MAILTRAP_PASSWORD` | `mailtrap-pass` | No | Mailtrap sandbox password |
 
 ### Build And Run
 
@@ -375,7 +371,7 @@ Runs domain, application, transport, and utility unit tests using mocks:
 
 ```bash
 # Run all unit and package tests
-go test ./internal/... ./pkg/...
+go test -count=1 ./internal/... ./pkg/...
 
 # Run with verbose output and coverage
 go test -v -cover ./internal/... ./pkg/...
@@ -385,14 +381,6 @@ go test -v ./internal/transport/http/...
 go test -v ./internal/app/auth/...
 go test -v ./internal/app/media/...
 go test -v ./internal/infra/ffmpeg/...
-```
-
-### Architecture Tests
-
-Validates clean architecture package boundaries and import rules:
-
-```bash
-go test -v ./tests/architecture/...
 ```
 
 ### Integration Tests (Docker Required)
@@ -407,91 +395,67 @@ docker compose up -d
 go test -v ./tests/integration/...
 ```
 
+### ZAP Security Scan
+
+```
+# Make sure your docker services are running
+docker compose up -d
+
+# Run the ZAP API scan
+./tests/zap/run_zap.sh
+```
+
 ---
 
-## API Reference
+## 🌐 API Overview
 
-### Auth
+Base URL: `http://localhost:8080`
 
-```
-POST   /auth/signup
-POST   /auth/login
-POST   /auth/logout                     (auth required)
-GET    /auth/verify?token=
-POST   /auth/verify/resend
-POST   /auth/forgot-password
-GET    /auth/reset?token=
-POST   /auth/reset
-```
-
-### User
-
-```
-GET    /users/me/profile                (auth required)
-PATCH  /users/me/profile                (auth required)
-GET    /users/{userId}/profile
-GET    /users/me/quota                  (auth required)
-PATCH  /users/me/change-password        (auth required)
-DELETE /users/me                        (auth required)
-```
-
-### Friends
-
-```
-POST   /friends/requests                send friend request (auth required)
-GET    /friends/requests                list incoming friend requests (auth required)
-PATCH  /friends/requests/{id}           accept friend request (auth required)
-DELETE /friends/requests/{id}           reject friend request (auth required)
-GET    /friends                         list all accepted friends (auth required)
-DELETE /friends/{id}                    remove friend (auth required)
-```
-
-### Uploads
-
-```
-POST   /uploads                         presigned URL generation (auth required)
-GET    /uploads/{key}/status            poll upload status (auth required)
-GET    /uploads/{key}/stream            presigned URL streaming (auth required)
-GET    /uploads/last                    last uploaded video metadata (auth required)
-```
-
-### Convert & Jobs
-
-```
-POST   /jobs                            enqueue conversion job (auth required)
-GET    /jobs/{jobId}/status             poll job status (auth required)
-```
-
-### GIFs
-
-```
-GET    /gifs/me                         list my GIFs (auth required)
-GET    /gifs/me/recents                 list recently converted GIFs (auth required)
-GET    /gifs/user/{userId}              list public GIFs of a user (auth required)
-GET    /gifs/me/{key}                   get GIF metadata (auth required)
-GET    /gifs/me/{key}/download          presigned download URL (auth required)
-GET    /gifs/me/{key}/thumbnail         presigned thumbnail URL (auth required)
-PATCH  /gifs/me/{key}                   update GIF metadata / visibility (auth required)
-DELETE /gifs/me/{key}                   delete GIF (auth required)
-POST   /gifs/me/recents/{key}/save      persist temporary recent GIF (auth required)
-```
-
-### Shares
-
-```
-POST   /gifs/me/{key}/shares                    share a GIF with a user (auth required)
-GET    /gifs/me/shares                          list all GIFs shared by / with user (auth required)
-DELETE /gifs/me/{key}/shares/{shareWithId}      revoke shared access for a user (auth required)
-POST   /s                                       create public share token (auth required)
-GET    /s/{token}                               view public shared GIF (auth required)
-GET    /s/{token}/download                      download public shared GIF (auth required)
-```
-
-### System
-
-```
-GET    /health                          health check endpoint
-```
+| Endpoint | Method | Role | Description |
+|---|---|---|---|
+| `/auth/signup` | `POST` | Public | Registers new user and queues email verification token |
+| `/auth/login` | `POST` | Public | Authenticates credentials and returns JWT access token |
+| `/auth/logout` | `POST` | Authenticated | Logs out user and blocklists JWT token in Redis |
+| `/auth/verify` | `GET` | Public | Verifies user email address via token query parameter (`?token=`) |
+| `/auth/verify/resend` | `POST` | Public | Resends account verification email |
+| `/auth/forgot-password` | `POST` | Public | Triggers password reset email with secure token |
+| `/auth/reset` | `GET` | Public | Validates password reset token (`?token=`) |
+| `/auth/reset` | `POST` | Public | Sets new account password with verified reset token |
+| `/users/me/profile` | `GET` | Authenticated | Retrieves current authenticated user profile |
+| `/users/me/profile` | `PATCH` | Authenticated | Updates user profile details (fullname, avatar) |
+| `/users/:userId/profile` | `GET` | Authenticated | Retrieves public profile information of another user |
+| `/users/me/quota` | `GET` | Authenticated | Returns current conversion quotas and tier limits |
+| `/users/me/change-password`| `PATCH` | Authenticated | Updates password using old and new credentials |
+| `/users/me` | `DELETE` | Authenticated | Permanently deletes user account and all stored media |
+| `/friends` | `GET` | Authenticated | Lists all accepted friends for the user |
+| `/friends/requests` | `POST` | Authenticated | Sends a new friend request to target user |
+| `/friends/requests` | `GET` | Authenticated | Lists pending incoming friend requests |
+| `/friends/requests/:id` | `PATCH` | Authenticated | Accepts an incoming friend request |
+| `/friends/requests/:id` | `DELETE` | Authenticated | Rejects or cancels a friend request |
+| `/friends/:id` | `DELETE` | Authenticated | Removes a user from friend list |
+| `/uploads` | `POST` | Authenticated | Generates presigned MinIO PUT URL for direct video upload |
+| `/uploads/:key/status` | `GET` | Authenticated | Polls upload validation, duration, and thumbnail status |
+| `/uploads/:key/stream` | `GET` | Authenticated | Returns presigned stream URL for raw video preview |
+| `/uploads/last` | `GET` | Authenticated | Retrieves metadata of the user's most recent video upload |
+| `/jobs` | `POST` | Authenticated | Enqueues async FFmpeg video-to-GIF conversion job |
+| `/jobs/:jobId/status` | `GET` | Authenticated | Polls conversion job status (`pending`, `processing`, `completed`) |
+| `/gifs/me` | `GET` | Authenticated | Lists all permanent GIFs owned by authenticated user |
+| `/gifs/me/recents` | `GET` | Authenticated | Lists recently converted temporary GIFs |
+| `/gifs/me/recents/:key/save` | `POST` | Authenticated | Persists a temporary recent GIF to permanent storage |
+| `/gifs/user/:userId` | `GET` | Authenticated | Lists public GIFs belonging to a specific user |
+| `/gifs/me/:key` | `GET` | Authenticated | Retrieves metadata and properties of a specific GIF |
+| `/gifs/me/:key` | `PATCH` | Authenticated | Updates GIF metadata or visibility (`public`/`private`) |
+| `/gifs/me/:key` | `DELETE` | Authenticated | Deletes a GIF and purges associated MinIO files |
+| `/gifs/me/:key/download` | `GET` | Authenticated | Generates a time-limited presigned download URL |
+| `/gifs/me/:key/thumbnail` | `GET` | Authenticated | Generates a presigned URL for GIF thumbnail preview |
+| `/gifs/me/:key/shares` | `POST` | Authenticated | Shares a GIF with a specific registered user with expiry |
+| `/gifs/me/shares` | `GET` | Authenticated | Lists all GIFs shared by or shared with the authenticated user |
+| `/gifs/me/:key/shares/:shareWithId` | `DELETE` | Authenticated | Revokes shared access for a specific user |
+| `/s` | `POST` | Authenticated | Creates a public token-based share link |
+| `/s/:token` | `GET` | Public | Views public shared GIF metadata via token |
+| `/s/:token/download` | `GET` | Public | Downloads public shared GIF via token |
+| `/health` | `GET` | Public | Liveness / readiness health check endpoint |
+| `/` | `GET` | Public | Serves web application and static assets |
 
 ---
 
