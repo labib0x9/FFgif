@@ -98,7 +98,9 @@ services:
     restart: unless-stopped
 
   bootstrap:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.bootstrap
     container_name: ffgif-bootstrap
     entrypoint: ["/app/bootstrap"]
     command: ["all"]
@@ -150,7 +152,9 @@ services:
     restart: "no"
 
   api:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.api
     container_name: ffgif-api
     entrypoint: ["/app/ffgif"]
     ports:
@@ -209,7 +213,9 @@ services:
     restart: unless-stopped
 
   worker:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
     container_name: ffgif-worker
     entrypoint: [ "/app/worker" ]
     environment:
