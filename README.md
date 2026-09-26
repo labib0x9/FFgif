@@ -1,27 +1,76 @@
 # FFGif
 
-A video-to-GIF conversion platform. Users upload videos, configure conversion parameters (start/end time, FPS, width, loop), and receive a GIF which can be downloaded and shared. Built to explore async job processing, object storage, and production-grade backend patterns in Go.
+> **Asynchronous Video-to-GIF Conversion & Sharing Platform built with Go, PostgreSQL, MinIO, Redis, RabbitMQ, and FFmpeg.**
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go Version" />
+  <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/Redis-7-DC382D?style=for-the-badge&logo=redis&logoColor=white" alt="Redis" />
+  <img src="https://img.shields.io/badge/RabbitMQ-3-FF6600?style=for-the-badge&logo=rabbitmq&logoColor=white" alt="RabbitMQ" />
+  <img src="https://img.shields.io/badge/MinIO-S3-C72C48?style=for-the-badge&logo=minio&logoColor=white" alt="MinIO" />
+  <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" />
+</p>
+
+---
+
+## Overview
+
+**FFgif** is an event-driven video conversion and asset sharing backend. Designed with production-grade backend patterns, it allows users to upload high-definition videos, trim exact time windows, customize framerates and scaling, and convert them asynchronously into GIFs.
 
 ---
 
 ## Project Demo
 
 <p align="center">
-  <img src="./sample.gif" alt="Project Demo" width="700">
+  <img src="./sample.gif" alt="FFgif Demo" width="750" style="border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.3);">
 </p>
 
 ---
 
 ## Features
 
-- **JWT-based Authentication:** Signup with email verification, login, forgot/reset password flow, and token blocklisting on logout (Redis-backed)
-- **Presigned URL upload and download flow:** Client uploads and downloads directly from MinIO, backend never touches the bytes
-- **Event-driven ingestion:** MinIO bucket notifications trigger RabbitMQ on upload, decoupling ingestion from processing
-- **Async GIF conversion via RabbitMQ worker pool:** FFmpeg processes video locally, result uploaded back to MinIO
-- **GIF management:** list, get, delete, visibility status (public/private), download URL, sharing with others users or publicly by email
-- **GIF sharing with access control:** owners can grant time-limited access to another registered user or publicly; shared recipients can download without owning the GIF
-- **Rate Limiter:** Redis token bucket rate limiter implemented via a Lua script for atomic server-side enforcement
-- **Email delivery** via SMTP (Mailtrap sandbox or SMTP)
+### Authentication & Security
+- **JWT-Based Authentication**: Access token generation with secure claims, bearer authorization, and cryptographic token verification.
+- **Email Verification Flow**: Account activation workflow with time-limited verification tokens delivered via SMTP / Mailtrap.
+- **Password Recovery**: Secure forgot-password / password-reset flow with single-use cryptographic tokens.
+- **Instant Token Blocklisting**: Redis-backed token revocation on logout to immediately invalidate active sessions.
+- **Enterprise Password Security**: Bcrypt hashing combined with a server-side HMAC secret pepper and configurable work cost.
+- **Redis Token-Bucket Rate Limiter**: Server-side atomic rate limiting enforced via embedded Lua scripts to prevent API abuse.
+
+### Zero-Byte Direct Cloud Storage & Ingestion
+- **Direct MinIO S3 Presigned Uploads**: Clients upload raw video binaries directly to MinIO object storage—the Go backend never proxies heavy video payloads.
+- **Event-Driven Ingestion**: MinIO `s3:ObjectCreated` bucket notifications publish directly to a RabbitMQ fanout exchange, completely decoupling file upload from background processing.
+- **Live Upload Status & Streaming**: Real-time polling for upload readiness and instant video streaming via time-limited presigned URLs.
+- **Automated Lifecycle Eviction**: MinIO lifecycle configuration automatically purges unprocessed temporary uploads after 24 hours.
+
+### Video-to-GIF Engine
+- **Asynchronous Worker Pool**: Multi-threaded RabbitMQ worker queues for video pre-validation, GIF conversion, and email dispatching.
+- **Frame-Accurate Video Trimming**: Precision start and duration cropping powered by FFmpeg.
+- **Optimized Palette Generation**: Two-pass FFmpeg conversion (`palettegen` + `paletteuse`) ensuring silky-smooth color gradients without banding or artifacts.
+- **Full Customization**: Granular control over output framerate (up to 30 FPS), custom dimensions / resolution scaling, and loop count.
+- **Automatic Thumbnail Extraction**: Extracts video/GIF poster frames on ingestion for fast frontend previews.
+
+### GIF Management
+<!--
+- **Ephemeral "Recents" Conversion**: Fast preview conversions saved temporarily without consuming permanent storage quotas. -->
+<!-- - **One-Click Persistence**: Seamlessly save and promote temporary preview GIFs into the permanent library. -->
+- **Metadata & Analytics**: Track GIF properties, visibility, and download count.
+<!-- - **Public & Private Visibility**: Toggle individual GIFs between private user view and public profile galleries. -->
+
+### Sharing
+- **Targeted User-to-User Sharing**: Share GIFs with specific registered users with configurable expiration timestamps.
+- **Public Share Links (`/s/{token}`)**: Generate shareable, tokenized public links for users outside the platform with download permissions.
+- **Instant Revocation**: Owners can revoke shared access at any time without affecting the underlying asset.
+
+### Friends
+- **Friend Request Pipeline**: Send, accept, reject, and list incoming friend requests.
+- **Friend List Management**: Manage friendships and view accepted connections.
+- **User Discovery**: Look up user profiles and explore public GIF galleries by user ID.
+
+<!-- ### Quotas & Account Management
+- **Tiered Quota Tracking**: Real-time tracking of daily and total conversion usage against user quotas.
+- **Profile Customization**: Update display names, profile details, and manage password changes.
+- **Cascading Account Cleanup**: Complete account deletion with automated removal of all associated media and shares from PostgreSQL and MinIO. -->
 
 ---
 
@@ -31,14 +80,14 @@ A video-to-GIF conversion platform. Users upload videos, configure conversion pa
 
 ```mermaid
 flowchart LR
-
     Client["Client App"]
 
     subgraph API["Go API Server"]
         Auth["Auth"]
         User["User"]
+        Friend["Friend"]
         Upload["Upload"]
-        Convert["Convert"]
+        Convert["Jobs"]
         GIF["GIF"]
         Share["Share"]
     end
@@ -49,10 +98,11 @@ flowchart LR
     RabbitMQ["RabbitMQ"]
 
     PreWorker["Pre-Processing Worker"]
-    VideoWorker["Video Worker"]
+    ConvertWorker["Conversion Worker"]
+    SaveWorker["Save Metadata Worker"]
     EmailWorker["Email Worker"]
 
-    FFmpeg["FFmpeg"]
+    FFmpeg["FFmpeg / FFprobe"]
 
     Client --> API
 
@@ -62,25 +112,30 @@ flowchart LR
     API --> RabbitMQ
 
     %% Upload pipeline
-    MinIO -. ObjectCreated Event .-> RabbitMQ
+    MinIO -.->|ObjectCreated Event| RabbitMQ
     RabbitMQ --> PreWorker
     PreWorker --> MinIO
-    PreWorker --> PG
+    PreWorker --> FFmpeg
+    PreWorker --> Redis
+    PreWorker --> RabbitMQ
+    RabbitMQ --> SaveWorker
+    SaveWorker --> PG
 
     %% Conversion pipeline
-    RabbitMQ --> VideoWorker
-    VideoWorker --> MinIO
-    VideoWorker --> FFmpeg
-    VideoWorker --> Redis
-    VideoWorker --> PG
+    RabbitMQ --> ConvertWorker
+    ConvertWorker --> MinIO
+    ConvertWorker --> FFmpeg
+    ConvertWorker --> Redis
+    ConvertWorker --> PG
 
     %% Email pipeline
     RabbitMQ --> EmailWorker
-    EmailWorker --> PG
 ```
 
 <details>
 <summary><strong>Video Upload Workflow</strong></summary>
+
+### Video Upload Workflow
 
 ```mermaid
 sequenceDiagram
@@ -90,46 +145,35 @@ sequenceDiagram
     participant API as Backend API
     participant Redis
     participant MinIO as MinIO
-    participant Worker
+    participant Worker as Pre-Processing Worker
     participant FFProbe as ffprobe
     participant FFmpeg as ffmpeg
 
-    Client->>API: POST /upload
-    API->>Redis: Create upload status = PENDING
-    API->>Client: Presigned PUT URL + Upload ID
+    Client->>API: POST /uploads
+    API->>Redis: Set status = uploading
+    API->>Client: Presigned PUT URL + Object Key
 
-    Client->>MinIO: Upload video via Presigned URL
+    Client->>MinIO: Upload video directly via Presigned URL
 
-    loop Poll status
-        Client->>API: GET /upload/{id}/status
+    loop Poll upload status
+        Client->>API: GET /uploads/{key}/status
         API->>Redis: Read status
-        Redis-->>API: PENDING / PROCESSING / OK / FAILED
-        API-->>Client: Current status
+        Redis-->>API: uploading / processing / ready / failed
+        API-->>Client: Current upload status
     end
 
-    MinIO-->>Worker: ObjectCreated event
+    MinIO-->>Worker: ObjectCreated Event via RabbitMQ
 
-    Worker->>Redis: Update status = PROCESSING
-
-    Worker->>MinIO: Download uploaded video
-    MinIO-->>Worker: Video file
-
-    Worker->>FFProbe: Validate video
-    FFProbe-->>Worker: Valid / Invalid
-
-    alt Valid video
-        Worker->>FFmpeg: Convert to MP4
-        FFmpeg-->>Worker: MP4
-
-        Worker->>FFmpeg: Generate thumbnail
-        FFmpeg-->>Worker: Thumbnail
-
-        Worker->>MinIO: Upload MP4
-        Worker->>MinIO: Upload Thumbnail
-
-        Worker->>Redis: Update status = OK
-    else Invalid or processing failed
-        Worker->>Redis: Update status = FAILED
+    Worker->>Redis: Update status = processing
+    Worker->>MinIO: Download uploaded raw video
+    Worker->>FFProbe: Validate codec, resolution and duration
+    
+    alt Valid Video
+        Worker->>FFmpeg: Extract poster thumbnail
+        Worker->>MinIO: Upload thumbnail to storage
+        Worker->>Redis: Update status = ready
+    else Invalid Video
+        Worker->>Redis: Update status = failed
     end
 ```
 
@@ -137,6 +181,8 @@ sequenceDiagram
 
 <details>
 <summary><strong>Video Conversion Workflow</strong></summary>
+
+### Video Conversion Workflow
 
 ```mermaid
 sequenceDiagram
@@ -146,39 +192,36 @@ sequenceDiagram
     participant API as Backend API
     participant Redis
     participant RabbitMQ
-    participant Worker
+    participant Worker as Conversion Worker
     participant FFmpeg as ffmpeg
     participant MinIO
+    participant PG as PostgreSQL
 
-    Client->>API: POST /convert
-    API->>Redis: Create job status = QUEUED
-    API->>RabbitMQ: Publish conversion job
+    Client->>API: POST /jobs
+    API->>Redis: Set job status = queued
+    API->>PG: Create job record
+    API->>RabbitMQ: Publish video conversion message
     API-->>Client: 202 Accepted + Job ID
 
-    loop Poll status
-        Client->>API: GET /convert/{jobId}/status
+    loop Poll conversion progress
+        Client->>API: GET /jobs/{jobId}/status
         API->>Redis: Read job status
-        Redis-->>API: QUEUED / CONVERTING / COMPLETED / FAILED
-        API-->>Client: Current status
+        Redis-->>API: queued / processing / completed / failed
+        API-->>Client: Current progress and GIF URL
     end
 
-    Worker->>RabbitMQ: Consume conversion job
+    Worker->>RabbitMQ: Consume conversion message
+    Worker->>Redis: Update status = processing
+    Worker->>MinIO: Fetch raw video
+    Worker->>FFmpeg: Two-pass conversion (palettegen + paletteuse)
+    Worker->>FFmpeg: Generate GIF thumbnail
+    Worker->>MinIO: Upload converted GIF and thumbnail
+    Worker->>PG: Insert GIF record into database
 
-    Worker->>Redis: Update status = CONVERTING
-
-    Worker->>FFmpeg: Convert video to GIF
-    FFmpeg-->>Worker: GIF
-
-    Worker->>FFmpeg: Generate thumbnail
-    FFmpeg-->>Worker: Thumbnail
-
-    Worker->>MinIO: Upload GIF
-    Worker->>MinIO: Upload Thumbnail
-
-    alt Conversion successful
-        Worker->>Redis: Update status = COMPLETED
-    else Conversion failed
-        Worker->>Redis: Update status = FAILED
+    alt Conversion Succeeded
+        Worker->>Redis: Update status = completed
+    else Conversion Failed
+        Worker->>Redis: Update status = failed
     end
 ```
 
@@ -188,19 +231,23 @@ sequenceDiagram
 
 ## Tech Stack
 
-| Component        | Technology                               |
-| ---------------- | ---------------------------------------- |
-| Language         | Go                                       |
-| HTTP             | `net/http` (stdlib, no framework)        |
-| Database         | PostgreSQL via `sqlx`                    |
-| Migrations       | `golang-migrate`                         |
-| Cache            | Redis via `go-redis`                     |
-| Object Storage   | MinIO (`minio-go`)                       |
-| Message Queue    | RabbitMQ (`amqp091-go`)                  |
-| Video Processing | FFmpeg (via `os/exec`)                   |
-| Auth             | JWT (`golang-jwt/jwt`) + bcrypt + pepper |
-| Validation       | `go-playground/validator`                |
-| Email            | Mailtrap (SMTP sandbox)                  |
+| Component        | Technology                                     |
+| ---------------- | ---------------------------------------------- |
+| Language         | Golang (Go)                                    |
+| HTTP             | `net/http` (stdlib, no framework)              |
+| Database         | PostgreSQL via `sqlx`                          |
+| Migrations       | `golang-migrate`                               |
+| Cache            | Redis via `go-redis`                           |
+| Object Storage   | MinIO (`minio-go`)                             |
+| Message Queue    | RabbitMQ (`amqp091-go`)                        |
+| Video Processing | FFmpeg & FFprobe (via `os/exec`)               |
+| Auth             | JWT (`golang-jwt/jwt`) + bcrypt                |
+| Email Delivery   | Gomail (`gopkg.in/gomail.v2`) (SMTP + Mailtrap)|
+| Validation       | `go-playground/validator`                      |
+| Configuration    | `spf13/viper` (`.env` loading)                 |
+| CLI              | `spf13/cobra` (`bootstrap` CLI)                |
+| Security         | OWASP ZAP (Automatic Scanner)                  |
+| Containerization | Docker & Compose                               |
 
 ---
 
@@ -214,14 +261,18 @@ sequenceDiagram
 │   └── bootstrap/                  # DB migrations & infra bootstrap CLI
 ├── config/                         → Environment-based configuration loader
 ├── dist/                           → Static frontend export
+├── docs/                           → API specifications & documentation
+│   └── openapi.yaml                # OpenAPI 3.0 REST API definition
 ├── internal/                       → Private application code
 │   ├── app/                        → Application use cases & services
 │   │   ├── auth/                   # Authentication service (signup, login, reset)
+│   │   ├── friend/                 # Friend requests & friendship management service
 │   │   ├── media/                  # Video upload, processing & GIF service
 │   │   ├── share/                  # GIF sharing & access control service
 │   │   └── user/                   # User profile & quota service
 │   ├── domain/                     → Core domain entities & repository interfaces
 │   │   ├── auth/                   # User, credential & verifier models
+│   │   ├── friend/                 # Friend entity models & repository interfaces
 │   │   ├── media/                  # GIF, upload & storage models
 │   │   ├── share/                  # GIF share models
 │   │   └── user/                   # Profile & quota models
@@ -247,6 +298,7 @@ sequenceDiagram
 │   └── worker/                     → RabbitMQ consumers (conversion, preprocessing, email)
 ├── migrations/                     → PostgreSQL schema migration files
 ├── pkg/                            → Shared reusable utility packages
+│   ├── apperr/                     # Standardized application domain error definitions
 │   ├── jwt/                        # JWT token generation & verification
 │   ├── password/                   # Bcrypt password hashing with pepper
 │   ├── random/                     # Cryptographic ID generator
@@ -254,9 +306,11 @@ sequenceDiagram
 ├── scripts/                        → Automation & deployment scripts
 ├── tests/                          → Test suites
 │   └── integration/                # End-to-end and real infra integration tests
+│   └── zap/                        # Automated OWASP ZAP API security scanning
 ├── .env.example                    # Environment variables template
 ├── docker-compose.yml              # Local multi-service orchestrator
 ├── Dockerfile                      # Multi-stage Go build container
+├── Dockerfile.postgres             # PostgreSQL container for testing
 ├── go.mod                          # Go module dependencies
 ├── go.sum                          # Go checksums
 └── README.md                       # Project documentation
@@ -407,7 +461,7 @@ docker compose up -d
 
 ---
 
-## 🌐 API Overview
+## API Overview
 
 Base URL: `http://localhost:8080`
 
@@ -468,7 +522,8 @@ Base URL: `http://localhost:8080`
 - **Guest Session Scope**: Anonymous accounts have temporary 24-hour quotas and cannot access email-based features (password resets, notifications) without account registration.
 - **Local Development TLS**: Local Docker environment runs over HTTP; production deployments require an SSL/TLS reverse proxy (e.g., Caddy or Nginx).
 - **Health Check**: Currently health check endpoint is stub.
-- **GIF**: Public share is stub.
+- **GIF**: Public share is stub. currently all gif's are private and saved parmanently.
+- **Testing**: Some tests are failing, need to fix.
 
 ---
 
@@ -481,3 +536,4 @@ Base URL: `http://localhost:8080`
 - **Webhooks**: Outbound webhooks on job completion for third-party integrations.
 - **Observability**: Prometheus metrics export and Grafana dashboard for conversion latency, queue depth, and storage usage.
 - **Full Next.js Frontend Integration**: Complete the web UI with drag-and-drop video trimmer, share link previews, and friendship management.
+- **Migration**: Migrate to GIN framework.
