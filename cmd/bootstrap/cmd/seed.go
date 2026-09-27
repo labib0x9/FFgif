@@ -42,20 +42,23 @@ type seededUser struct {
 	createdAt time.Time
 }
 
+// seededGif mirrors the actual `gifs` table columns
+// (key, user_id, name, status, persist, download, file_size_bytes, width, height, duration_seconds, is_public, url, thumbnail_key, created_at).
 type seededGif struct {
-	key       string
-	userID    uuid.UUID
-	name      string
-	status    string
-	persist   bool
-	download  int
-	sizeBytes int64
-	width     int
-	height    int
-	duration  float64
-	isPublic  bool
-	thumbKey  string
-	createdAt time.Time
+	key             string
+	userID          uuid.UUID
+	name            string
+	status          string
+	persist         bool
+	download        int
+	fileSizeBytes   int64
+	width           int
+	height          int
+	durationSeconds float64
+	isPublic        bool
+	url             string
+	thumbnailKey    string
+	createdAt       time.Time
 }
 
 var firstNames = []string{
@@ -88,12 +91,6 @@ var gifNouns = []string{
 	"Drift", "Sunset", "Flight", "Combo", "Dodge", "Party", "Chill", "Burst",
 }
 
-var videoNames = []string{
-	"screen_recording.mp4", "gameplay_highlight.mp4", "vacation_clip.mp4",
-	"meme_compilation.mp4", "tutorial_capture.mp4", "reaction_short.mp4",
-	"sports_highlight.mp4", "drone_footage.mp4", "music_video_clip.mp4",
-}
-
 func setupSeed() error {
 	cnf := config.GetConfig()
 	dbSource := fmt.Sprintf(
@@ -119,13 +116,13 @@ func setupSeed() error {
 		return fmt.Errorf("failed to ping db: %w", err)
 	}
 
-	// 1. MinIO: Upload seed.gif to storage bucket
+	// 1. MinIO: upload seed.gif once — the only real object created.
 	seedMinioStorage(ctx, cnf)
 
 	const totalUsers = 1000
 	const defaultPassword = "Password123!"
 
-	slog.Info("Starting comprehensive simulation seed...", "users", totalUsers)
+	slog.Info("Starting seed...", "users", totalUsers)
 
 	hasher := password.NewHasher(cnf.HashPepper, cnf.BcryptCost)
 	passHash, err := hasher.GenerateHash(defaultPassword)
@@ -133,60 +130,40 @@ func setupSeed() error {
 		return fmt.Errorf("failed to generate password hash: %w", err)
 	}
 
-	// 2. Generate and seed 1,000 users & profiles
+	// 2. Users & profiles
 	users, err := seedUsersAndProfiles(ctx, db, totalUsers, passHash)
 	if err != nil {
 		return fmt.Errorf("failed to seed users: %w", err)
 	}
 
-	// 3. Generate and seed GIFs (40-60 randomly per user) using seed.gif characteristics
+	// 3. Gifs — 40 to 60 per user
 	gifs, userGifStats, err := seedGifs(ctx, db, users)
 	if err != nil {
 		return fmt.Errorf("failed to seed gifs: %w", err)
 	}
 
-	// 4. Seed user quotas reflecting their actual GIF usage
+	// 4. Quota reflecting actual gif usage
 	if err := seedQuotas(ctx, db, users, userGifStats); err != nil {
 		return fmt.Errorf("failed to seed quotas: %w", err)
 	}
 
-	// 5. Seed video conversion jobs (completed + in-progress/failed)
-	if err := seedJobs(ctx, db, users, gifs); err != nil {
-		return fmt.Errorf("failed to seed jobs: %w", err)
-	}
-
-	// 6. Seed friendships (social graph between users)
+	// 5. Friendships (social graph)
 	acceptedFriendPairs, err := seedFriendships(ctx, db, users)
 	if err != nil {
 		return fmt.Errorf("failed to seed friendships: %w", err)
 	}
 
-	// 7. Seed shares (sharing GIFs with friends)
+	// 6. Shares between friends
 	if err := seedShares(ctx, db, acceptedFriendPairs, gifs); err != nil {
 		return fmt.Errorf("failed to seed shares: %w", err)
 	}
 
-	// 8. Seed public share tokens
+	// 7. Public share tokens
 	if err := seedShareTokens(ctx, db, gifs); err != nil {
 		return fmt.Errorf("failed to seed share tokens: %w", err)
 	}
 
-	// 9. Seed last_upload metadata
-	if err := seedLastUploads(ctx, db, users); err != nil {
-		return fmt.Errorf("failed to seed last uploads: %w", err)
-	}
-
-	// 10. Seed anonymous users, anon profiles, and anon quotas
-	if err := seedAnonymousSessions(ctx, db); err != nil {
-		return fmt.Errorf("failed to seed anonymous sessions: %w", err)
-	}
-
-	// 11. Seed pending verifiers & password resetters
-	if err := seedAuthTokens(ctx, db, users); err != nil {
-		return fmt.Errorf("failed to seed auth tokens: %w", err)
-	}
-
-	slog.Info("Full simulation seed completed successfully!",
+	slog.Info("Seed completed successfully!",
 		"users", len(users),
 		"gifs", len(gifs),
 	)
@@ -196,8 +173,19 @@ func setupSeed() error {
 func seedMinioStorage(ctx context.Context, cnf *config.Config) {
 	gifPath := "seed.gif"
 	if _, err := os.Stat(gifPath); os.IsNotExist(err) {
-		slog.Warn("seed.gif file not found on disk, skipping storage upload", "path", gifPath)
-		return
+		candidates := []string{"/app/seed.gif", "../seed.gif", "../../seed.gif"}
+		found := false
+		for _, cand := range candidates {
+			if _, err := os.Stat(cand); err == nil {
+				gifPath = cand
+				found = true
+				break
+			}
+		}
+		if !found {
+			slog.Warn("seed.gif file not found on disk, skipping storage upload", "path", gifPath)
+			return
+		}
 	}
 
 	defer func() {
@@ -215,13 +203,13 @@ func seedMinioStorage(ctx context.Context, cnf *config.Config) {
 		}
 	}
 
-	_, err = client.FPutObject(ctx, cnf.Minio.StorageBucket, "seed.gif", gifPath, minio_go.PutObjectOptions{
+	_, err = client.FPutObject(ctx, cnf.Minio.StorageBucket, sharedGifObjectKey, gifPath, minio_go.PutObjectOptions{
 		ContentType: "image/gif",
 	})
 	if err != nil {
 		slog.Warn("Failed to upload seed.gif to MinIO storage bucket", "err", err)
 	} else {
-		slog.Info("Successfully uploaded seed.gif to MinIO storage bucket", "bucket", cnf.Minio.StorageBucket)
+		slog.Info("Successfully uploaded seed.gif to MinIO storage bucket", "bucket", cnf.Minio.StorageBucket, "key", sharedGifObjectKey)
 	}
 }
 
@@ -313,11 +301,15 @@ type userStats struct {
 	usedBytes int64
 }
 
+// sharedGifObjectKey is the single real object seedMinioStorage uploads to the
+// storage bucket. Every seeded gif's thumbnail_url points at it (so
+// GetGifThumbnail resolves for any seeded row); each gif's own `key` stays a
+// unique dummy value since it's the primary key and the real download object
+// key — we are not uploading 40-60k copies of the same file.
+const sharedGifObjectKey = "seed.gif"
+
 func seedGifs(ctx context.Context, db *sql.DB, users []seededUser) ([]seededGif, map[uuid.UUID]*userStats, error) {
-	const seedGifSizeBytes = int64(3120532) // exact size of seed.gif
-	const width = 500
-	const height = 750
-	const duration = 3.50
+	const seedGifSizeBytes = int64(3120532) // exact size of seed.gif, used for quota accounting and metadata
 
 	allGifs := make([]seededGif, 0, len(users)*50)
 	statsMap := make(map[uuid.UUID]*userStats, len(users))
@@ -336,26 +328,25 @@ func seedGifs(ctx context.Context, db *sql.DB, users []seededUser) ([]seededGif,
 
 			gifID := uuid.New().String()
 			key := fmt.Sprintf("%s_%s_output.gif", u.id, gifID[:8])
-			thumbKey := fmt.Sprintf("thumpnail_%s.jpg", gifID[:8])
 
 			statusRoll := mrand.Float64()
 			var status string
-			var isPublic bool
 			var persist bool
+			var isPublic bool
 
 			switch {
 			case statusRoll < 0.70:
 				status = "private"
-				isPublic = false
 				persist = true
+				isPublic = false
 			case statusRoll < 0.90:
 				status = "public"
-				isPublic = true
 				persist = true
+				isPublic = true
 			default:
 				status = "recent"
-				isPublic = false
 				persist = false
+				isPublic = false
 			}
 
 			download := mrand.IntN(85)
@@ -363,19 +354,20 @@ func seedGifs(ctx context.Context, db *sql.DB, users []seededUser) ([]seededGif,
 			createdAt := u.createdAt.Add(createdAfterUser)
 
 			allGifs = append(allGifs, seededGif{
-				key:       key,
-				userID:    u.id,
-				name:      name,
-				status:    status,
-				persist:   persist,
-				download:  download,
-				sizeBytes: seedGifSizeBytes,
-				width:     width,
-				height:    height,
-				duration:  duration,
-				isPublic:  isPublic,
-				thumbKey:  thumbKey,
-				createdAt: createdAt,
+				key:             key,
+				userID:          u.id,
+				name:            name,
+				status:          status,
+				persist:         persist,
+				download:        download,
+				fileSizeBytes:   seedGifSizeBytes,
+				width:           480,
+				height:          270,
+				durationSeconds: 3.20,
+				isPublic:        isPublic,
+				url:             key,
+				thumbnailKey:    sharedGifObjectKey,
+				createdAt:       createdAt,
 			})
 		}
 	}
@@ -389,27 +381,28 @@ func seedGifs(ctx context.Context, db *sql.DB, users []seededUser) ([]seededGif,
 		batch := allGifs[i:end]
 
 		gifValues := make([]string, 0, len(batch))
-		gifArgs := make([]interface{}, 0, len(batch)*13)
+		gifArgs := make([]interface{}, 0, len(batch)*14)
 
 		for _, g := range batch {
 			gOffset := len(gifArgs)
 			gifValues = append(gifValues, fmt.Sprintf(
-				"($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
-				gOffset+1, gOffset+2, gOffset+3, gOffset+4, gOffset+5, gOffset+6,
-				gOffset+7, gOffset+8, gOffset+9, gOffset+10, gOffset+11, gOffset+12, gOffset+13,
+				"($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
+				gOffset+1, gOffset+2, gOffset+3, gOffset+4, gOffset+5,
+				gOffset+6, gOffset+7, gOffset+8, gOffset+9, gOffset+10,
+				gOffset+11, gOffset+12, gOffset+13, gOffset+14,
 			))
 			gifArgs = append(gifArgs,
-				g.key, g.userID, g.name, g.status, g.persist, g.download,
-				g.sizeBytes, g.width, g.height, g.duration, g.isPublic,
-				g.key, g.thumbKey,
+				g.key, g.userID, g.name, g.status, g.persist,
+				g.download, g.fileSizeBytes, g.width, g.height, g.durationSeconds,
+				g.isPublic, g.url, g.thumbnailKey, g.createdAt,
 			)
 		}
 
 		query := fmt.Sprintf(`
 			INSERT INTO gifs (
-				key, user_id, name, status, persist, download,
-				file_size_bytes, width, height, duration_seconds, is_public,
-				url, thumbnail_key
+				key, user_id, name, status, persist,
+				download, file_size_bytes, width, height, duration_seconds,
+				is_public, url, thumbnail_key, created_at
 			)
 			VALUES %s
 			ON CONFLICT (key) DO NOTHING;
@@ -467,95 +460,6 @@ func seedQuotas(ctx context.Context, db *sql.DB, users []seededUser, stats map[u
 	}
 
 	slog.Info("Quotas seeded matching gif usage", "users", len(users))
-	return nil
-}
-
-func seedJobs(ctx context.Context, db *sql.DB, users []seededUser, gifs []seededGif) error {
-	type jobEntry struct {
-		id        uuid.UUID
-		userID    uuid.UUID
-		jobType   string
-		status    string
-		progress  int
-		errMsg    string
-		resultKey string
-		createdAt time.Time
-	}
-
-	jobs := make([]jobEntry, 0, len(gifs)+50)
-
-	// Create a completed conversion job for each GIF
-	for _, g := range gifs {
-		jobs = append(jobs, jobEntry{
-			id:        uuid.New(),
-			userID:    g.userID,
-			jobType:   "video_convert",
-			status:    "done",
-			progress:  100,
-			errMsg:    "",
-			resultKey: g.key,
-			createdAt: g.createdAt.Add(-15 * time.Second),
-		})
-	}
-
-	// Add realistic failed and queued jobs for a small subset of users
-	for i := 0; i < 30 && i < len(users); i++ {
-		jobs = append(jobs, jobEntry{
-			id:        uuid.New(),
-			userID:    users[i].id,
-			jobType:   "video_convert",
-			status:    "failed",
-			progress:  45,
-			errMsg:    "unsupported video codec or corrupt frame index",
-			resultKey: "",
-			createdAt: time.Now().Add(-2 * time.Hour),
-		})
-	}
-	for i := 30; i < 50 && i < len(users); i++ {
-		jobs = append(jobs, jobEntry{
-			id:        uuid.New(),
-			userID:    users[i].id,
-			jobType:   "video_convert",
-			status:    "queued",
-			progress:  0,
-			errMsg:    "",
-			resultKey: "",
-			createdAt: time.Now().Add(-5 * time.Minute),
-		})
-	}
-
-	const batchSize = 500
-	for i := 0; i < len(jobs); i += batchSize {
-		end := i + batchSize
-		if end > len(jobs) {
-			end = len(jobs)
-		}
-		batch := jobs[i:end]
-
-		jobValues := make([]string, 0, len(batch))
-		jobArgs := make([]interface{}, 0, len(batch)*7)
-
-		for _, j := range batch {
-			jOffset := len(jobArgs)
-			jobValues = append(jobValues, fmt.Sprintf(
-				"($%d, $%d, $%d, $%d, $%d, $%d, $%d)",
-				jOffset+1, jOffset+2, jOffset+3, jOffset+4, jOffset+5, jOffset+6, jOffset+7,
-			))
-			jobArgs = append(jobArgs, j.id, j.userID, j.jobType, j.status, j.progress, j.errMsg, j.resultKey)
-		}
-
-		query := fmt.Sprintf(`
-			INSERT INTO jobs (id, user_id, type, status, progress, error_message, result_key)
-			VALUES %s
-			ON CONFLICT (id) DO NOTHING;
-		`, strings.Join(jobValues, ", "))
-
-		if _, err := db.ExecContext(ctx, query, jobArgs...); err != nil {
-			return fmt.Errorf("insert jobs batch error: %w", err)
-		}
-	}
-
-	slog.Info("Conversion jobs seeded", "count", len(jobs))
 	return nil
 }
 
@@ -735,7 +639,7 @@ func seedShareTokens(ctx context.Context, db *sql.DB, gifs []seededGif) error {
 	tokenSet := make(map[string]bool)
 
 	for _, g := range gifs {
-		if !g.isPublic || len(tokens) >= 500 {
+		if g.status != "public" || len(tokens) >= 500 {
 			continue
 		}
 		if mrand.Float64() > 0.08 {
@@ -794,176 +698,6 @@ func seedShareTokens(ctx context.Context, db *sql.DB, gifs []seededGif) error {
 	}
 
 	slog.Info("Share tokens seeded", "count", len(tokens))
-	return nil
-}
-
-func seedLastUploads(ctx context.Context, db *sql.DB, users []seededUser) error {
-	type uploadRecord struct {
-		userID      uuid.UUID
-		fileKey     string
-		fileName    string
-		contentType string
-		sizeBytes   int64
-		durationSec float64
-		thumbURL    string
-		uploadedAt  time.Time
-	}
-
-	records := make([]uploadRecord, 0, int(float64(len(users))*0.75))
-
-	for _, u := range users {
-		if mrand.Float64() > 0.75 {
-			continue
-		}
-
-		uploadID := uuid.New().String()[:8]
-		fileKey := fmt.Sprintf("raw_video_%s.mp4", uploadID)
-		fileName := videoNames[mrand.IntN(len(videoNames))]
-		sizeBytes := int64(mrand.IntN(25000000) + 5000000)   // 5MB to 30MB
-		durationSec := float64(mrand.IntN(150)+30) / 10.0     // 3.0s to 18.0s
-		thumbURL := fmt.Sprintf("thumb_%s.jpg", uploadID)
-		uploadedAt := time.Now().Add(-time.Duration(mrand.IntN(72)) * time.Hour)
-
-		records = append(records, uploadRecord{
-			userID:      u.id,
-			fileKey:     fileKey,
-			fileName:    fileName,
-			contentType: "video/mp4",
-			sizeBytes:   sizeBytes,
-			durationSec: durationSec,
-			thumbURL:    thumbURL,
-			uploadedAt:  uploadedAt,
-		})
-	}
-
-	const batchSize = 250
-	for i := 0; i < len(records); i += batchSize {
-		end := i + batchSize
-		if end > len(records) {
-			end = len(records)
-		}
-		batch := records[i:end]
-
-		uValues := make([]string, 0, len(batch))
-		uArgs := make([]interface{}, 0, len(batch)*8)
-
-		for _, r := range batch {
-			offset := len(uArgs)
-			uValues = append(uValues, fmt.Sprintf(
-				"($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
-				offset+1, offset+2, offset+3, offset+4, offset+5, offset+6, offset+7, offset+8,
-			))
-			uArgs = append(uArgs, r.userID, r.fileKey, r.fileName, r.contentType, r.sizeBytes, r.durationSec, r.thumbURL, r.uploadedAt)
-		}
-
-		query := fmt.Sprintf(`
-			INSERT INTO last_upload (user_id, file_key, file_name, content_type, size_bytes, duration_sec, thumbnail_url, uploaded_at)
-			VALUES %s
-			ON CONFLICT (user_id) DO NOTHING;
-		`, strings.Join(uValues, ", "))
-
-		if _, err := db.ExecContext(ctx, query, uArgs...); err != nil {
-			return fmt.Errorf("insert last_upload batch error: %w", err)
-		}
-	}
-
-	slog.Info("Last uploads seeded", "count", len(records))
-	return nil
-}
-
-func seedAnonymousSessions(ctx context.Context, db *sql.DB) error {
-	const anonCount = 25
-	anonUsers := make([]uuid.UUID, 0, anonCount)
-
-	userValues := make([]string, 0, anonCount)
-	userArgs := make([]interface{}, 0, anonCount*3)
-
-	profileValues := make([]string, 0, anonCount)
-	profileArgs := make([]interface{}, 0, anonCount)
-
-	quotaValues := make([]string, 0, anonCount)
-	quotaArgs := make([]interface{}, 0, anonCount)
-
-	for i := 1; i <= anonCount; i++ {
-		anonID := uuid.New()
-		anonUsers = append(anonUsers, anonID)
-		username := fmt.Sprintf("anon_%s", anonID.String()[:8])
-		fullname := fmt.Sprintf("Guest User %d", i)
-
-		uOffset := len(userArgs)
-		userValues = append(userValues, fmt.Sprintf("($%d, $%d, $%d)", uOffset+1, uOffset+2, uOffset+3))
-		userArgs = append(userArgs, anonID, username, fullname)
-
-		pOffset := len(profileArgs)
-		profileValues = append(profileValues, fmt.Sprintf("($%d)", pOffset+1))
-		profileArgs = append(profileArgs, anonID)
-
-		qOffset := len(quotaArgs)
-		quotaValues = append(quotaValues, fmt.Sprintf("($%d)", qOffset+1))
-		quotaArgs = append(quotaArgs, anonID)
-	}
-
-	userQuery := fmt.Sprintf(`
-		INSERT INTO anon_users (id, username, fullname)
-		VALUES %s
-		ON CONFLICT (id) DO NOTHING;
-	`, strings.Join(userValues, ", "))
-	if _, err := db.ExecContext(ctx, userQuery, userArgs...); err != nil {
-		return fmt.Errorf("insert anon_users error: %w", err)
-	}
-
-	profileQuery := fmt.Sprintf(`
-		INSERT INTO anon_profiles (user_id)
-		VALUES %s
-		ON CONFLICT (user_id) DO NOTHING;
-	`, strings.Join(profileValues, ", "))
-	if _, err := db.ExecContext(ctx, profileQuery, profileArgs...); err != nil {
-		return fmt.Errorf("insert anon_profiles error: %w", err)
-	}
-
-	quotaQuery := fmt.Sprintf(`
-		INSERT INTO anon_quota (user_id)
-		VALUES %s
-		ON CONFLICT (user_id) DO NOTHING;
-	`, strings.Join(quotaValues, ", "))
-	if _, err := db.ExecContext(ctx, quotaQuery, quotaArgs...); err != nil {
-		return fmt.Errorf("insert anon_quota error: %w", err)
-	}
-
-	slog.Info("Anonymous sessions seeded", "count", anonCount)
-	return nil
-}
-
-func seedAuthTokens(ctx context.Context, db *sql.DB, users []seededUser) error {
-	if len(users) < 30 {
-		return nil
-	}
-
-	for i := 0; i < 15; i++ {
-		bytes := make([]byte, 20)
-		_, _ = crand.Read(bytes)
-		tokenHash := hex.EncodeToString(bytes)
-
-		_, _ = db.ExecContext(ctx, `
-			INSERT INTO verifier (user_id, token_hash, expire_at)
-			VALUES ($1, $2, NOW() + INTERVAL '30 minutes')
-			ON CONFLICT (user_id) DO NOTHING;
-		`, users[i].id, tokenHash)
-	}
-
-	for i := 15; i < 30; i++ {
-		bytes := make([]byte, 20)
-		_, _ = crand.Read(bytes)
-		tokenHash := hex.EncodeToString(bytes)
-
-		_, _ = db.ExecContext(ctx, `
-			INSERT INTO reseter (user_id, token_hash, used, expire_at)
-			VALUES ($1, $2, FALSE, NOW() + INTERVAL '15 minutes')
-			ON CONFLICT (user_id) DO NOTHING;
-		`, users[i].id, tokenHash)
-	}
-
-	slog.Info("Auth verifier and reseter tokens seeded")
 	return nil
 }
 
