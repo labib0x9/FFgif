@@ -523,7 +523,8 @@ Base URL: `http://localhost:8080`
 - **Local Development TLS**: Local Docker environment runs over HTTP; production deployments require an SSL/TLS reverse proxy (e.g., Caddy or Nginx).
 - **Health Check**: Currently health check endpoint is stub.
 - **GIF**: Public share is stub. currently all gif's are private and saved parmanently.
-- **Testing**: Some tests are failing, need to fix.
+- **Testing**: Some tests are failing, need to fix. Also the security testing needs to configure.
+- **Download and Preview endpoint**: download endpoint calling on preview, which increases download count on preview, currently diabled, but preview also needed to disable.
 
 ---
 

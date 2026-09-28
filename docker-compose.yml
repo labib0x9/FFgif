@@ -1,10 +1,7 @@
 services:
   postgres:
-    build:
-      context: .
-      dockerfile: Dockerfile.postgres
+    image: postgres:16-alpine
     container_name: ffgif-postgres
-    command: ["postgres", "-c", "shared_preload_libraries=pg_cron", "-c", "cron.database_name=${PG_NAME}"]
     environment:
       - POSTGRES_USER=${PG_SUPERUSER}
       - POSTGRES_DB=${PG_SUPERDB}
@@ -98,7 +95,9 @@ services:
     restart: unless-stopped
 
   bootstrap:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.bootstrap
     container_name: ffgif-bootstrap
     entrypoint: ["/app/bootstrap"]
     command: ["all"]
@@ -150,7 +149,9 @@ services:
     restart: "no"
 
   api:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.api
     container_name: ffgif-api
     entrypoint: ["/app/ffgif"]
     ports:
@@ -209,7 +210,9 @@ services:
     restart: unless-stopped
 
   worker:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
     container_name: ffgif-worker
     entrypoint: [ "/app/worker" ]
     environment:

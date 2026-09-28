@@ -21,9 +21,19 @@ func allSetup(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	return setupMessageQueue()
+	err = setupMessageQueue()
+	if err != nil {
+		return err
+	}
+	if seed {
+		if err := setupSeed(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func init() {
+	allCmd.Flags().BoolVarP(&seed, "seed", "s", false, "seed demo data")
 	rootCmd.AddCommand(allCmd)
 }
