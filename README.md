@@ -309,8 +309,11 @@ sequenceDiagram
 │   └── zap/                        # Automated OWASP ZAP API security scanning
 ├── .env.example                    # Environment variables template
 ├── docker-compose.yml              # Local multi-service orchestrator
-├── Dockerfile                      # Multi-stage Go build container
 ├── Dockerfile.postgres             # PostgreSQL container for testing
+├── Dockerfile.api                  # api + frontend container
+├── Dockerfile.bootstrap            # cli container
+├── Dockerfile.minio                # minio container
+├── Dockerfile.worker               # worker container
 ├── go.mod                          # Go module dependencies
 ├── go.sum                          # Go checksums
 └── README.md                       # Project documentation
@@ -359,7 +362,7 @@ cp .env.example .env
 | `MINIO_TEMP_BUCKET` | `uploads` | Yes | S3 bucket for incoming video uploads and transient GIFs |
 | `MINIO_PERSIST_BUCKET`| `storage` | Yes | S3 bucket for permanently saved user GIFs and thumbnails |
 | `MINIO_TEMP_BUCKET_TTL_DAYS` | `1` | No | Automated lifecycle eviction period (days) for temp bucket |
-| `MINIO_API_CORS_ALLOW_ORIGIN`| `http://localhost:8080` | Yes | Allowed origins for direct browser S3 uploads |
+| `MINIO_API_CORS_ALLOW_ORIGIN`| `http://localhost:8080` | Yes | Allowed origins for direct browser S3 uploads and Cors validation |
 | `MINIO_NOTIFY_EXCHANGE` | `notify.upload.exchange` | Yes | RabbitMQ fanout exchange for MinIO `s3:ObjectCreated` events |
 | `MINIO_PUBLIC_ENDPOINT` | `127.0.0.1:9000` | Yes | Publicly reachable MinIO host for presigned URLs |
 | `EMAIL` | `verify@ffgif.com` | Yes | Sender email address for system notifications |
@@ -371,6 +374,8 @@ cp .env.example .env
 | `MAILTRAP_PASSWORD` | `mailtrap-pass` | No | Mailtrap sandbox password |
 
 ### Build And Run
+
+minio image is now archied, so i build the container from their github repo, and it takes almost **9-10 minutes to start**.
 
 ```
 docker compose up -d --build
@@ -525,6 +530,8 @@ Base URL: `http://localhost:8080`
 - **GIF**: Public share is stub. currently all gif's are private and saved parmanently.
 - **Testing**: Some tests are failing, need to fix. Also the security testing needs to configure.
 - **Download and Preview endpoint**: download endpoint calling on preview, which increases download count on preview, currently diabled, but preview also needed to disable.
+- **No cleaup expired data**: Database lacks to clean up expiry rows.
+- **Retry-mechanism**: Retry mechanism has bug, it retries infinitive.
 
 ---
 

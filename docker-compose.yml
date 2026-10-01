@@ -57,7 +57,9 @@ services:
     restart: unless-stopped
 
   minio:
-    image: minio/minio:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.minio
     container_name: ffgif-minio
     command: server /data --console-address ":9001"
     environment:

@@ -1,0 +1,16 @@
+FROM golang:1.25-alpine AS build
+RUN apk add --no-cache git
+ARG MINIO_REPO=https://github.com/labibalfaisal9834-ux/minio
+ARG MINIO_COMMIT=7aac2a2c5b7c882e68c1ce017d8256be2feea27f
+WORKDIR /src
+RUN git init . \
+ && git remote add origin ${MINIO_REPO} \
+ && git fetch --depth 1 origin ${MINIO_COMMIT} \
+ && git checkout FETCH_HEAD
+RUN CGO_ENABLED=0 go build -trimpath -o /out/minio .
+
+FROM alpine:3.21
+RUN apk add --no-cache curl ca-certificates
+COPY --from=build /out/minio /usr/bin/minio
+EXPOSE 9000 9001
+ENTRYPOINT ["/usr/bin/minio"]
