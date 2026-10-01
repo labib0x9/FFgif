@@ -72,11 +72,11 @@ func (w *SaveVideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 			return
 		}
 		slog.Error("save video metadata failed", "error", err, "key", msg.Key, "user_id", msg.UserID)
-		if retryCount(d.Headers) < int64(w.maxRetries) {
-			_ = d.Nack(false, true)
-		} else {
-			_ = d.Nack(false, false)
-		}
+		// if retryCount(d.Headers) < int64(w.maxRetries) {
+		_ = d.Nack(false, true)
+		// } else {
+		// 	_ = d.Nack(false, false)
+		// }
 		return
 	}
 
@@ -88,4 +88,3 @@ func (w *SaveVideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 
 	slog.Info("video metadata saved", "key", msg.Key, "user_id", msg.UserID)
 }
-

@@ -67,11 +67,11 @@ func (w *VideoWorker) handle(ctx context.Context, d amqp.Delivery) {
 	err = w.srv.Process(ctx, msg)
 	if err != nil {
 		slog.Error("video conversion failed", "error", err, "job_id", msg.JobId)
-		if retryCount(d.Headers) < int64(w.maxRetries) {
-			_ = d.Nack(false, true)
-		} else {
-			_ = d.Nack(false, false)
-		}
+		// if retryCount(d.Headers) < int64(w.maxRetries) {
+		// 	_ = d.Nack(false, true)
+		// } else {
+		_ = d.Nack(false, false)
+		// }
 		return
 	}
 

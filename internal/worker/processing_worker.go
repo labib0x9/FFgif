@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/url"
 
@@ -90,10 +91,10 @@ func (w *ProcessingWorker) handle(ctx context.Context, d amqp.Delivery) {
 	err = w.srv.ProcessAndSave(ctx, key)
 	if err != nil {
 		slog.Error("raw video processing failed", "key", key, "error", err)
-		w.srv.UpdateUploadingStatus(ctx, key, "failed")
-		err := d.Nack(false, false)
-		if err != nil {
-			slog.Error("nack dead-letter failed", "key", key, "error", err)
+		err1 := w.srv.UpdateUploadingStatus(ctx, key, "failed")
+		err2 := d.Nack(false, false)
+		if err1 != nil || err2 != nil {
+			slog.Error("nack dead-letter failed", "key", key, "error", errors.Join(err1, err2))
 		}
 		return
 	}

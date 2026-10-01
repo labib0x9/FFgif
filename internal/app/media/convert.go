@@ -67,25 +67,24 @@ func (s *service) Convert(ctx context.Context, userId string, key string, start 
 		return nil, fmt.Errorf("cache.Set(gif): %w: %w", apperr.ErrCacheSetFailed, err)
 	}
 
-	if s.jobRepo != nil {
-		job := media.Job{
-			ID:        Id,
-			UserID:    userId,
-			Type:      "video_to_gif",
-			Status:    media.StatusQueued,
-			Progress:  0,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
-		_ = s.jobRepo.Create(ctx, job)
+	job := media.Job{
+		ID:        Id,
+		UserID:    userId,
+		Type:      "video_to_gif",
+		Status:    media.StatusQueued,
+		Progress:  0,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	err = s.jobRepo.Create(ctx, job)
+	if err != nil {
+		return nil, fmt.Errorf("jobRepo.Create(ctx, job): %w", err)
 	}
 
 	if err := s.queue.PublishVideo(ctx, msg); err != nil {
 		_ = s.cache.Set(ctx, mqkey, "failed", 5*time.Minute)
 		_ = s.cache.Set(ctx, gifKey, "failed", 5*time.Minute)
-		if s.jobRepo != nil {
-			_ = s.jobRepo.UpdateStatus(ctx, Id, media.StatusFailed, 0, "", "queue publish failed")
-		}
+		_ = s.jobRepo.UpdateStatus(ctx, Id, media.StatusFailed, 0, "", "queue publish failed")
 		return nil, fmt.Errorf("queue.PublishVideo: %w: %w", apperr.ErrMessageQueueFailed, err)
 	}
 
