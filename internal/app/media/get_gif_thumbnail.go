@@ -30,11 +30,11 @@ func (s *service) GetGifThumbnail(ctx context.Context, userId string, key string
 		return "", fmt.Errorf("gifRepo.GetByKey: %w: %w", media.ErrGifFetchFailed, err)
 	}
 
-	if gif.ThumbnailUrl == "" {
+	if gif.ThumbnailKey == "" {
 		return "", media.ErrThumbnailNotFound
 	}
 
-	url, err := s.storage.GetThumbnailURL(ctx, gif.ThumbnailUrl)
+	url, err := s.storage.GetThumbnailURL(ctx, gif.ThumbnailKey)
 	if err != nil {
 		return "", fmt.Errorf("storage.GetThumbnailURL: %w", err)
 	}

@@ -21,8 +21,8 @@ func NewGifRepository(db *sqlx.DB) media.GifRepository {
 func (r *gifRepo) Create(ctx context.Context, gif media.Gif) error {
 	db := getDBFromCtx(ctx, r.db)
 	query := `insert into 
-		gifs(user_id, key, thumbnail_url, url, name, file_size_bytes, width, height, duration_seconds, is_public)
-		values(:user_id, :key, :thumbnail_url, :url, :name, :file_size_bytes, :width, :height, :duration_seconds, :is_public)
+		gifs(user_id, key, thumbnail_key, url, name, file_size_bytes, width, height, duration_seconds, is_public)
+		values(:user_id, :key, :thumbnail_key, :url, :name, :file_size_bytes, :width, :height, :duration_seconds, :is_public)
 	`
 
 	_, err := sqlx.NamedExecContext(ctx, db, query, gif)
@@ -33,7 +33,7 @@ func (r *gifRepo) Get(ctx context.Context, user_id string, status string, limit 
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
-			name, thumbnail_url, url, key, status, persist, download, file_size_bytes, width, height, duration_seconds, is_public, created_at, updated_at
+			name, thumbnail_key, url, key, status, persist, download, file_size_bytes, width, height, duration_seconds, is_public, created_at, updated_at
 		from
 			gifs
 		where user_id = $1`
@@ -67,7 +67,7 @@ func (r *gifRepo) GetByKey(ctx context.Context, key string, forUpdate bool) (med
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
-			name, thumbnail_url, url, key, status, persist, download, file_size_bytes, width, height, duration_seconds, is_public, created_at, updated_at
+			name, thumbnail_key, url, key, status, persist, download, file_size_bytes, width, height, duration_seconds, is_public, created_at, updated_at
 		from
 			gifs
 		where key = $1`
@@ -85,7 +85,7 @@ func (r *gifRepo) GetRecents(ctx context.Context, user_id string) ([]media.GifRe
 	db := getDBFromCtx(ctx, r.db)
 	query := `
 		select
-			name, thumbnail_url, url, key, status, persist, download, file_size_bytes, width, height, duration_seconds, is_public, created_at, updated_at
+			name, thumbnail_key, url, key, status, persist, download, file_size_bytes, width, height, duration_seconds, is_public, created_at, updated_at
 		from
 			gifs
 		where user_id = $1
@@ -117,7 +117,7 @@ func (r *gifRepo) Update(ctx context.Context, key string, req media.GifUpdateReq
 			is_public  = COALESCE($4, is_public),
 			updated_at = NOW()
 		where key = $5
-		returning key, name, status, persist, url, thumbnail_url, download, file_size_bytes, width, height, duration_seconds, is_public, created_at, updated_at
+		returning key, name, status, persist, url, thumbnail_key, download, file_size_bytes, width, height, duration_seconds, is_public, created_at, updated_at
 	`
 
 	var resp media.GifResponse

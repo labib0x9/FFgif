@@ -48,7 +48,7 @@ func (s *shareRepo) Get(ctx context.Context, userID string) ([]share.GifResponse
 	db := getDBFromCtx(ctx, s.db)
 	query := `
 		select
-			s.id, s.gif_key, s.owner_id, s.shared_with, s.expires_at, g.name, g.thumbnail_url, g.url 
+			s.id, s.gif_key, s.owner_id, s.shared_with, s.expires_at, g.name, g.thumbnail_key as thumbnail_url, g.url 
 		from
 			shares s
 		join
@@ -70,7 +70,7 @@ func (s *shareRepo) GetByToken(ctx context.Context, token string) (share.GifToke
 	db := getDBFromCtx(ctx, s.db)
 	query := `
 		select
-			st.gif_key, g.name, g.url, g.thumbnail_url, st.expires_at, st.created_at
+			st.gif_key, g.name, g.url, g.thumbnail_key as thumbnail_url, st.expires_at, st.created_at
 		from
 			share_tokens st
 		join

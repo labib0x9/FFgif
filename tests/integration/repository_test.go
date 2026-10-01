@@ -108,7 +108,7 @@ func seedUserAndGif(t *testing.T, db *sqlx.DB, gifKey string) (uuid.UUID, domain
 		Name:         "original.gif",
 		UserId:       user.Id.String(),
 		Url:          "https://storage/" + gifKey,
-		ThumbnailUrl: "thumbs/" + gifKey + ".jpg",
+		ThumbnailKey: "thumbs/" + gifKey + ".jpg",
 	}); err != nil {
 		t.Fatalf("seed gif: %v", err)
 	}

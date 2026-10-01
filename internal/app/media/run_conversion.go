@@ -11,13 +11,15 @@ import (
 )
 
 func (s *service) Process(ctx context.Context, msg queue.VideoMessage) error {
+	slog.Debug("Processing service", "I AM", "HERE...1")
 	key := "messaage_queue:job_id:" + msg.JobId
 	if err := s.cache.Set(ctx, key, "processing", 10*time.Minute); err != nil {
 		return err
 	}
-	if s.jobRepo != nil {
-		_ = s.jobRepo.UpdateStatus(ctx, msg.JobId, media.StatusProcessing, 20, "", "")
-	}
+
+	_ = s.jobRepo.UpdateStatus(ctx, msg.JobId, media.StatusProcessing, 20, "", "")
+
+	slog.Debug("Processing service", "I AM", "HERE...2")
 
 	result, err := s.processor.Process(ctx, msg.JobId, msg.Key, msg.Start, msg.End, msg.Width, msg.FPS, msg.Loop)
 	if err != nil {
@@ -26,6 +28,8 @@ func (s *service) Process(ctx context.Context, msg queue.VideoMessage) error {
 		}
 		return errors.Join(err, s.cache.Set(ctx, key, "failed", 5*time.Minute))
 	}
+
+	slog.Debug("Processing service", "I AM", "HERE...3")
 
 	gifKey := "messaage_queue_gif:job_id:" + msg.JobId
 	if err := s.cache.Set(ctx, gifKey, result.GifKey, 5*time.Minute); err != nil {
@@ -43,7 +47,7 @@ func (s *service) Process(ctx context.Context, msg queue.VideoMessage) error {
 		Key:          result.GifKey,
 		UserId:       msg.UserID,
 		Url:          result.GifKey,
-		ThumbnailUrl: result.ThumbKey,
+		ThumbnailKey: result.ThumbKey,
 	}
 
 	if err := s.gifRepo.Create(ctx, gif); err != nil {

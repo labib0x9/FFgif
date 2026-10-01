@@ -858,7 +858,7 @@ func TestGetGifThumbnail(t *testing.T) {
 		d := newMediaDeps(t)
 		d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Eq("gif-1")).Return("user-1", nil).Times(1)
 		d.gifRepo.EXPECT().GetByKey(gomock.Any(), gomock.Eq("gif-1"), gomock.Eq(false)).
-			Return(domainmedia.GifResponse{Key: "gif-1", ThumbnailUrl: "thumb-1.jpg"}, nil).Times(1)
+			Return(domainmedia.GifResponse{Key: "gif-1", ThumbnailKey: "thumb-1.jpg"}, nil).Times(1)
 		d.storage.EXPECT().GetThumbnailURL(gomock.Any(), gomock.Eq("thumb-1.jpg")).
 			Return(mustURL(t, "https://storage/thumb-1.jpg"), nil).Times(1)
 
@@ -875,7 +875,7 @@ func TestGetGifThumbnail(t *testing.T) {
 		d := newMediaDeps(t)
 		d.gifRepo.EXPECT().GetOwner(gomock.Any(), gomock.Any()).Return("user-1", nil).Times(1)
 		d.gifRepo.EXPECT().GetByKey(gomock.Any(), gomock.Any(), gomock.Eq(false)).
-			Return(domainmedia.GifResponse{Key: "gif-1", ThumbnailUrl: ""}, nil).Times(1)
+			Return(domainmedia.GifResponse{Key: "gif-1", ThumbnailKey: ""}, nil).Times(1)
 		// storage must not be asked for an empty key
 		_, err := d.svc.GetGifThumbnail(context.Background(), "user-1", "gif-1")
 		if !errors.Is(err, domainmedia.ErrThumbnailNotFound) {

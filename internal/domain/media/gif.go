@@ -22,7 +22,7 @@ type Gif struct {
 	Persist         bool      `json:"persist" db:"persist"`
 	Download        int       `json:"download" db:"download"`
 	Url             string    `json:"url" db:"url"`
-	ThumbnailUrl    string    `json:"thumbnail_url" db:"thumbnail_url"`
+	ThumbnailKey    string    `json:"thumbnail_key" db:"thumbnail_key"`
 	FileSizeBytes   int64     `json:"file_size_bytes" db:"file_size_bytes"`
 	Width           int       `json:"width" db:"width"`
 	Height          int       `json:"height" db:"height"`
@@ -38,7 +38,7 @@ type GifResponse struct {
 	Status          string    `json:"status" db:"status"`
 	Persist         bool      `json:"persist" db:"persist"`
 	Url             string    `json:"url" db:"url"`
-	ThumbnailUrl    string    `json:"thumbnail_url" db:"thumbnail_url"`
+	ThumbnailKey    string    `json:"thumbnail_key" db:"thumbnail_key"`
 	Download        int       `json:"download" db:"download"`
 	FileSizeBytes   int64     `json:"file_size_bytes" db:"file_size_bytes"`
 	Width           int       `json:"width" db:"width"`

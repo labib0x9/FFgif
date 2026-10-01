@@ -473,7 +473,7 @@ func TestRealInfrastructure_EndToEnd(t *testing.T) {
 		Status:       "public",
 		Persist:      true,
 		Url:          generatedGifKey,
-		ThumbnailUrl: "thumb.jpg",
+		ThumbnailKey: "thumb.jpg",
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	})
