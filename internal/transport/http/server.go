@@ -15,6 +15,7 @@ import (
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/share"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/static"
 	"github.com/labib0x9/ffgif/internal/transport/http/handlers/user"
+	"github.com/labib0x9/ffgif/internal/transport/http/httputil"
 	"github.com/labib0x9/ffgif/internal/transport/http/middleware"
 )
 
@@ -49,6 +50,7 @@ func NewServer(
 func (s *Server) Start(rate cache.RateLimiter, cnf *config.Config) {
 
 	rateLimiter := middleware.NewRateLimiter(rate, 20, 35)
+	httputil.InitAllowedOrigins(cnf)
 
 	manager := middleware.NewManager()
 	manager.Use(
